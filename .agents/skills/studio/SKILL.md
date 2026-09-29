@@ -16,13 +16,13 @@ Use this skill for chat requests beginning with `studio` and for clear requests 
 
 ## Pickup and revision projects
 
-Use a child project when an approved asset needs a new filming or editing pass after work has progressed, such as an `EXTRACT-` that does not work in the footage and must become a `FILM-` take. Keep it scoped to the replacement or related pickup batch. In the child's first `LOG.md` entry, identify its parent project, the specific asset and version being replaced, why the pickup is needed, and the parent source files or edit it uses. Reference those files in place; do not copy the parent's scripts, footage, or outputs into the child merely to restart the workflow.
+Use a child project when an approved asset needs a new filming or editing pass after work has progressed, such as an extract that does not work in the footage and needs a new filmed take. Keep it scoped to the replacement or related pickup batch. In the child's first `LOG.md` entry, identify its parent project, the specific asset and version being replaced, why the pickup is needed, and the parent source files or edit it uses. Reference those files in place; do not copy the parent's scripts, footage, or outputs into the child merely to restart the workflow.
 
 The child runs the same defined steps with its own candidates, `Approved/`, logs, and `DONE` markers. Its new scripts still require the user's explicit request before writing. A child does not add files to the parent's approved set or change the parent's completion markers. Child manifests fingerprint only the parent artifacts they actually depend on; a changed dependency invalidates the child, not the parent. Preserve earlier exports and store replacement outputs under the child with a clear link to the parent asset and version they supersede. Record the relationship in the parent log if needed, without treating that log entry as a reason to invalidate completed steps.
 
 ## Commands
 
-- `studio create project "Name"`: resolve the next primary project number, or use an available ID explicitly given by the user. Create the project root and only the first step, `1-Pre Production/1-Script Review`, in OneDrive. Create `Approved/` immediately in the step folder, even if no candidate exists yet. Do not create later-stage folders or write candidate scripts unless the user explicitly asks for them. When creation follows an intake chat, carry the agreed source and candidate ideas into the project's log.
+- `studio create project "Name"`: resolve the next primary project number, or use an available ID explicitly given by the user. Create the project root and only the first step, `1-Pre Production/1-Script Review`, in OneDrive. Create `Approved/` immediately in the step folder, even if it has no files yet. Do not create later-stage folders or write candidate scripts unless the user explicitly asks for them. When creation follows an intake chat, carry the agreed source and candidate ideas into the project's log.
 - `studio create pickup <parent> "Purpose"`: resolve the parent project and next child ID, then create the child with the same initial 1.1 structure. This is also the route for natural-language requests to repair an asset within an existing idea. Record the parent and replacement scope in the child's log; do not modify the parent's approved files. If the user explicitly names an available child ID, use it.
 - `studio run <stage.substage> [project]`: run or resume that specific defined step, such as `1.1` or `1.2`. Resolve the project from the command or unambiguous conversation context; ask if multiple projects remain possible. Validate prerequisite steps before running the requested step.
 - `studio run [project]`: validate existing completion markers in order, then run the first incomplete step and continue sequentially until the project finishes, a skill is missing, a step fails, or human input or review is required. At 1.1, discuss a new asset slate interactively and stop before writing scripts unless the user explicitly requested that writing. Do not silently skip an undefined step.
@@ -44,5 +44,6 @@ The stage skills below are shared workflow definitions in this repository. Read 
 
 - `1.1` — [Script Review](1-Pre%20Production/1-Script%20Review/SKILL.md)
 - `1.2` — [Cue Cards](1-Pre%20Production/2-Cue%20Cards/SKILL.md)
+- `1.3` — [Extracts](1-Pre%20Production/3-Extracts/SKILL.md)
 
 Later steps are defined as the workflow evolves. Do not infer their detailed behavior from the five stage names.
