@@ -9,7 +9,7 @@ Read the Studio root skill at `.agents/skills/studio/SKILL.md` for project resol
 
 ## Work and output
 
-Review the extract ideas recorded during Script Review and the approved scripts. Create one Word `.docx` per viable, distinct cut directly in the project's OneDrive `1-Pre Production/3-Extracts/` folder. Use descriptive filenames without `FILM-` or `EXTRACT-` prefixes. Do not create another nested `Extracts/` folder. A proposed extract is an edit plan, not a new filming script, and needs no move to `Approved/` or separate human approval.
+Review the extract ideas recorded during Script Review and the approved scripts. Create one Word `.docx` per viable, distinct cut directly in the project's OneDrive `1-Pre Production/3-Extracts/` folder. Use descriptive filenames. A proposed extract is an edit plan, not a new filming script, and needs no move to `Approved/` or separate human approval.
 
 Each document must identify its approved source script and version, its Reach/Trust/Traffic aim, and an approximate duration. Give the exact spoken selections in playback order, marking every omission or jump cut; identify the intended opening, payoff, and any nonspoken end card or caption. Use only words present in the approved source. Do not silently add connective narration, a spoken CTA, or an alternate ending that would require filming. If an idea cannot form a coherent cut from approved wording, record that finding in `LOG.md` instead of fabricating lines.
 
