@@ -15,7 +15,7 @@ Approved `CTA Pickup -` documents are filming scripts: create a separate deck fo
 
 ## Shared generators
 
-Use [make-plans.py](scripts/make-plans.py) with the OneDrive project folder to prepare cue text, then [build-cue-cards.ps1](scripts/build-cue-cards.ps1) with `-ProjectPath` to create and render the editable decks on a Windows machine with PowerPoint. The scripts accept any Studio project with approved Word scripts. Generated plans and renders stay in the project's `2-Cue Cards/working/` folder. The builder refuses to replace an existing deck unless `-Overwrite` is supplied after reviewing it for human edits. Check and label CTA pickup decks according to their approved destination and attachment point.
+With Python 3.10 or later, install [the Python dependencies](scripts/requirements.txt) in the active environment. Run [make-plans.py](scripts/make-plans.py) with the OneDrive project folder to prepare cue text, then [build-cue-cards.py](scripts/build-cue-cards.py) with the same project folder to create editable decks. Both scripts run on Windows, macOS, and Linux without PowerPoint. Generated plans stay in the project's `2-Cue Cards/working/` folder. The builder refuses to replace an existing deck unless `--overwrite` is supplied after reviewing it for human edits. Render and inspect every deck in an available presentation app before writing `DONE`; on macOS, Keynote or PowerPoint can display the `.pptx`. The Python builder does not render slides. Check and label CTA pickup decks according to their approved destination and attachment point.
 
 ## Completion
 
