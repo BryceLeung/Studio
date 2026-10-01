@@ -1,6 +1,6 @@
 ---
 name: studio-cue-cards
-description: Run or resume Studio substage 1.2, turning approved Word scripts into editable Keynote cue cards.
+description: Run or resume Studio substage 1.2, turning approved Word scripts into editable PowerPoint cue cards.
 ---
 
 # 1.2 — Cue Cards
@@ -9,9 +9,13 @@ Read the Studio root skill at `.agents/skills/studio/SKILL.md` (relative to the 
 
 ## Inputs and output
 
-Input: every approved `.docx` filming script from the project's OneDrive `1-Pre Production/1-Script Review/Approved/` folder. Create one editable Keynote `.key` presentation per approved script in the project's OneDrive `1-Pre Production/2-Cue Cards/` folder. Split the approved wording into readable speaking beats with large, high-contrast text suitable for a laptop display; preserve the approved script's wording. Extracts are created in substage 1.3 and require no cue cards. Keep the step's append-only `LOG.md` in the same folder.
+Input: every approved `.docx` filming script from the project's OneDrive `1-Pre Production/1-Script Review/Approved/` folder. Create one editable PowerPoint `.pptx` presentation per approved script in the project's OneDrive `1-Pre Production/2-Cue Cards/` folder. Use standard editable text boxes so the decks open across PowerPoint-compatible platforms. Split the approved wording into readable speaking beats with large, high-contrast text suitable for a laptop display; preserve the approved script's wording and line breaks. When successive script sentences appear on separate lines, keep them on separate lines if they share a slide. Keep the speaking text at one font size within each deck and center its text box vertically. If text overflows, move the excess to the next slide instead of reducing the font. Extracts are created in substage 1.3 and require no cue cards. Keep the step's append-only `LOG.md` in the same folder.
 
 Approved `CTA Pickup -` documents are filming scripts: create a separate deck for each one, label its destination and attachment point, and preserve the approved CTA wording. Do not put an optional pickup on the flagship's core cue cards.
+
+## Shared generators
+
+Use [make-plans.py](scripts/make-plans.py) with the OneDrive project folder to prepare cue text, then [build-cue-cards.ps1](scripts/build-cue-cards.ps1) with `-ProjectPath` to create and render the editable decks on a Windows machine with PowerPoint. The scripts accept any Studio project with approved Word scripts. Generated plans and renders stay in the project's `2-Cue Cards/working/` folder. The builder refuses to replace an existing deck unless `-Overwrite` is supplied after reviewing it for human edits. Check and label CTA pickup decks according to their approved destination and attachment point.
 
 ## Completion
 
