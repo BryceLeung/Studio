@@ -45,5 +45,6 @@ The stage skills below are shared workflow definitions in this repository. Read 
 - `1.1` — [Script Review](1-Pre%20Production/1-Script%20Review/SKILL.md)
 - `1.2` — [Cue Cards](1-Pre%20Production/2-Cue%20Cards/SKILL.md)
 - `1.3` — [Extracts](1-Pre%20Production/3-Extracts/SKILL.md)
+- `2.1` — [Footage Intake](2-Production/1-Footage%20Intake/SKILL.md)
 
 Later steps are defined as the workflow evolves. Do not infer their detailed behavior from the five stage names.
