@@ -33,6 +33,11 @@ class ConnectionTests(unittest.TestCase):
         self.content.write_text("preserve this project", encoding="utf-8")
         self.options = dict(workspace=self.workspace, project_root=self.root)
 
+    @property
+    def links(self):
+        """The workspace subdirectory that holds project links."""
+        return self.workspace / module.CONNECTED_DIRECTORY
+
     def _check_test_directory(self):
         self.assertEqual(self.base.parent, Path(tempfile.gettempdir()).resolve())
         self.assertTrue(self.base.name.startswith("studio-connect-check-"))
@@ -43,6 +48,7 @@ class ConnectionTests(unittest.TestCase):
 
     def test_connect_reconnect_disconnect_preserves_target(self):
         link = module.connect(self.name, **self.options)
+        self.assertEqual(link, self.links / self.name)
         self.assertTrue(module._is_link(link))
         self.assertEqual(link.resolve(), self.project)
         self.assertEqual((link / "keep.txt").read_text(), "preserve this project")
@@ -51,6 +57,22 @@ class ConnectionTests(unittest.TestCase):
         self.assertFalse(os.path.lexists(link))
         self.assertEqual(self.content.read_text(), "preserve this project")
         self.assertFalse(module.disconnect(self.name, **self.options))
+
+    def test_connect_creates_connected_projects_subdirectory(self):
+        self.assertFalse(self.links.exists())
+        module.connect(self.name, **self.options)
+        self.assertTrue(self.links.is_dir())
+        self.assertEqual(sorted(entry.name for entry in self.links.iterdir()), [self.name])
+        self.assertEqual(sorted(entry.name for entry in self.workspace.iterdir()), [module.CONNECTED_DIRECTORY])
+
+    def test_failed_connect_leaves_no_connected_projects_subdirectory(self):
+        with self.assertRaises(module.ConnectionError):
+            module.connect("99-Missing", **self.options)
+        self.assertFalse(self.links.exists())
+
+    def test_disconnect_without_connected_projects_subdirectory(self):
+        self.assertFalse(module.disconnect(self.name, **self.options))
+        self.assertFalse(self.links.exists())
 
     def test_multiple_connected_projects(self):
         other = "01.1-Love Compounds Too Pickup"
@@ -62,7 +84,8 @@ class ConnectionTests(unittest.TestCase):
         self.assertFalse(os.path.lexists(first))
 
     def test_real_directory_collision_is_preserved(self):
-        occupied = self.workspace / self.name
+        self.links.mkdir()
+        occupied = self.links / self.name
         occupied.mkdir()
         marker = occupied / "keep.txt"
         marker.write_text("keep")
@@ -72,7 +95,8 @@ class ConnectionTests(unittest.TestCase):
         self.assertEqual(marker.read_text(), "keep")
 
     def test_real_file_collision_is_preserved(self):
-        occupied = self.workspace / self.name
+        self.links.mkdir()
+        occupied = self.links / self.name
         occupied.write_text("keep")
         for operation in (module.connect, module.disconnect):
             with self.assertRaises(module.ConnectionError):
@@ -82,7 +106,8 @@ class ConnectionTests(unittest.TestCase):
     def test_unrelated_symlink_is_preserved(self):
         other = self.base / "unrelated"
         other.mkdir()
-        link = self.workspace / self.name
+        self.links.mkdir()
+        link = self.links / self.name
         if os.name == "nt":
             module._create_junction(other, link)
         else:
@@ -103,7 +128,7 @@ class ConnectionTests(unittest.TestCase):
     def test_missing_source_does_not_create_link(self):
         with self.assertRaises(module.ConnectionError):
             module.connect("99-Missing", **self.options)
-        self.assertFalse(os.path.lexists(self.workspace / "99-Missing"))
+        self.assertFalse(os.path.lexists(self.links / "99-Missing"))
 
     def test_path_traversal_is_rejected(self):
         for name in ("", ".", "..", "../project", "..\\project", "/project", "C:project", "trailing.", " spaced "):
@@ -153,6 +178,7 @@ class ConnectionTests(unittest.TestCase):
         result = subprocess.run(command, cwd=self.base, capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("Connected:", result.stdout)
+        self.assertIn(str(self.links / "01-Love Compounds Too"), result.stdout)
         command[3] = "disconnect"
         result = subprocess.run(command, cwd=self.base, capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)

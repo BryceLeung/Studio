@@ -13,6 +13,8 @@ Both functions accept optional workspace and project_root paths. project_root is
 the synced Books/Parent Like a Millionaire/Marketing/Studio directory. Without
 it, Windows OneDrive environment variables and the usual Windows/macOS sync
 locations are searched. Multiple matching roots require an explicit path.
+Links are created in the "Connected Projects" subdirectory of the workspace, so
+project folders stay out of the workflow root.
 If Windows denies symlink creation, a directory junction is used instead.
 """
 
@@ -27,6 +29,7 @@ from typing import Optional, Union
 
 PathLike = Union[str, os.PathLike]
 PROJECT_ROOT_PARTS = ("Books", "Parent Like a Millionaire", "Marketing", "Studio")
+CONNECTED_DIRECTORY = "Connected Projects"
 WORKSPACE = Path(__file__).resolve().parent.parent
 
 
@@ -51,6 +54,16 @@ def _workspace(workspace: Optional[PathLike]) -> Path:
     if not root.is_dir():
         raise ConnectionError(f"Workspace directory does not exist: {root}")
     return root
+
+
+def _connected_directory(workspace: Path, *, create: bool = False) -> Path:
+    """Return the workspace subdirectory that holds project links."""
+    directory = workspace / CONNECTED_DIRECTORY
+    if create:
+        if os.path.lexists(directory) and not directory.is_dir():
+            raise ConnectionError(f"Connected projects path is not a directory: {directory}")
+        directory.mkdir(exist_ok=True)
+    return directory
 
 
 def _candidate_project_roots() -> list[Path]:
@@ -191,9 +204,11 @@ def connect(
 ) -> Path:
     """Link an exact project folder into the workspace; return the link path.
 
-    Reconnecting the same target is harmless. Existing files, directories, or
-    links to other targets are never replaced. No project data is copied.
-    Windows falls back to a directory junction on missing symlink privileges.
+    The link is created inside the workspace "Connected Projects" subdirectory,
+    which is created when missing. Reconnecting the same target is harmless.
+    Existing files, directories, or links to other targets are never replaced.
+    No project data is copied. Windows falls back to a directory junction on
+    missing symlink privileges.
     """
     name = _project_name(project)
     root = _project_root(project_root)
@@ -204,7 +219,7 @@ def connect(
     if source.parent != root:
         raise ConnectionError(f"Project must be a direct folder inside {root}: {source}")
 
-    link = _workspace(workspace) / name
+    link = _connected_directory(_workspace(workspace), create=True) / name
     if os.path.lexists(link):
         if _is_link(link) and _link_target(link) == source:
             return link
@@ -230,12 +245,14 @@ def disconnect(
 ) -> bool:
     """Remove a project's workspace link, leaving OneDrive data intact.
 
-    Return True if a link was removed, or False if it was already absent.
-    Broken project links can be removed even when OneDrive is unavailable.
-    Existing files, real directories, and links to unrelated targets are refused.
+    Looks in the workspace "Connected Projects" subdirectory, which is never
+    created here. Return True if a link was removed, or False if it was already
+    absent. Broken project links can be removed even when OneDrive is
+    unavailable. Existing files, real directories, and links to unrelated
+    targets are refused.
     """
     name = _project_name(project)
-    link = _workspace(workspace) / name
+    link = _connected_directory(_workspace(workspace)) / name
     if not os.path.lexists(link):
         return False
     if not _is_link(link):
