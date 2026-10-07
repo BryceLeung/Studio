@@ -1,0 +1,13 @@
+# Project-scoped Codex configuration (loaded only while this project is trusted).
+#
+# Project folders under Studio/ are symlinks into OneDrive, so they resolve
+# outside this workspace root. The sandbox evaluates the resolved path, so the
+# real target has to be granted explicitly before Codex can write there.
+# The Studio directory is granted as a whole, covering every NN-* project.
+
+sandbox_mode = "workspace-write"
+
+[sandbox_workspace_write]
+writable_roots = [
+	"/Users/bryceleung/Library/CloudStorage/OneDrive-Personal/Books/Parent Like a Millionaire/Marketing/Studio",
+]
