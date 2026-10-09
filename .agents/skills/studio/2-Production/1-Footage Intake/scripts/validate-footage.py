@@ -14,16 +14,16 @@ ROLE_EXTENSIONS = {
     "lav": {"wav"},
 }
 FILENAME = re.compile(
-    r"^(?P<script>.+?)__T(?P<take>\d{2})__(?P<role>camA|camB|lav)\.(?P<ext>[^.]+)$"
+    r"^(?P<script>.+?)__C(?P<clip>\d{2})__(?P<role>camA|camB|lav)\.(?P<ext>[^.]+)$"
 )
 BAD_SEPARATOR = re.compile(
-    r"^(?P<script>.+?)__T(?P<take>\d{2})_(?P<role>camA|camB|lav)\.[^.]+$"
+    r"^(?P<script>.+?)__C(?P<clip>\d{2})_(?P<role>camA|camB|lav)\.[^.]+$"
 )
 
 
 def inspect_footage(footage_dir: Path) -> tuple[dict[str, list[str]], list[str]]:
-    """Return complete take numbers and actionable file problems."""
-    takes: dict[tuple[str, str], set[str]] = {}
+    """Return complete clip numbers and actionable file problems."""
+    clip_sets: dict[tuple[str, str], set[str]] = {}
     problems = []
 
     for path in footage_dir.iterdir():
@@ -37,21 +37,21 @@ def inspect_footage(footage_dir: Path) -> tuple[dict[str, list[str]], list[str]]
             if path.stat().st_size == 0:
                 problems.append(f"{path.name}: file is empty")
                 continue
-            key = (match["script"], match["take"])
-            takes.setdefault(key, set()).add(match["role"])
+            key = (match["script"], match["clip"])
+            clip_sets.setdefault(key, set()).add(match["role"])
             continue
         bad_separator = BAD_SEPARATOR.fullmatch(path.name)
         if bad_separator:
             expected = (
-                f"{bad_separator['script']}__T{bad_separator['take']}__"
+                f"{bad_separator['script']}__C{bad_separator['clip']}__"
                 f"{bad_separator['role']}{path.suffix}"
             )
             problems.append(f"{path.name}: expected {expected}")
 
     complete: dict[str, list[str]] = {}
-    for (script, take), roles in takes.items():
+    for (script, clip), roles in clip_sets.items():
         if roles == set(ROLES):
-            complete.setdefault(script, []).append(f"T{take}")
+            complete.setdefault(script, []).append(f"C{clip}")
     return complete, problems
 
 
@@ -78,8 +78,8 @@ def main() -> None:
 
     print(f"Footage Intake - {project.name}")
     for script in approved:
-        takes = ", ".join(sorted(complete.get(script, [])))
-        print(f"  {'OK' if takes else 'MISSING'}  {script}{f' ({takes})' if takes else ''}")
+        clips = ", ".join(sorted(complete.get(script, [])))
+        print(f"  {'OK' if clips else 'MISSING'}  {script}{f' ({clips})' if clips else ''}")
 
     if missing or problems:
         print("\nFAIL - footage validation found problems")
@@ -87,7 +87,7 @@ def main() -> None:
             print(f"  - {problem}")
         raise SystemExit(1)
 
-    print("\nPASS - every approved script has a non-empty camA/camB/lav set")
+    print("\nPASS - every approved script has a non-empty C<nn> camA/camB/lav set")
 
 
 if __name__ == "__main__":

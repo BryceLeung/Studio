@@ -15,15 +15,15 @@ The approved-script set is the stems of the `.docx` files in `1-Pre Production/1
 
 ## Expected filenames
 
-Each footage set uses one take number and these three filenames:
+Each footage set uses one clip number (`C01`, `C02`, and so on) shared by these three source clips:
 
 ```text
-<Script>__T<nn>__camA.<ext>
-<Script>__T<nn>__camB.<ext>
-<Script>__T<nn>__lav.<ext>
+<Script>__C<nn>__camA.<ext>
+<Script>__C<nn>__camB.<ext>
+<Script>__C<nn>__lav.<ext>
 ```
 
-`<Script>` must exactly match an approved `.docx` stem. `camA` and `camB` must use `.mov` or `.mp4`; `lav` must use `.wav`. Extension matching is case-insensitive. Multiple takes are allowed.
+`<Script>` must exactly match an approved `.docx` stem. `camA` and `camB` must use `.mov` or `.mp4`; `lav` must use `.wav`. Extension matching is case-insensitive. Multiple clip sets are allowed. A take is an individual performance of a script passage within the synchronized source clips; `C<nn>` identifies the source clip set, not that performance.
 
 ## Validation
 
@@ -33,7 +33,7 @@ Running stage 2.1 means running [validate-footage.py](scripts/validate-footage.p
 python "<workflow-root>/.agents/skills/studio/2-Production/1-Footage Intake/scripts/validate-footage.py" "<OneDrive project folder>"
 ```
 
-For every approved script, the validator requires at least one take containing `camA`, `camB`, and `lav`, with all three files larger than zero bytes and using the allowed extension for their role. Files with unsupported extensions, such as Audacity `.aup3` project files, are ignored and do not count toward a complete set. Other files that do not match the expected filenames are also ignored, except that likely single-underscore separator mistakes are reported. The command exits nonzero and lists each problem when validation fails.
+For every approved script, the validator requires at least one `C<nn>` clip set containing `camA`, `camB`, and `lav`, with all three files larger than zero bytes and using the allowed extension for their role. Files with unsupported extensions, such as Audacity `.aup3` project files, are ignored and do not count toward a complete set. Other files that do not match the expected filenames are also ignored, except that likely single-underscore separator mistakes are reported. The command exits nonzero and lists each problem when validation fails.
 
 Treat the validator as the stage's source of truth:
 
@@ -45,6 +45,6 @@ Treat the validator as the stage's source of truth:
 
 ## Completion and reruns
 
-Append the validator's pass/fail result and its messages to the step's `LOG.md`. After a passing validation, write `DONE` according to the Studio root skill, recording the approved scripts and the three files in at least one complete set per script. On failure, do not write `DONE`; report the listed corrections and stop. The validator itself does not write `DONE`.
+Completion requires a successful validator run: every approved script has a non-empty `C<nn>` camA/camB/lav set, and no file has a reported validation problem. Append the validator's pass/fail result and its messages to the step's `LOG.md`. After a passing validation, write `DONE` according to the Studio root skill, recording the `C<nn>` filename convention, the approved scripts, this skill and validator script, and the three files in at least one complete set per script. On failure, do not write `DONE`; report the listed corrections and stop. The validator itself does not write `DONE`.
 
-On rerun, validate upstream markers first, rerun the validator, and compare the approved-script set and recorded files with `DONE`. Invalidate this and later completion markers when those inputs change. Preserve all footage files.
+On rerun, validate upstream markers first, rerun the validator, and compare the approved-script set, naming convention, stage-specific skill and validator revisions, and recorded files with `DONE`. Invalidate this and later completion markers when those dependencies change or validation fails. Preserve all footage files.
