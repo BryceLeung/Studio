@@ -1,2 +1,6 @@
 # Project directories and symlinks belong in OneDrive, outside version control.
 /Connected Projects/
+
+# Local audio synchronization dependencies.
+/.venv-sync/
+__pycache__/
