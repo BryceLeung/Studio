@@ -9,17 +9,17 @@ Read the Studio root skill at `.agents/skills/studio/SKILL.md` for project resol
 
 ## Inputs and outputs
 
-Read the project's media in `2-Production/1-Footage Intake/`. Each recording group (called a shot in this stage) contains exactly one non-empty file for each role:
+Read the project's media in `2-Production/1-Footage Intake/`. Each recording group (called a shot in this stage) uses one clip number (`C01`, `C02`, and so on) shared by its three source clips, and contains exactly one non-empty file for each role:
 
 ```text
-<Script>__T<nn>__camA.mov or .mp4
-<Script>__T<nn>__camB.mov or .mp4
-<Script>__T<nn>__lav.wav
+<Script>__C<nn>__camA.mov or .mp4
+<Script>__C<nn>__camB.mov or .mp4
+<Script>__C<nn>__lav.wav
 ```
 
-Extensions are case-insensitive. Ignore unrelated files, including Audacity `.aup3` projects. A missing role, empty file, or multiple supported files for one role prevents generation for the requested set until corrected; report the filenames. Read the source media in place.
+`C<nn>` identifies the source clip set, not an individual performance; a take is an individual performance of a script passage within the synchronized source clips. Extensions are case-insensitive. Ignore unrelated files, including Audacity `.aup3` projects. A missing role, empty file, or multiple supported files for one role prevents generation for the requested set until corrected; report the filenames. Read the source media in place.
 
-Write one `<Script>__T<nn>.json` per recording group directly in the project's OneDrive `3-Post Production/1-Sync/` folder. Paths inside JSON are relative to the project root and use forward slashes, so they can be used on Windows and macOS.
+Write one `<Script>__C<nn>.json` per recording group directly in the project's OneDrive `3-Post Production/1-Sync/` folder. Paths inside JSON are relative to the project root and use forward slashes, so they can be used on Windows and macOS.
 
 `clips.<role>.offset_ms` is an integer relative to camA's first decoded audio sample, with camA fixed at zero. A positive offset means the recording starts later than camA; a negative offset means it starts earlier. To align a target sample at source time `t_ms`, its time on the camA reference is `t_ms + offset_ms`. Do not clamp negative offsets; a later editing stage can shift all sources together if it needs a nonnegative timeline.
 
@@ -45,7 +45,7 @@ After validating upstream completion markers and resolving the actual OneDrive p
 python "<workflow-root>/.agents/skills/studio/3-Post Production/1-Sync/scripts/generate_offsets.py" "<OneDrive project folder>"
 ```
 
-For a scoped trial or rerun, add `--shot "What Is Freedom For__T01"`. Repeat `--shot` for several exact group names. A scoped run does not complete the whole stage while other groups remain unprocessed.
+For a scoped trial or rerun, add `--shot "What Is Freedom For__C01"`. Repeat `--shot` for several exact group names. A scoped run does not complete the whole stage while other groups remain unprocessed.
 
 The generator decodes the first audio stream from each file as mono 8 kHz PCM, then uses the BBC library's MFCC correlation with a 32-sample hop (4 ms search interval) and its default 2,000-frame correlation limit. It decodes each input once per group and keeps the decoded audio in memory. A missing audio stream, decoder error, insufficient audio, silence, or nonfinite or degenerate correlation fails that group. Other independent groups are attempted; any failure makes the command exit nonzero. A failed group does not receive a new JSON.
 

@@ -20,7 +20,7 @@ OUTPUT_PARTS = ("3-Post Production", "1-Sync")
 ROLES = ("camA", "camB", "lav")
 EXTENSIONS = {"camA": {"mov", "mp4"}, "camB": {"mov", "mp4"}, "lav": {"wav"}}
 FILENAME = re.compile(
-    r"^(?P<shot>(?P<script>.+)__T(?P<take>\d{2}))__"
+    r"^(?P<shot>(?P<script>.+)__C(?P<clip>\d{2}))__"
     r"(?P<role>camA|camB|lav)\.(?P<ext>[^.]+)$"
 )
 SAMPLE_RATE = 8000
