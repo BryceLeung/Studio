@@ -53,5 +53,8 @@ The stage skills below are shared workflow definitions in this repository. Read 
 - `1.3` — [Extracts](1-Pre%20Production/3-Extracts/SKILL.md)
 - `2.1` — [Footage Intake](2-Production/1-Footage%20Intake/SKILL.md)
 - `3.1` — [Sync](3-Post%20Production/1-Sync/SKILL.md)
+- `3.2` - [Transcribe](3-Post%20Production/2-Transcribe/SKILL.md)
+
+Stage 3.2 currently has no completion condition, pending design of the WER benchmark workflow. Generate its outputs when requested, but do not write its `DONE`, claim completion, or continue automatically past it until the user defines that condition.
 
 Later steps are defined as the workflow evolves. Do not infer their detailed behavior from the five stage names.
