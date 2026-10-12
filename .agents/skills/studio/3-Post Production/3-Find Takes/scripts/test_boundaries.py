@@ -61,6 +61,37 @@ class BoundaryTests(unittest.TestCase):
             {"word_start": 0, "word_end": 3}, {"word_start": 4, "word_end": 7}])
         self.check_preview(expected, original, analysis, preview)
 
+    def test_local_rewind_keeps_flub_tail_with_abandoned_attempt(self):
+        expected = script(["He wanted a grandchild, but he didn't make his love depend on one.",
+                           "Somehow, being given room to say no made it easier for me to imagine saying yes."])
+        spoken = transcript(["Somehow being given room to say no made it easier for me to having...",
+                             "He wanted a grandchild, but he didn't make his love dependent on one."])
+        original = recording(expected, spoken, [(1, 0, 12), (0, 13, 26)])
+        untouched = deepcopy(original)
+        analysis, preview = boundaries.propose(expected, original)
+        self.assertEqual([link["transcript"] for link in preview["links"]], [
+            {"word_start": 0, "word_end": 13}, {"word_start": 14, "word_end": 26}])
+        self.assertEqual([link["script"] for link in preview["links"]], [
+            mapping.initial_groupings(expected)[1], mapping.initial_groupings(expected)[0]])
+        self.assertEqual(preview["discarded"], [])
+        self.assertEqual(original, untouched)
+        self.check_preview(expected, original, analysis, preview)
+        _, forward_only = boundaries.propose(expected, original, {"script_lookback": 0})
+        self.assertEqual(forward_only["links"], original["links"])
+
+    def test_rewind_limit_does_not_allow_a_distant_restart(self):
+        expected = script(["He wanted a grandchild, but he didn't make his love depend on one.",
+                           "Amber birch cedar dogwood.", "Elm fir ginkgo hazel.", "Iris juniper kelp larch.",
+                           "Somehow, being given room to say no made it easier for me to imagine saying yes."])
+        spoken = transcript(["Somehow being given room to say no made it easier for me to having...",
+                             "He wanted a grandchild, but he didn't make his love dependent on one."])
+        original = recording(expected, spoken, [(4, 0, 12), (0, 13, 26)])
+        _, preview = boundaries.propose(expected, original)
+        self.assertEqual(preview["links"], original["links"])
+        _, wider = boundaries.propose(expected, original, {"script_lookback": 4})
+        self.assertEqual([link["transcript"] for link in wider["links"]], [
+            {"word_start": 0, "word_end": 13}, {"word_start": 14, "word_end": 26}])
+
     def test_chatter_cannot_earn_more_credit_by_being_absorbed(self):
         line = "Alpha beta gamma delta epsilon zeta eta theta."
         expected = script([line])

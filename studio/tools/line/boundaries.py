@@ -12,6 +12,7 @@ from . import mapping, quality
 SETTINGS = {
     "window_groups": 3, "max_window_words": 80, "max_readings": 4,
     "beam_per_state": 3, "min_similarity": 75.0, "min_prefix_words": 3,
+    "script_lookback": 3,
     "min_gain": 5.0, "boundary_change_cost": 0.25,
     "pause_bonus": 2.0, "sentence_end_bonus": 1.0, "original_boundary_bonus": 0.5,
 }
@@ -45,6 +46,8 @@ def propose(script: dict, recording: dict, settings: dict | None = None) -> tupl
     for key in ("window_groups", "max_window_words", "max_readings", "beam_per_state", "min_prefix_words"):
         if type(settings[key]) is not int or settings[key] < 1:
             raise ValueError(f"{key} must be a positive integer.")
+    if type(settings["script_lookback"]) is not int or settings["script_lookback"] < 0:
+        raise ValueError("script_lookback must be a nonnegative integer.")
     for key in ("boundary_change_cost", "pause_bonus", "sentence_end_bonus", "original_boundary_bonus"):
         if settings[key] < 0:
             raise ValueError(f"{key} must be nonnegative.")
@@ -168,7 +171,9 @@ def propose(script: dict, recording: dict, settings: dict | None = None) -> tupl
                         continue
                     for reading, amount in available:
                         index, _, stop = reading
-                        if last is not None and not 0 <= index - last <= 3:
+                        # A restart may return to a recent script group. Keep
+                        # the word stream forward while allowing local rewinds.
+                        if last is not None and not -settings["script_lookback"] <= index - last <= 3:
                             continue
                         retain(stop, (index, count + 1), (value + amount, path + (reading,)))
         alternatives = {before: before_credit}

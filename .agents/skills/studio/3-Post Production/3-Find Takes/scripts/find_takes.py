@@ -45,7 +45,7 @@ def sha256(path: Path) -> str:
 
 
 def boundary_provenance() -> dict:
-    return {"name": "local-transcript-regrouping", "version": 1,
+    return {"name": "local-transcript-regrouping", "version": 2,
             "settings": dict(boundaries.SETTINGS), "code_sha256": sha256(Path(boundaries.__file__))}
 
 
@@ -66,7 +66,7 @@ def alignment_provenance() -> dict:
 
 def provenance() -> dict:
     algorithm = alignment_provenance()
-    algorithm["version"] = 4
+    algorithm["version"] = 5
     algorithm["boundary_refinement"] = boundary_provenance()
     return algorithm
 

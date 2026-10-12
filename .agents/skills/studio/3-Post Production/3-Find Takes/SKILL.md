@@ -139,8 +139,11 @@ the proposed readings.
 `studio/tools/line/boundaries.py` searches one to three adjacent transcript
 groups (up to 80 words) at individual word gaps, keeping approved script groups
 fixed. Paths can skip chatter, merge fragments, split a restart, or move a cut
-between readings. Repeated readings are allowed; normalized Exact links are
-anchors. The search keeps three alternatives per position/script/count state
+between readings. Repeated readings and local rewinds of up to three script
+groups are allowed; transcript words always advance. This allows a flub tail to
+remain with its abandoned attempt when the following reading returns to an
+earlier script line. Normalized Exact links are anchors. The search keeps three
+alternatives per position/script/count state
 and emits up to four readings per window, so it is a bounded search rather than
 an exhaustive global optimum.
 

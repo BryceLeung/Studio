@@ -46,12 +46,17 @@ class BenchmarkTests(unittest.TestCase):
             self.assertEqual(conflicting["boundary_preview"]["exact_take_ranges"], benchmark.metrics(23, 28, 27))
             self.assertEqual(conflicting["boundary_preview"]["word_assignments"]["correct"], 418)
             self.assertEqual(second["exact_take_ranges"], benchmark.metrics(25, 26, 27))
-            self.assertEqual(second["boundary_preview"]["exact_take_ranges"], benchmark.metrics(27, 27, 27))
-            self.assertEqual(second["boundary_preview"]["word_assignments"]["correct"], 412)
-            self.assertEqual(len(second["boundary_proposals"]), 1)
+            # The human-identified 'having...' correction differs from v002.
+            self.assertEqual(second["boundary_preview"]["exact_take_ranges"], benchmark.metrics(25, 27, 27))
+            self.assertEqual(second["boundary_preview"]["word_assignments"]["correct"], 411)
+            self.assertEqual(len(second["boundary_proposals"]), 2)
             proposal = second["boundary_proposals"][0]
             self.assertEqual([link["transcript"] for link in proposal["after"][:2]], [
                 {"word_start": 67, "word_end": 78}, {"word_start": 79, "word_end": 98}])
+            rewind = second["boundary_proposals"][1]
+            self.assertEqual([link["transcript"] for link in rewind["after"]], [
+                {"word_start": 145, "word_end": 158}, {"word_start": 159, "word_end": 171}])
+            self.assertEqual(second["boundary_preview"]["word_errors"][0]["index"], 158)
             preview = json.loads((output / "preview/What Is Freedom For/What Is Freedom For__Takes.v002.json").read_text())
             baseline = json.loads((output / "baseline/What Is Freedom For/What Is Freedom For__Takes.v002.json").read_text())
             self.assertEqual(preview["script"], baseline["script"])
@@ -72,9 +77,9 @@ class BenchmarkTests(unittest.TestCase):
             self.assertEqual(len(report["cases"]), 2)
             first, second = report["cases"]
             self.assertEqual(first["exact_take_ranges"], benchmark.metrics(23, 28, 27))
-            self.assertEqual(second["exact_take_ranges"], benchmark.metrics(27, 27, 27))
+            self.assertEqual(second["exact_take_ranges"], benchmark.metrics(25, 27, 27))
             self.assertEqual(first["word_assignments"]["correct"], 418)
-            self.assertEqual(second["word_assignments"]["correct"], 412)
+            self.assertEqual(second["word_assignments"]["correct"], 411)
             self.assertEqual(first["classification_counts"], {"exact": 22, "partial": 5, "flub": 1})
             self.assertEqual(second["classification_counts"], {"exact": 16, "partial": 11, "flub": 0})
             self.assertTrue(all(0 <= item["quality_score"] <= 100
