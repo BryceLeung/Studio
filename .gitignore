@@ -4,3 +4,9 @@
 # Local audio synchronization dependencies.
 /.venv-sync/
 __pycache__/
+
+# Native dashboard dependencies and packaging metadata.
+/.venv-dashboard/
+*.egg-info/
+/build/
+/dist/
