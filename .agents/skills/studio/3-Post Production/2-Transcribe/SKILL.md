@@ -19,19 +19,20 @@ Extension matching is case-insensitive. Use the intake audio in place; camera fi
 
 ## Outputs
 
-For each input audio file, write two files with the same stem directly in the project's OneDrive `3-Post Production/2-Transcribe/` folder:
+For each input audio file, write at least these two files with the same stem directly in the project's OneDrive `3-Post Production/2-Transcribe/` folder:
 
 ```text
 <Script>__C<nn>__lav.json
 <Script>__C<nn>__lav.srt
 ```
 
-- JSON is the machine-readable transcript for downstream processing. Include the ordered verbatim words, word start/end timestamps in integer milliseconds, the source audio reference, and transcription provenance: provider, model, implementation version, and settings. Source paths are relative to the project root and use forward slashes. Times are relative to the original audio file's start, without applying sync offsets or removing pauses. Retain available provider diagnostics with their meaning identified; do not invent confidence values or timestamps for unaligned words.
+- JSON is the native WhisperX JSON output. Preserve its schema, word ordering, timestamps, and available diagnostics. The source is the intake WAV with the same filename stem; record its project-relative path and SHA-256 in `LOG.md`. Native timestamps are in seconds relative to the original audio file's start, without applying sync offsets or removing pauses. Do not invent confidence values or timestamps for unaligned words.
 - SRT is the companion for listening and text correction in a subtitle editor. Generate it from the same transcription, using standard SRT timecodes and chronological sections suitable for playback. Subtitle sections do not define script sentences or take boundaries.
+- When the WhisperX CLI's `all` output format is used to produce JSON and SRT together, retain its additional native output formats in the stage folder.
 
 ## Transcription behavior
 
-Use the installed WhisperX environment as the initial provider. Keep the stage's input/output contract independent of that provider so benchmark comparisons can use other engines later. Record the actual model and settings for each run. If the model or processing settings have not been agreed, clarify them before processing audio rather than treating library defaults as an editorial decision.
+Use the installed WhisperX CLI as the initial provider. Select the model and processing settings for each run through CLI arguments; record the CLI options, provider version, model, settings, source paths, and source SHA-256 fingerprints in `LOG.md`. When the user requests all intake WAVs, pass them together to one CLI invocation so the model is loaded once. If the model or processing settings have not been agreed, clarify them before processing audio rather than treating library defaults as an editorial decision.
 
 Preserve repetitions, restarts, fillers, flubs, partial sentences, and pauses. Do not deduplicate readings, rewrite speech to match the approved script, or silently clean the transcript. Script matching, occurrence labels, and take selection belong to later stages. Generated transcripts are estimates until checked against the original audio.
 
