@@ -1,0 +1,5943 @@
+{
+  "schema": "studio.line.mapping",
+  "schema_version": 2,
+  "mapping_name": "What Is Freedom For__Takes",
+  "version": 1,
+  "created_at": "2026-10-12T16:13:42+00:00",
+  "parent": null,
+  "sources": {
+    "script": {
+      "source": {
+        "path": "What Is Freedom For.docx",
+        "sha256": "022cc56d2ff6ebcc90710ec72446fb064301b33907c5ffcec4e0b3df9eb1897f",
+        "segmentation_version": "line-sentences-v1",
+        "kind": "script",
+        "format": "docx-spoken-script"
+      },
+      "title": "What Is Freedom For",
+      "rows": [
+        {
+          "id": "script:022cc56d2ff6ebcc90710ec72446fb064301b33907c5ffcec4e0b3df9eb1897f:line-sentences-v1:1",
+          "line": 1,
+          "text": "For most of my adult life, freedom meant that no one could tell me what to do with my time.",
+          "word_start": 0,
+          "word_end": 19
+        },
+        {
+          "id": "script:022cc56d2ff6ebcc90710ec72446fb064301b33907c5ffcec4e0b3df9eb1897f:line-sentences-v1:2",
+          "line": 2,
+          "text": "I had spent my childhood trying to meet other people’s expectations, and years working at a job I wanted to leave.",
+          "word_start": 20,
+          "word_end": 40
+        },
+        {
+          "id": "script:022cc56d2ff6ebcc90710ec72446fb064301b33907c5ffcec4e0b3df9eb1897f:line-sentences-v1:3",
+          "line": 3,
+          "text": "When I finally retired at 31, I loved waking up knowing the day belonged to me.",
+          "word_start": 41,
+          "word_end": 56
+        },
+        {
+          "id": "script:022cc56d2ff6ebcc90710ec72446fb064301b33907c5ffcec4e0b3df9eb1897f:line-sentences-v1:4",
+          "line": 4,
+          "text": "That’s one reason I was afraid to have a child.",
+          "word_start": 57,
+          "word_end": 66
+        },
+        {
+          "id": "script:022cc56d2ff6ebcc90710ec72446fb064301b33907c5ffcec4e0b3df9eb1897f:line-sentences-v1:5",
+          "line": 5,
+          "text": "I knew what it would mean to have someone need me every day.",
+          "word_start": 67,
+          "word_end": 79
+        },
+        {
+          "id": "script:022cc56d2ff6ebcc90710ec72446fb064301b33907c5ffcec4e0b3df9eb1897f:line-sentences-v1:6",
+          "line": 6,
+          "text": "I worried that after working so hard to get my time back, I would give it all away.",
+          "word_start": 80,
+          "word_end": 97
+        },
+        {
+          "id": "script:022cc56d2ff6ebcc90710ec72446fb064301b33907c5ffcec4e0b3df9eb1897f:line-sentences-v1:7",
+          "line": 7,
+          "text": "Then my father-in-law said something I didn’t expect.",
+          "word_start": 98,
+          "word_end": 105
+        },
+        {
+          "id": "script:022cc56d2ff6ebcc90710ec72446fb064301b33907c5ffcec4e0b3df9eb1897f:line-sentences-v1:8",
+          "line": 8,
+          "text": "He told Bryce and I that he hoped we’d have a child, but if we never did, he would love us just the same.",
+          "word_start": 106,
+          "word_end": 129
+        },
+        {
+          "id": "script:022cc56d2ff6ebcc90710ec72446fb064301b33907c5ffcec4e0b3df9eb1897f:line-sentences-v1:9",
+          "line": 9,
+          "text": "He wanted a grandchild, but he didn’t make his love depend on one.",
+          "word_start": 130,
+          "word_end": 142
+        },
+        {
+          "id": "script:022cc56d2ff6ebcc90710ec72446fb064301b33907c5ffcec4e0b3df9eb1897f:line-sentences-v1:10",
+          "line": 10,
+          "text": "Somehow, being given room to say no made it easier for me to imagine saying yes.",
+          "word_start": 143,
+          "word_end": 158
+        },
+        {
+          "id": "script:022cc56d2ff6ebcc90710ec72446fb064301b33907c5ffcec4e0b3df9eb1897f:line-sentences-v1:11",
+          "line": 11,
+          "text": "Years later, he was diagnosed with brain cancer.",
+          "word_start": 159,
+          "word_end": 166
+        },
+        {
+          "id": "script:022cc56d2ff6ebcc90710ec72446fb064301b33907c5ffcec4e0b3df9eb1897f:line-sentences-v1:12",
+          "line": 12,
+          "text": "During his final month of life, I was nine months pregnant.",
+          "word_start": 167,
+          "word_end": 177
+        },
+        {
+          "id": "script:022cc56d2ff6ebcc90710ec72446fb064301b33907c5ffcec4e0b3df9eb1897f:line-sentences-v1:13",
+          "line": 13,
+          "text": "Our days filled with family calls and care he could no longer manage alone.",
+          "word_start": 178,
+          "word_end": 191
+        },
+        {
+          "id": "script:022cc56d2ff6ebcc90710ec72446fb064301b33907c5ffcec4e0b3df9eb1897f:line-sentences-v1:14",
+          "line": 14,
+          "text": "I watched his daughter gently trim his nails.",
+          "word_start": 192,
+          "word_end": 199
+        },
+        {
+          "id": "script:022cc56d2ff6ebcc90710ec72446fb064301b33907c5ffcec4e0b3df9eb1897f:line-sentences-v1:15",
+          "line": 15,
+          "text": "I watched my husband help him with things a grown man would rather never need help with.",
+          "word_start": 200,
+          "word_end": 216
+        },
+        {
+          "id": "script:022cc56d2ff6ebcc90710ec72446fb064301b33907c5ffcec4e0b3df9eb1897f:line-sentences-v1:16",
+          "line": 16,
+          "text": "And friends and family kept coming just to sit beside him.",
+          "word_start": 217,
+          "word_end": 227
+        },
+        {
+          "id": "script:022cc56d2ff6ebcc90710ec72446fb064301b33907c5ffcec4e0b3df9eb1897f:line-sentences-v1:17",
+          "line": 17,
+          "text": "By then, he had nothing left to offer them.",
+          "word_start": 228,
+          "word_end": 236
+        },
+        {
+          "id": "script:022cc56d2ff6ebcc90710ec72446fb064301b33907c5ffcec4e0b3df9eb1897f:line-sentences-v1:18",
+          "line": 18,
+          "text": "He had spent years loving people without asking them to earn it, and now they wanted to be there.",
+          "word_start": 237,
+          "word_end": 255
+        },
+        {
+          "id": "script:022cc56d2ff6ebcc90710ec72446fb064301b33907c5ffcec4e0b3df9eb1897f:line-sentences-v1:19",
+          "line": 19,
+          "text": "Watching them, I understood something I hadn’t understood when I was younger: being needed by someone you love can feel very different from being trapped.",
+          "word_start": 256,
+          "word_end": 280
+        },
+        {
+          "id": "script:022cc56d2ff6ebcc90710ec72446fb064301b33907c5ffcec4e0b3df9eb1897f:line-sentences-v1:20",
+          "line": 20,
+          "text": "Now I have a son who needs lunch made, a story read again, and someone willing to stop and look at a bug with him.",
+          "word_start": 281,
+          "word_end": 305
+        },
+        {
+          "id": "script:022cc56d2ff6ebcc90710ec72446fb064301b33907c5ffcec4e0b3df9eb1897f:line-sentences-v1:21",
+          "line": 21,
+          "text": "I still miss the ease of leaving whenever I want.",
+          "word_start": 306,
+          "word_end": 315
+        },
+        {
+          "id": "script:022cc56d2ff6ebcc90710ec72446fb064301b33907c5ffcec4e0b3df9eb1897f:line-sentences-v1:22",
+          "line": 22,
+          "text": "But when he runs to me at daycare, I think about his grandfather.",
+          "word_start": 316,
+          "word_end": 328
+        },
+        {
+          "id": "script:022cc56d2ff6ebcc90710ec72446fb064301b33907c5ffcec4e0b3df9eb1897f:line-sentences-v1:23",
+          "line": 23,
+          "text": "I want my son to feel the same freedom he gave us: to know that I love him without asking him to repay me.",
+          "word_start": 329,
+          "word_end": 352
+        },
+        {
+          "id": "script:022cc56d2ff6ebcc90710ec72446fb064301b33907c5ffcec4e0b3df9eb1897f:line-sentences-v1:24",
+          "line": 24,
+          "text": "Money gave me the freedom to choose how to spend my time.",
+          "word_start": 353,
+          "word_end": 364
+        },
+        {
+          "id": "script:022cc56d2ff6ebcc90710ec72446fb064301b33907c5ffcec4e0b3df9eb1897f:line-sentences-v1:25",
+          "line": 25,
+          "text": "My father-in-law helped me see why I might choose to give some of it away.",
+          "word_start": 365,
+          "word_end": 379
+        }
+      ],
+      "words": [
+        {
+          "index": 0,
+          "text": "For",
+          "separator": ""
+        },
+        {
+          "index": 1,
+          "text": "most",
+          "separator": " "
+        },
+        {
+          "index": 2,
+          "text": "of",
+          "separator": " "
+        },
+        {
+          "index": 3,
+          "text": "my",
+          "separator": " "
+        },
+        {
+          "index": 4,
+          "text": "adult",
+          "separator": " "
+        },
+        {
+          "index": 5,
+          "text": "life,",
+          "separator": " "
+        },
+        {
+          "index": 6,
+          "text": "freedom",
+          "separator": " "
+        },
+        {
+          "index": 7,
+          "text": "meant",
+          "separator": " "
+        },
+        {
+          "index": 8,
+          "text": "that",
+          "separator": " "
+        },
+        {
+          "index": 9,
+          "text": "no",
+          "separator": " "
+        },
+        {
+          "index": 10,
+          "text": "one",
+          "separator": " "
+        },
+        {
+          "index": 11,
+          "text": "could",
+          "separator": " "
+        },
+        {
+          "index": 12,
+          "text": "tell",
+          "separator": " "
+        },
+        {
+          "index": 13,
+          "text": "me",
+          "separator": " "
+        },
+        {
+          "index": 14,
+          "text": "what",
+          "separator": " "
+        },
+        {
+          "index": 15,
+          "text": "to",
+          "separator": " "
+        },
+        {
+          "index": 16,
+          "text": "do",
+          "separator": " "
+        },
+        {
+          "index": 17,
+          "text": "with",
+          "separator": " "
+        },
+        {
+          "index": 18,
+          "text": "my",
+          "separator": " "
+        },
+        {
+          "index": 19,
+          "text": "time.",
+          "separator": " "
+        },
+        {
+          "index": 20,
+          "text": "I",
+          "separator": " "
+        },
+        {
+          "index": 21,
+          "text": "had",
+          "separator": " "
+        },
+        {
+          "index": 22,
+          "text": "spent",
+          "separator": " "
+        },
+        {
+          "index": 23,
+          "text": "my",
+          "separator": " "
+        },
+        {
+          "index": 24,
+          "text": "childhood",
+          "separator": " "
+        },
+        {
+          "index": 25,
+          "text": "trying",
+          "separator": " "
+        },
+        {
+          "index": 26,
+          "text": "to",
+          "separator": " "
+        },
+        {
+          "index": 27,
+          "text": "meet",
+          "separator": " "
+        },
+        {
+          "index": 28,
+          "text": "other",
+          "separator": " "
+        },
+        {
+          "index": 29,
+          "text": "people’s",
+          "separator": " "
+        },
+        {
+          "index": 30,
+          "text": "expectations,",
+          "separator": " "
+        },
+        {
+          "index": 31,
+          "text": "and",
+          "separator": " "
+        },
+        {
+          "index": 32,
+          "text": "years",
+          "separator": " "
+        },
+        {
+          "index": 33,
+          "text": "working",
+          "separator": " "
+        },
+        {
+          "index": 34,
+          "text": "at",
+          "separator": " "
+        },
+        {
+          "index": 35,
+          "text": "a",
+          "separator": " "
+        },
+        {
+          "index": 36,
+          "text": "job",
+          "separator": " "
+        },
+        {
+          "index": 37,
+          "text": "I",
+          "separator": " "
+        },
+        {
+          "index": 38,
+          "text": "wanted",
+          "separator": " "
+        },
+        {
+          "index": 39,
+          "text": "to",
+          "separator": " "
+        },
+        {
+          "index": 40,
+          "text": "leave.",
+          "separator": " "
+        },
+        {
+          "index": 41,
+          "text": "When",
+          "separator": " "
+        },
+        {
+          "index": 42,
+          "text": "I",
+          "separator": " "
+        },
+        {
+          "index": 43,
+          "text": "finally",
+          "separator": " "
+        },
+        {
+          "index": 44,
+          "text": "retired",
+          "separator": " "
+        },
+        {
+          "index": 45,
+          "text": "at",
+          "separator": " "
+        },
+        {
+          "index": 46,
+          "text": "31,",
+          "separator": " "
+        },
+        {
+          "index": 47,
+          "text": "I",
+          "separator": " "
+        },
+        {
+          "index": 48,
+          "text": "loved",
+          "separator": " "
+        },
+        {
+          "index": 49,
+          "text": "waking",
+          "separator": " "
+        },
+        {
+          "index": 50,
+          "text": "up",
+          "separator": " "
+        },
+        {
+          "index": 51,
+          "text": "knowing",
+          "separator": " "
+        },
+        {
+          "index": 52,
+          "text": "the",
+          "separator": " "
+        },
+        {
+          "index": 53,
+          "text": "day",
+          "separator": " "
+        },
+        {
+          "index": 54,
+          "text": "belonged",
+          "separator": " "
+        },
+        {
+          "index": 55,
+          "text": "to",
+          "separator": " "
+        },
+        {
+          "index": 56,
+          "text": "me.",
+          "separator": " "
+        },
+        {
+          "index": 57,
+          "text": "That’s",
+          "separator": "\n"
+        },
+        {
+          "index": 58,
+          "text": "one",
+          "separator": " "
+        },
+        {
+          "index": 59,
+          "text": "reason",
+          "separator": " "
+        },
+        {
+          "index": 60,
+          "text": "I",
+          "separator": " "
+        },
+        {
+          "index": 61,
+          "text": "was",
+          "separator": " "
+        },
+        {
+          "index": 62,
+          "text": "afraid",
+          "separator": " "
+        },
+        {
+          "index": 63,
+          "text": "to",
+          "separator": " "
+        },
+        {
+          "index": 64,
+          "text": "have",
+          "separator": " "
+        },
+        {
+          "index": 65,
+          "text": "a",
+          "separator": " "
+        },
+        {
+          "index": 66,
+          "text": "child.",
+          "separator": " "
+        },
+        {
+          "index": 67,
+          "text": "I",
+          "separator": " "
+        },
+        {
+          "index": 68,
+          "text": "knew",
+          "separator": " "
+        },
+        {
+          "index": 69,
+          "text": "what",
+          "separator": " "
+        },
+        {
+          "index": 70,
+          "text": "it",
+          "separator": " "
+        },
+        {
+          "index": 71,
+          "text": "would",
+          "separator": " "
+        },
+        {
+          "index": 72,
+          "text": "mean",
+          "separator": " "
+        },
+        {
+          "index": 73,
+          "text": "to",
+          "separator": " "
+        },
+        {
+          "index": 74,
+          "text": "have",
+          "separator": " "
+        },
+        {
+          "index": 75,
+          "text": "someone",
+          "separator": " "
+        },
+        {
+          "index": 76,
+          "text": "need",
+          "separator": " "
+        },
+        {
+          "index": 77,
+          "text": "me",
+          "separator": " "
+        },
+        {
+          "index": 78,
+          "text": "every",
+          "separator": " "
+        },
+        {
+          "index": 79,
+          "text": "day.",
+          "separator": " "
+        },
+        {
+          "index": 80,
+          "text": "I",
+          "separator": " "
+        },
+        {
+          "index": 81,
+          "text": "worried",
+          "separator": " "
+        },
+        {
+          "index": 82,
+          "text": "that",
+          "separator": " "
+        },
+        {
+          "index": 83,
+          "text": "after",
+          "separator": " "
+        },
+        {
+          "index": 84,
+          "text": "working",
+          "separator": " "
+        },
+        {
+          "index": 85,
+          "text": "so",
+          "separator": " "
+        },
+        {
+          "index": 86,
+          "text": "hard",
+          "separator": " "
+        },
+        {
+          "index": 87,
+          "text": "to",
+          "separator": " "
+        },
+        {
+          "index": 88,
+          "text": "get",
+          "separator": " "
+        },
+        {
+          "index": 89,
+          "text": "my",
+          "separator": " "
+        },
+        {
+          "index": 90,
+          "text": "time",
+          "separator": " "
+        },
+        {
+          "index": 91,
+          "text": "back,",
+          "separator": " "
+        },
+        {
+          "index": 92,
+          "text": "I",
+          "separator": " "
+        },
+        {
+          "index": 93,
+          "text": "would",
+          "separator": " "
+        },
+        {
+          "index": 94,
+          "text": "give",
+          "separator": " "
+        },
+        {
+          "index": 95,
+          "text": "it",
+          "separator": " "
+        },
+        {
+          "index": 96,
+          "text": "all",
+          "separator": " "
+        },
+        {
+          "index": 97,
+          "text": "away.",
+          "separator": " "
+        },
+        {
+          "index": 98,
+          "text": "Then",
+          "separator": "\n"
+        },
+        {
+          "index": 99,
+          "text": "my",
+          "separator": " "
+        },
+        {
+          "index": 100,
+          "text": "father-in-law",
+          "separator": " "
+        },
+        {
+          "index": 101,
+          "text": "said",
+          "separator": " "
+        },
+        {
+          "index": 102,
+          "text": "something",
+          "separator": " "
+        },
+        {
+          "index": 103,
+          "text": "I",
+          "separator": " "
+        },
+        {
+          "index": 104,
+          "text": "didn’t",
+          "separator": " "
+        },
+        {
+          "index": 105,
+          "text": "expect.",
+          "separator": " "
+        },
+        {
+          "index": 106,
+          "text": "He",
+          "separator": " "
+        },
+        {
+          "index": 107,
+          "text": "told",
+          "separator": " "
+        },
+        {
+          "index": 108,
+          "text": "Bryce",
+          "separator": " "
+        },
+        {
+          "index": 109,
+          "text": "and",
+          "separator": " "
+        },
+        {
+          "index": 110,
+          "text": "I",
+          "separator": " "
+        },
+        {
+          "index": 111,
+          "text": "that",
+          "separator": " "
+        },
+        {
+          "index": 112,
+          "text": "he",
+          "separator": " "
+        },
+        {
+          "index": 113,
+          "text": "hoped",
+          "separator": " "
+        },
+        {
+          "index": 114,
+          "text": "we’d",
+          "separator": " "
+        },
+        {
+          "index": 115,
+          "text": "have",
+          "separator": " "
+        },
+        {
+          "index": 116,
+          "text": "a",
+          "separator": " "
+        },
+        {
+          "index": 117,
+          "text": "child,",
+          "separator": " "
+        },
+        {
+          "index": 118,
+          "text": "but",
+          "separator": " "
+        },
+        {
+          "index": 119,
+          "text": "if",
+          "separator": " "
+        },
+        {
+          "index": 120,
+          "text": "we",
+          "separator": " "
+        },
+        {
+          "index": 121,
+          "text": "never",
+          "separator": " "
+        },
+        {
+          "index": 122,
+          "text": "did,",
+          "separator": " "
+        },
+        {
+          "index": 123,
+          "text": "he",
+          "separator": " "
+        },
+        {
+          "index": 124,
+          "text": "would",
+          "separator": " "
+        },
+        {
+          "index": 125,
+          "text": "love",
+          "separator": " "
+        },
+        {
+          "index": 126,
+          "text": "us",
+          "separator": " "
+        },
+        {
+          "index": 127,
+          "text": "just",
+          "separator": " "
+        },
+        {
+          "index": 128,
+          "text": "the",
+          "separator": " "
+        },
+        {
+          "index": 129,
+          "text": "same.",
+          "separator": " "
+        },
+        {
+          "index": 130,
+          "text": "He",
+          "separator": " "
+        },
+        {
+          "index": 131,
+          "text": "wanted",
+          "separator": " "
+        },
+        {
+          "index": 132,
+          "text": "a",
+          "separator": " "
+        },
+        {
+          "index": 133,
+          "text": "grandchild,",
+          "separator": " "
+        },
+        {
+          "index": 134,
+          "text": "but",
+          "separator": " "
+        },
+        {
+          "index": 135,
+          "text": "he",
+          "separator": " "
+        },
+        {
+          "index": 136,
+          "text": "didn’t",
+          "separator": " "
+        },
+        {
+          "index": 137,
+          "text": "make",
+          "separator": " "
+        },
+        {
+          "index": 138,
+          "text": "his",
+          "separator": " "
+        },
+        {
+          "index": 139,
+          "text": "love",
+          "separator": " "
+        },
+        {
+          "index": 140,
+          "text": "depend",
+          "separator": " "
+        },
+        {
+          "index": 141,
+          "text": "on",
+          "separator": " "
+        },
+        {
+          "index": 142,
+          "text": "one.",
+          "separator": " "
+        },
+        {
+          "index": 143,
+          "text": "Somehow,",
+          "separator": " "
+        },
+        {
+          "index": 144,
+          "text": "being",
+          "separator": " "
+        },
+        {
+          "index": 145,
+          "text": "given",
+          "separator": " "
+        },
+        {
+          "index": 146,
+          "text": "room",
+          "separator": " "
+        },
+        {
+          "index": 147,
+          "text": "to",
+          "separator": " "
+        },
+        {
+          "index": 148,
+          "text": "say",
+          "separator": " "
+        },
+        {
+          "index": 149,
+          "text": "no",
+          "separator": " "
+        },
+        {
+          "index": 150,
+          "text": "made",
+          "separator": " "
+        },
+        {
+          "index": 151,
+          "text": "it",
+          "separator": " "
+        },
+        {
+          "index": 152,
+          "text": "easier",
+          "separator": " "
+        },
+        {
+          "index": 153,
+          "text": "for",
+          "separator": " "
+        },
+        {
+          "index": 154,
+          "text": "me",
+          "separator": " "
+        },
+        {
+          "index": 155,
+          "text": "to",
+          "separator": " "
+        },
+        {
+          "index": 156,
+          "text": "imagine",
+          "separator": " "
+        },
+        {
+          "index": 157,
+          "text": "saying",
+          "separator": " "
+        },
+        {
+          "index": 158,
+          "text": "yes.",
+          "separator": " "
+        },
+        {
+          "index": 159,
+          "text": "Years",
+          "separator": "\n"
+        },
+        {
+          "index": 160,
+          "text": "later,",
+          "separator": " "
+        },
+        {
+          "index": 161,
+          "text": "he",
+          "separator": " "
+        },
+        {
+          "index": 162,
+          "text": "was",
+          "separator": " "
+        },
+        {
+          "index": 163,
+          "text": "diagnosed",
+          "separator": " "
+        },
+        {
+          "index": 164,
+          "text": "with",
+          "separator": " "
+        },
+        {
+          "index": 165,
+          "text": "brain",
+          "separator": " "
+        },
+        {
+          "index": 166,
+          "text": "cancer.",
+          "separator": " "
+        },
+        {
+          "index": 167,
+          "text": "During",
+          "separator": " "
+        },
+        {
+          "index": 168,
+          "text": "his",
+          "separator": " "
+        },
+        {
+          "index": 169,
+          "text": "final",
+          "separator": " "
+        },
+        {
+          "index": 170,
+          "text": "month",
+          "separator": " "
+        },
+        {
+          "index": 171,
+          "text": "of",
+          "separator": " "
+        },
+        {
+          "index": 172,
+          "text": "life,",
+          "separator": " "
+        },
+        {
+          "index": 173,
+          "text": "I",
+          "separator": " "
+        },
+        {
+          "index": 174,
+          "text": "was",
+          "separator": " "
+        },
+        {
+          "index": 175,
+          "text": "nine",
+          "separator": " "
+        },
+        {
+          "index": 176,
+          "text": "months",
+          "separator": " "
+        },
+        {
+          "index": 177,
+          "text": "pregnant.",
+          "separator": " "
+        },
+        {
+          "index": 178,
+          "text": "Our",
+          "separator": " "
+        },
+        {
+          "index": 179,
+          "text": "days",
+          "separator": " "
+        },
+        {
+          "index": 180,
+          "text": "filled",
+          "separator": " "
+        },
+        {
+          "index": 181,
+          "text": "with",
+          "separator": " "
+        },
+        {
+          "index": 182,
+          "text": "family",
+          "separator": " "
+        },
+        {
+          "index": 183,
+          "text": "calls",
+          "separator": " "
+        },
+        {
+          "index": 184,
+          "text": "and",
+          "separator": " "
+        },
+        {
+          "index": 185,
+          "text": "care",
+          "separator": " "
+        },
+        {
+          "index": 186,
+          "text": "he",
+          "separator": " "
+        },
+        {
+          "index": 187,
+          "text": "could",
+          "separator": " "
+        },
+        {
+          "index": 188,
+          "text": "no",
+          "separator": " "
+        },
+        {
+          "index": 189,
+          "text": "longer",
+          "separator": " "
+        },
+        {
+          "index": 190,
+          "text": "manage",
+          "separator": " "
+        },
+        {
+          "index": 191,
+          "text": "alone.",
+          "separator": " "
+        },
+        {
+          "index": 192,
+          "text": "I",
+          "separator": " "
+        },
+        {
+          "index": 193,
+          "text": "watched",
+          "separator": " "
+        },
+        {
+          "index": 194,
+          "text": "his",
+          "separator": " "
+        },
+        {
+          "index": 195,
+          "text": "daughter",
+          "separator": " "
+        },
+        {
+          "index": 196,
+          "text": "gently",
+          "separator": " "
+        },
+        {
+          "index": 197,
+          "text": "trim",
+          "separator": " "
+        },
+        {
+          "index": 198,
+          "text": "his",
+          "separator": " "
+        },
+        {
+          "index": 199,
+          "text": "nails.",
+          "separator": " "
+        },
+        {
+          "index": 200,
+          "text": "I",
+          "separator": " "
+        },
+        {
+          "index": 201,
+          "text": "watched",
+          "separator": " "
+        },
+        {
+          "index": 202,
+          "text": "my",
+          "separator": " "
+        },
+        {
+          "index": 203,
+          "text": "husband",
+          "separator": " "
+        },
+        {
+          "index": 204,
+          "text": "help",
+          "separator": " "
+        },
+        {
+          "index": 205,
+          "text": "him",
+          "separator": " "
+        },
+        {
+          "index": 206,
+          "text": "with",
+          "separator": " "
+        },
+        {
+          "index": 207,
+          "text": "things",
+          "separator": " "
+        },
+        {
+          "index": 208,
+          "text": "a",
+          "separator": " "
+        },
+        {
+          "index": 209,
+          "text": "grown",
+          "separator": " "
+        },
+        {
+          "index": 210,
+          "text": "man",
+          "separator": " "
+        },
+        {
+          "index": 211,
+          "text": "would",
+          "separator": " "
+        },
+        {
+          "index": 212,
+          "text": "rather",
+          "separator": " "
+        },
+        {
+          "index": 213,
+          "text": "never",
+          "separator": " "
+        },
+        {
+          "index": 214,
+          "text": "need",
+          "separator": " "
+        },
+        {
+          "index": 215,
+          "text": "help",
+          "separator": " "
+        },
+        {
+          "index": 216,
+          "text": "with.",
+          "separator": " "
+        },
+        {
+          "index": 217,
+          "text": "And",
+          "separator": " "
+        },
+        {
+          "index": 218,
+          "text": "friends",
+          "separator": " "
+        },
+        {
+          "index": 219,
+          "text": "and",
+          "separator": " "
+        },
+        {
+          "index": 220,
+          "text": "family",
+          "separator": " "
+        },
+        {
+          "index": 221,
+          "text": "kept",
+          "separator": " "
+        },
+        {
+          "index": 222,
+          "text": "coming",
+          "separator": " "
+        },
+        {
+          "index": 223,
+          "text": "just",
+          "separator": " "
+        },
+        {
+          "index": 224,
+          "text": "to",
+          "separator": " "
+        },
+        {
+          "index": 225,
+          "text": "sit",
+          "separator": " "
+        },
+        {
+          "index": 226,
+          "text": "beside",
+          "separator": " "
+        },
+        {
+          "index": 227,
+          "text": "him.",
+          "separator": " "
+        },
+        {
+          "index": 228,
+          "text": "By",
+          "separator": "\n"
+        },
+        {
+          "index": 229,
+          "text": "then,",
+          "separator": " "
+        },
+        {
+          "index": 230,
+          "text": "he",
+          "separator": " "
+        },
+        {
+          "index": 231,
+          "text": "had",
+          "separator": " "
+        },
+        {
+          "index": 232,
+          "text": "nothing",
+          "separator": " "
+        },
+        {
+          "index": 233,
+          "text": "left",
+          "separator": " "
+        },
+        {
+          "index": 234,
+          "text": "to",
+          "separator": " "
+        },
+        {
+          "index": 235,
+          "text": "offer",
+          "separator": " "
+        },
+        {
+          "index": 236,
+          "text": "them.",
+          "separator": " "
+        },
+        {
+          "index": 237,
+          "text": "He",
+          "separator": " "
+        },
+        {
+          "index": 238,
+          "text": "had",
+          "separator": " "
+        },
+        {
+          "index": 239,
+          "text": "spent",
+          "separator": " "
+        },
+        {
+          "index": 240,
+          "text": "years",
+          "separator": " "
+        },
+        {
+          "index": 241,
+          "text": "loving",
+          "separator": " "
+        },
+        {
+          "index": 242,
+          "text": "people",
+          "separator": " "
+        },
+        {
+          "index": 243,
+          "text": "without",
+          "separator": " "
+        },
+        {
+          "index": 244,
+          "text": "asking",
+          "separator": " "
+        },
+        {
+          "index": 245,
+          "text": "them",
+          "separator": " "
+        },
+        {
+          "index": 246,
+          "text": "to",
+          "separator": " "
+        },
+        {
+          "index": 247,
+          "text": "earn",
+          "separator": " "
+        },
+        {
+          "index": 248,
+          "text": "it,",
+          "separator": " "
+        },
+        {
+          "index": 249,
+          "text": "and",
+          "separator": " "
+        },
+        {
+          "index": 250,
+          "text": "now",
+          "separator": " "
+        },
+        {
+          "index": 251,
+          "text": "they",
+          "separator": " "
+        },
+        {
+          "index": 252,
+          "text": "wanted",
+          "separator": " "
+        },
+        {
+          "index": 253,
+          "text": "to",
+          "separator": " "
+        },
+        {
+          "index": 254,
+          "text": "be",
+          "separator": " "
+        },
+        {
+          "index": 255,
+          "text": "there.",
+          "separator": " "
+        },
+        {
+          "index": 256,
+          "text": "Watching",
+          "separator": " "
+        },
+        {
+          "index": 257,
+          "text": "them,",
+          "separator": " "
+        },
+        {
+          "index": 258,
+          "text": "I",
+          "separator": " "
+        },
+        {
+          "index": 259,
+          "text": "understood",
+          "separator": " "
+        },
+        {
+          "index": 260,
+          "text": "something",
+          "separator": " "
+        },
+        {
+          "index": 261,
+          "text": "I",
+          "separator": " "
+        },
+        {
+          "index": 262,
+          "text": "hadn’t",
+          "separator": " "
+        },
+        {
+          "index": 263,
+          "text": "understood",
+          "separator": " "
+        },
+        {
+          "index": 264,
+          "text": "when",
+          "separator": " "
+        },
+        {
+          "index": 265,
+          "text": "I",
+          "separator": " "
+        },
+        {
+          "index": 266,
+          "text": "was",
+          "separator": " "
+        },
+        {
+          "index": 267,
+          "text": "younger:",
+          "separator": " "
+        },
+        {
+          "index": 268,
+          "text": "being",
+          "separator": " "
+        },
+        {
+          "index": 269,
+          "text": "needed",
+          "separator": " "
+        },
+        {
+          "index": 270,
+          "text": "by",
+          "separator": " "
+        },
+        {
+          "index": 271,
+          "text": "someone",
+          "separator": " "
+        },
+        {
+          "index": 272,
+          "text": "you",
+          "separator": " "
+        },
+        {
+          "index": 273,
+          "text": "love",
+          "separator": " "
+        },
+        {
+          "index": 274,
+          "text": "can",
+          "separator": " "
+        },
+        {
+          "index": 275,
+          "text": "feel",
+          "separator": " "
+        },
+        {
+          "index": 276,
+          "text": "very",
+          "separator": " "
+        },
+        {
+          "index": 277,
+          "text": "different",
+          "separator": " "
+        },
+        {
+          "index": 278,
+          "text": "from",
+          "separator": " "
+        },
+        {
+          "index": 279,
+          "text": "being",
+          "separator": " "
+        },
+        {
+          "index": 280,
+          "text": "trapped.",
+          "separator": " "
+        },
+        {
+          "index": 281,
+          "text": "Now",
+          "separator": "\n"
+        },
+        {
+          "index": 282,
+          "text": "I",
+          "separator": " "
+        },
+        {
+          "index": 283,
+          "text": "have",
+          "separator": " "
+        },
+        {
+          "index": 284,
+          "text": "a",
+          "separator": " "
+        },
+        {
+          "index": 285,
+          "text": "son",
+          "separator": " "
+        },
+        {
+          "index": 286,
+          "text": "who",
+          "separator": " "
+        },
+        {
+          "index": 287,
+          "text": "needs",
+          "separator": " "
+        },
+        {
+          "index": 288,
+          "text": "lunch",
+          "separator": " "
+        },
+        {
+          "index": 289,
+          "text": "made,",
+          "separator": " "
+        },
+        {
+          "index": 290,
+          "text": "a",
+          "separator": " "
+        },
+        {
+          "index": 291,
+          "text": "story",
+          "separator": " "
+        },
+        {
+          "index": 292,
+          "text": "read",
+          "separator": " "
+        },
+        {
+          "index": 293,
+          "text": "again,",
+          "separator": " "
+        },
+        {
+          "index": 294,
+          "text": "and",
+          "separator": " "
+        },
+        {
+          "index": 295,
+          "text": "someone",
+          "separator": " "
+        },
+        {
+          "index": 296,
+          "text": "willing",
+          "separator": " "
+        },
+        {
+          "index": 297,
+          "text": "to",
+          "separator": " "
+        },
+        {
+          "index": 298,
+          "text": "stop",
+          "separator": " "
+        },
+        {
+          "index": 299,
+          "text": "and",
+          "separator": " "
+        },
+        {
+          "index": 300,
+          "text": "look",
+          "separator": " "
+        },
+        {
+          "index": 301,
+          "text": "at",
+          "separator": " "
+        },
+        {
+          "index": 302,
+          "text": "a",
+          "separator": " "
+        },
+        {
+          "index": 303,
+          "text": "bug",
+          "separator": " "
+        },
+        {
+          "index": 304,
+          "text": "with",
+          "separator": " "
+        },
+        {
+          "index": 305,
+          "text": "him.",
+          "separator": " "
+        },
+        {
+          "index": 306,
+          "text": "I",
+          "separator": " "
+        },
+        {
+          "index": 307,
+          "text": "still",
+          "separator": " "
+        },
+        {
+          "index": 308,
+          "text": "miss",
+          "separator": " "
+        },
+        {
+          "index": 309,
+          "text": "the",
+          "separator": " "
+        },
+        {
+          "index": 310,
+          "text": "ease",
+          "separator": " "
+        },
+        {
+          "index": 311,
+          "text": "of",
+          "separator": " "
+        },
+        {
+          "index": 312,
+          "text": "leaving",
+          "separator": " "
+        },
+        {
+          "index": 313,
+          "text": "whenever",
+          "separator": " "
+        },
+        {
+          "index": 314,
+          "text": "I",
+          "separator": " "
+        },
+        {
+          "index": 315,
+          "text": "want.",
+          "separator": " "
+        },
+        {
+          "index": 316,
+          "text": "But",
+          "separator": " "
+        },
+        {
+          "index": 317,
+          "text": "when",
+          "separator": " "
+        },
+        {
+          "index": 318,
+          "text": "he",
+          "separator": " "
+        },
+        {
+          "index": 319,
+          "text": "runs",
+          "separator": " "
+        },
+        {
+          "index": 320,
+          "text": "to",
+          "separator": " "
+        },
+        {
+          "index": 321,
+          "text": "me",
+          "separator": " "
+        },
+        {
+          "index": 322,
+          "text": "at",
+          "separator": " "
+        },
+        {
+          "index": 323,
+          "text": "daycare,",
+          "separator": " "
+        },
+        {
+          "index": 324,
+          "text": "I",
+          "separator": " "
+        },
+        {
+          "index": 325,
+          "text": "think",
+          "separator": " "
+        },
+        {
+          "index": 326,
+          "text": "about",
+          "separator": " "
+        },
+        {
+          "index": 327,
+          "text": "his",
+          "separator": " "
+        },
+        {
+          "index": 328,
+          "text": "grandfather.",
+          "separator": " "
+        },
+        {
+          "index": 329,
+          "text": "I",
+          "separator": " "
+        },
+        {
+          "index": 330,
+          "text": "want",
+          "separator": " "
+        },
+        {
+          "index": 331,
+          "text": "my",
+          "separator": " "
+        },
+        {
+          "index": 332,
+          "text": "son",
+          "separator": " "
+        },
+        {
+          "index": 333,
+          "text": "to",
+          "separator": " "
+        },
+        {
+          "index": 334,
+          "text": "feel",
+          "separator": " "
+        },
+        {
+          "index": 335,
+          "text": "the",
+          "separator": " "
+        },
+        {
+          "index": 336,
+          "text": "same",
+          "separator": " "
+        },
+        {
+          "index": 337,
+          "text": "freedom",
+          "separator": " "
+        },
+        {
+          "index": 338,
+          "text": "he",
+          "separator": " "
+        },
+        {
+          "index": 339,
+          "text": "gave",
+          "separator": " "
+        },
+        {
+          "index": 340,
+          "text": "us:",
+          "separator": " "
+        },
+        {
+          "index": 341,
+          "text": "to",
+          "separator": " "
+        },
+        {
+          "index": 342,
+          "text": "know",
+          "separator": " "
+        },
+        {
+          "index": 343,
+          "text": "that",
+          "separator": " "
+        },
+        {
+          "index": 344,
+          "text": "I",
+          "separator": " "
+        },
+        {
+          "index": 345,
+          "text": "love",
+          "separator": " "
+        },
+        {
+          "index": 346,
+          "text": "him",
+          "separator": " "
+        },
+        {
+          "index": 347,
+          "text": "without",
+          "separator": " "
+        },
+        {
+          "index": 348,
+          "text": "asking",
+          "separator": " "
+        },
+        {
+          "index": 349,
+          "text": "him",
+          "separator": " "
+        },
+        {
+          "index": 350,
+          "text": "to",
+          "separator": " "
+        },
+        {
+          "index": 351,
+          "text": "repay",
+          "separator": " "
+        },
+        {
+          "index": 352,
+          "text": "me.",
+          "separator": " "
+        },
+        {
+          "index": 353,
+          "text": "Money",
+          "separator": "\n"
+        },
+        {
+          "index": 354,
+          "text": "gave",
+          "separator": " "
+        },
+        {
+          "index": 355,
+          "text": "me",
+          "separator": " "
+        },
+        {
+          "index": 356,
+          "text": "the",
+          "separator": " "
+        },
+        {
+          "index": 357,
+          "text": "freedom",
+          "separator": " "
+        },
+        {
+          "index": 358,
+          "text": "to",
+          "separator": " "
+        },
+        {
+          "index": 359,
+          "text": "choose",
+          "separator": " "
+        },
+        {
+          "index": 360,
+          "text": "how",
+          "separator": " "
+        },
+        {
+          "index": 361,
+          "text": "to",
+          "separator": " "
+        },
+        {
+          "index": 362,
+          "text": "spend",
+          "separator": " "
+        },
+        {
+          "index": 363,
+          "text": "my",
+          "separator": " "
+        },
+        {
+          "index": 364,
+          "text": "time.",
+          "separator": " "
+        },
+        {
+          "index": 365,
+          "text": "My",
+          "separator": " "
+        },
+        {
+          "index": 366,
+          "text": "father-in-law",
+          "separator": " "
+        },
+        {
+          "index": 367,
+          "text": "helped",
+          "separator": " "
+        },
+        {
+          "index": 368,
+          "text": "me",
+          "separator": " "
+        },
+        {
+          "index": 369,
+          "text": "see",
+          "separator": " "
+        },
+        {
+          "index": 370,
+          "text": "why",
+          "separator": " "
+        },
+        {
+          "index": 371,
+          "text": "I",
+          "separator": " "
+        },
+        {
+          "index": 372,
+          "text": "might",
+          "separator": " "
+        },
+        {
+          "index": 373,
+          "text": "choose",
+          "separator": " "
+        },
+        {
+          "index": 374,
+          "text": "to",
+          "separator": " "
+        },
+        {
+          "index": 375,
+          "text": "give",
+          "separator": " "
+        },
+        {
+          "index": 376,
+          "text": "some",
+          "separator": " "
+        },
+        {
+          "index": 377,
+          "text": "of",
+          "separator": " "
+        },
+        {
+          "index": 378,
+          "text": "it",
+          "separator": " "
+        },
+        {
+          "index": 379,
+          "text": "away.",
+          "separator": " "
+        }
+      ]
+    },
+    "transcript": {
+      "source": {
+        "path": "What Is Freedom For__C01__lav.json",
+        "sha256": "1d8fc14266be3988664f031ee01af96a141e7476700744c0b879f1b5991d5f17",
+        "segmentation_version": "line-sentences-v1",
+        "kind": "transcript",
+        "format": "whisperx-json"
+      },
+      "title": "What Is Freedom For__C01__lav",
+      "rows": [
+        {
+          "id": "transcript:1d8fc14266be3988664f031ee01af96a141e7476700744c0b879f1b5991d5f17:line-sentences-v1:1",
+          "line": 1,
+          "text": "Audio rolling.",
+          "word_start": 0,
+          "word_end": 1,
+          "start_ms": 995,
+          "end_ms": 1775
+        },
+        {
+          "id": "transcript:1d8fc14266be3988664f031ee01af96a141e7476700744c0b879f1b5991d5f17:line-sentences-v1:2",
+          "line": 2,
+          "text": "This is scene two, take one.",
+          "word_start": 2,
+          "word_end": 7,
+          "start_ms": 2456,
+          "end_ms": 4316
+        },
+        {
+          "id": "transcript:1d8fc14266be3988664f031ee01af96a141e7476700744c0b879f1b5991d5f17:line-sentences-v1:3",
+          "line": 3,
+          "text": "What is freedom for?",
+          "word_start": 8,
+          "word_end": 11,
+          "start_ms": 6057,
+          "end_ms": 6797
+        },
+        {
+          "id": "transcript:1d8fc14266be3988664f031ee01af96a141e7476700744c0b879f1b5991d5f17:line-sentences-v1:4",
+          "line": 4,
+          "text": "Whenever you're ready.",
+          "word_start": 12,
+          "word_end": 14,
+          "start_ms": 6817,
+          "end_ms": 7718
+        },
+        {
+          "id": "transcript:1d8fc14266be3988664f031ee01af96a141e7476700744c0b879f1b5991d5f17:line-sentences-v1:5",
+          "line": 5,
+          "text": "For most of my adult life, freedom meant that no one could tell me what to do with my time.",
+          "word_start": 15,
+          "word_end": 34,
+          "start_ms": 9118,
+          "end_ms": 13060
+        },
+        {
+          "id": "transcript:1d8fc14266be3988664f031ee01af96a141e7476700744c0b879f1b5991d5f17:line-sentences-v1:6",
+          "line": 6,
+          "text": "I had spent my childhood trying to meet other people's expectations and years working at a job I wanted to leave.",
+          "word_start": 35,
+          "word_end": 55,
+          "start_ms": 13700,
+          "end_ms": 19022
+        },
+        {
+          "id": "transcript:1d8fc14266be3988664f031ee01af96a141e7476700744c0b879f1b5991d5f17:line-sentences-v1:7",
+          "line": 7,
+          "text": "When I finally retired at 31, I loved waking up knowing the day belonged to me.",
+          "word_start": 56,
+          "word_end": 71,
+          "start_ms": 20298,
+          "end_ms": 24840
+        },
+        {
+          "id": "transcript:1d8fc14266be3988664f031ee01af96a141e7476700744c0b879f1b5991d5f17:line-sentences-v1:8",
+          "line": 8,
+          "text": "That's one reason I was afraid to have a child.",
+          "word_start": 72,
+          "word_end": 81,
+          "start_ms": 25880,
+          "end_ms": 27681
+        },
+        {
+          "id": "transcript:1d8fc14266be3988664f031ee01af96a141e7476700744c0b879f1b5991d5f17:line-sentences-v1:9",
+          "line": 9,
+          "text": "I knew what it would mean to have someone need me every day.",
+          "word_start": 82,
+          "word_end": 94,
+          "start_ms": 28142,
+          "end_ms": 30983
+        },
+        {
+          "id": "transcript:1d8fc14266be3988664f031ee01af96a141e7476700744c0b879f1b5991d5f17:line-sentences-v1:10",
+          "line": 10,
+          "text": "I worried that after working so hard to get my time back, I would give it all away.",
+          "word_start": 95,
+          "word_end": 112,
+          "start_ms": 32261,
+          "end_ms": 36083
+        },
+        {
+          "id": "transcript:1d8fc14266be3988664f031ee01af96a141e7476700744c0b879f1b5991d5f17:line-sentences-v1:11",
+          "line": 11,
+          "text": "Then my father-in-law said something I didn't expect.",
+          "word_start": 113,
+          "word_end": 120,
+          "start_ms": 36923,
+          "end_ms": 39084
+        },
+        {
+          "id": "transcript:1d8fc14266be3988664f031ee01af96a141e7476700744c0b879f1b5991d5f17:line-sentences-v1:12",
+          "line": 12,
+          "text": "He told my husband and I that he hoped we'd have a child, but if we never did, he would love us just the same.",
+          "word_start": 121,
+          "word_end": 145,
+          "start_ms": 39744,
+          "end_ms": 45306
+        },
+        {
+          "id": "transcript:1d8fc14266be3988664f031ee01af96a141e7476700744c0b879f1b5991d5f17:line-sentences-v1:13",
+          "line": 13,
+          "text": "He wanted a grandchild, but he didn't make his love dependent on one.",
+          "word_start": 146,
+          "word_end": 158,
+          "start_ms": 46086,
+          "end_ms": 48907
+        },
+        {
+          "id": "transcript:1d8fc14266be3988664f031ee01af96a141e7476700744c0b879f1b5991d5f17:line-sentences-v1:14",
+          "line": 14,
+          "text": "Somehow being given room to say no made it easier for me to imagine saying yes.",
+          "word_start": 159,
+          "word_end": 174,
+          "start_ms": 49488,
+          "end_ms": 54069
+        },
+        {
+          "id": "transcript:1d8fc14266be3988664f031ee01af96a141e7476700744c0b879f1b5991d5f17:line-sentences-v1:15",
+          "line": 15,
+          "text": "But years later, he was diagnosed with brain cancer.",
+          "word_start": 175,
+          "word_end": 183,
+          "start_ms": 55270,
+          "end_ms": 58051
+        },
+        {
+          "id": "transcript:1d8fc14266be3988664f031ee01af96a141e7476700744c0b879f1b5991d5f17:line-sentences-v1:16",
+          "line": 16,
+          "text": "During his final...",
+          "word_start": 184,
+          "word_end": 186,
+          "start_ms": 59111,
+          "end_ms": 59972
+        },
+        {
+          "id": "transcript:1d8fc14266be3988664f031ee01af96a141e7476700744c0b879f1b5991d5f17:line-sentences-v1:17",
+          "line": 17,
+          "text": "During his final month of life, I was nine months pregnant.",
+          "word_start": 187,
+          "word_end": 197,
+          "start_ms": 61766,
+          "end_ms": 65271
+        },
+        {
+          "id": "transcript:1d8fc14266be3988664f031ee01af96a141e7476700744c0b879f1b5991d5f17:line-sentences-v1:18",
+          "line": 18,
+          "text": "Our days filled with family calls and care he could no longer manage alone.",
+          "word_start": 198,
+          "word_end": 211,
+          "start_ms": 66553,
+          "end_ms": 70279
+        },
+        {
+          "id": "transcript:1d8fc14266be3988664f031ee01af96a141e7476700744c0b879f1b5991d5f17:line-sentences-v1:19",
+          "line": 19,
+          "text": "During his final month of life, I was nine months pregnant, our days filled with family calls and care he could no longer manage alone.",
+          "word_start": 212,
+          "word_end": 236,
+          "start_ms": 71820,
+          "end_ms": 80985
+        },
+        {
+          "id": "transcript:1d8fc14266be3988664f031ee01af96a141e7476700744c0b879f1b5991d5f17:line-sentences-v1:20",
+          "line": 20,
+          "text": "I watched his daughter gently trim his nails.",
+          "word_start": 237,
+          "word_end": 244,
+          "start_ms": 82426,
+          "end_ms": 85948
+        },
+        {
+          "id": "transcript:1d8fc14266be3988664f031ee01af96a141e7476700744c0b879f1b5991d5f17:line-sentences-v1:21",
+          "line": 21,
+          "text": "I watched my husband helping with things a grown man would rather never need help with, and friends and family kept coming just to sit beside him.",
+          "word_start": 245,
+          "word_end": 271,
+          "start_ms": 86829,
+          "end_ms": 94033
+        },
+        {
+          "id": "transcript:1d8fc14266be3988664f031ee01af96a141e7476700744c0b879f1b5991d5f17:line-sentences-v1:22",
+          "line": 22,
+          "text": "By then, he had nothing left to offer them.",
+          "word_start": 272,
+          "word_end": 280,
+          "start_ms": 94854,
+          "end_ms": 97115
+        },
+        {
+          "id": "transcript:1d8fc14266be3988664f031ee01af96a141e7476700744c0b879f1b5991d5f17:line-sentences-v1:23",
+          "line": 23,
+          "text": "He had spent years loving people without asking them to earn it, and now they wanted to be there.",
+          "word_start": 281,
+          "word_end": 299,
+          "start_ms": 98418,
+          "end_ms": 103605
+        },
+        {
+          "id": "transcript:1d8fc14266be3988664f031ee01af96a141e7476700744c0b879f1b5991d5f17:line-sentences-v1:24",
+          "line": 24,
+          "text": "Watching them, I understood something I hadn't understood when I was younger.",
+          "word_start": 300,
+          "word_end": 311,
+          "start_ms": 104867,
+          "end_ms": 108032
+        },
+        {
+          "id": "transcript:1d8fc14266be3988664f031ee01af96a141e7476700744c0b879f1b5991d5f17:line-sentences-v1:25",
+          "line": 25,
+          "text": "Being needed by someone you love can feel very different from being trapped.",
+          "word_start": 312,
+          "word_end": 324,
+          "start_ms": 108853,
+          "end_ms": 112237
+        },
+        {
+          "id": "transcript:1d8fc14266be3988664f031ee01af96a141e7476700744c0b879f1b5991d5f17:line-sentences-v1:26",
+          "line": 26,
+          "text": "Now I have a son who needs lunch made, a story read again, and someone willing to stop and look at a bug with him.",
+          "word_start": 325,
+          "word_end": 349,
+          "start_ms": 113302,
+          "end_ms": 118524
+        },
+        {
+          "id": "transcript:1d8fc14266be3988664f031ee01af96a141e7476700744c0b879f1b5991d5f17:line-sentences-v1:27",
+          "line": 27,
+          "text": "I still miss the ease of leaving whenever I want, but when he runs to me at daycare, I think about his grandfather.",
+          "word_start": 350,
+          "word_end": 372,
+          "start_ms": 119124,
+          "end_ms": 125487
+        },
+        {
+          "id": "transcript:1d8fc14266be3988664f031ee01af96a141e7476700744c0b879f1b5991d5f17:line-sentences-v1:28",
+          "line": 28,
+          "text": "I want my son to feel the same freedom he gave us, to know that I love him without asking him to repay me.",
+          "word_start": 373,
+          "word_end": 396,
+          "start_ms": 126467,
+          "end_ms": 131810
+        },
+        {
+          "id": "transcript:1d8fc14266be3988664f031ee01af96a141e7476700744c0b879f1b5991d5f17:line-sentences-v1:29",
+          "line": 29,
+          "text": "Money gave me the freedom to choose how to spend my life.",
+          "word_start": 397,
+          "word_end": 408,
+          "start_ms": 132830,
+          "end_ms": 135211
+        },
+        {
+          "id": "transcript:1d8fc14266be3988664f031ee01af96a141e7476700744c0b879f1b5991d5f17:line-sentences-v1:30",
+          "line": 30,
+          "text": "My father-in-law helped me see why I might choose to give some of it away.",
+          "word_start": 409,
+          "word_end": 423,
+          "start_ms": 135911,
+          "end_ms": 140013
+        },
+        {
+          "id": "transcript:1d8fc14266be3988664f031ee01af96a141e7476700744c0b879f1b5991d5f17:line-sentences-v1:31",
+          "line": 31,
+          "text": "Thank you.",
+          "word_start": 424,
+          "word_end": 425,
+          "start_ms": null,
+          "end_ms": null
+        }
+      ],
+      "words": [
+        {
+          "index": 0,
+          "text": "Audio",
+          "start_ms": 995,
+          "end_ms": 1275,
+          "alignment_score": 0.453
+        },
+        {
+          "index": 1,
+          "text": "rolling.",
+          "start_ms": 1335,
+          "end_ms": 1775,
+          "alignment_score": 0.602
+        },
+        {
+          "index": 2,
+          "text": "This",
+          "start_ms": 2456,
+          "end_ms": 2616,
+          "alignment_score": 0.988
+        },
+        {
+          "index": 3,
+          "text": "is",
+          "start_ms": 2716,
+          "end_ms": 2836,
+          "alignment_score": 0.746
+        },
+        {
+          "index": 4,
+          "text": "scene",
+          "start_ms": 2956,
+          "end_ms": 3256,
+          "alignment_score": 0.606
+        },
+        {
+          "index": 5,
+          "text": "two,",
+          "start_ms": 3296,
+          "end_ms": 3596,
+          "alignment_score": 0.674
+        },
+        {
+          "index": 6,
+          "text": "take",
+          "start_ms": 3656,
+          "end_ms": 3956,
+          "alignment_score": 0.863
+        },
+        {
+          "index": 7,
+          "text": "one.",
+          "start_ms": 4136,
+          "end_ms": 4316,
+          "alignment_score": 0.786
+        },
+        {
+          "index": 8,
+          "text": "What",
+          "start_ms": 6057,
+          "end_ms": 6177,
+          "alignment_score": 0.922
+        },
+        {
+          "index": 9,
+          "text": "is",
+          "start_ms": 6237,
+          "end_ms": 6297,
+          "alignment_score": 0.626
+        },
+        {
+          "index": 10,
+          "text": "freedom",
+          "start_ms": 6337,
+          "end_ms": 6537,
+          "alignment_score": 0.197
+        },
+        {
+          "index": 11,
+          "text": "for?",
+          "start_ms": 6617,
+          "end_ms": 6797,
+          "alignment_score": 0.525
+        },
+        {
+          "index": 12,
+          "text": "Whenever",
+          "start_ms": 6817,
+          "end_ms": 6977,
+          "alignment_score": 0.035
+        },
+        {
+          "index": 13,
+          "text": "you're",
+          "start_ms": 7277,
+          "end_ms": 7498,
+          "alignment_score": 0.294
+        },
+        {
+          "index": 14,
+          "text": "ready.",
+          "start_ms": 7538,
+          "end_ms": 7718,
+          "alignment_score": 0.442
+        },
+        {
+          "index": 15,
+          "text": "For",
+          "start_ms": 9118,
+          "end_ms": 9238,
+          "alignment_score": 0.866
+        },
+        {
+          "index": 16,
+          "text": "most",
+          "start_ms": 9278,
+          "end_ms": 9458,
+          "alignment_score": 0.718
+        },
+        {
+          "index": 17,
+          "text": "of",
+          "start_ms": 9478,
+          "end_ms": 9518,
+          "alignment_score": 0.998
+        },
+        {
+          "index": 18,
+          "text": "my",
+          "start_ms": 9578,
+          "end_ms": 9678,
+          "alignment_score": 0.838
+        },
+        {
+          "index": 19,
+          "text": "adult",
+          "start_ms": 9778,
+          "end_ms": 10018,
+          "alignment_score": 0.708
+        },
+        {
+          "index": 20,
+          "text": "life,",
+          "start_ms": 10058,
+          "end_ms": 10279,
+          "alignment_score": 0.988
+        },
+        {
+          "index": 21,
+          "text": "freedom",
+          "start_ms": 10579,
+          "end_ms": 10879,
+          "alignment_score": 0.896
+        },
+        {
+          "index": 22,
+          "text": "meant",
+          "start_ms": 10939,
+          "end_ms": 11119,
+          "alignment_score": 0.743
+        },
+        {
+          "index": 23,
+          "text": "that",
+          "start_ms": 11139,
+          "end_ms": 11299,
+          "alignment_score": 0.786
+        },
+        {
+          "index": 24,
+          "text": "no",
+          "start_ms": 11419,
+          "end_ms": 11559,
+          "alignment_score": 0.887
+        },
+        {
+          "index": 25,
+          "text": "one",
+          "start_ms": 11639,
+          "end_ms": 11739,
+          "alignment_score": 0.854
+        },
+        {
+          "index": 26,
+          "text": "could",
+          "start_ms": 11759,
+          "end_ms": 11899,
+          "alignment_score": 0.877
+        },
+        {
+          "index": 27,
+          "text": "tell",
+          "start_ms": 11919,
+          "end_ms": 12059,
+          "alignment_score": 0.877
+        },
+        {
+          "index": 28,
+          "text": "me",
+          "start_ms": 12079,
+          "end_ms": 12139,
+          "alignment_score": 0.758
+        },
+        {
+          "index": 29,
+          "text": "what",
+          "start_ms": 12179,
+          "end_ms": 12279,
+          "alignment_score": 0.876
+        },
+        {
+          "index": 30,
+          "text": "to",
+          "start_ms": 12319,
+          "end_ms": 12379,
+          "alignment_score": 0.762
+        },
+        {
+          "index": 31,
+          "text": "do",
+          "start_ms": 12419,
+          "end_ms": 12499,
+          "alignment_score": 0.906
+        },
+        {
+          "index": 32,
+          "text": "with",
+          "start_ms": 12519,
+          "end_ms": 12639,
+          "alignment_score": 0.77
+        },
+        {
+          "index": 33,
+          "text": "my",
+          "start_ms": 12659,
+          "end_ms": 12780,
+          "alignment_score": 0.75
+        },
+        {
+          "index": 34,
+          "text": "time.",
+          "start_ms": 12800,
+          "end_ms": 13060,
+          "alignment_score": 0.908
+        },
+        {
+          "index": 35,
+          "text": "I",
+          "start_ms": 13700,
+          "end_ms": 13760,
+          "alignment_score": 0.666
+        },
+        {
+          "index": 36,
+          "text": "had",
+          "start_ms": 13800,
+          "end_ms": 13940,
+          "alignment_score": 0.823
+        },
+        {
+          "index": 37,
+          "text": "spent",
+          "start_ms": 13980,
+          "end_ms": 14180,
+          "alignment_score": 0.823
+        },
+        {
+          "index": 38,
+          "text": "my",
+          "start_ms": 14220,
+          "end_ms": 14320,
+          "alignment_score": 0.818
+        },
+        {
+          "index": 39,
+          "text": "childhood",
+          "start_ms": 14360,
+          "end_ms": 14740,
+          "alignment_score": 0.931
+        },
+        {
+          "index": 40,
+          "text": "trying",
+          "start_ms": 14780,
+          "end_ms": 14960,
+          "alignment_score": 0.812
+        },
+        {
+          "index": 41,
+          "text": "to",
+          "start_ms": 14980,
+          "end_ms": 15020,
+          "alignment_score": 1.0
+        },
+        {
+          "index": 42,
+          "text": "meet",
+          "start_ms": 15040,
+          "end_ms": 15200,
+          "alignment_score": 0.739
+        },
+        {
+          "index": 43,
+          "text": "other",
+          "start_ms": 15361,
+          "end_ms": 15521,
+          "alignment_score": 0.903
+        },
+        {
+          "index": 44,
+          "text": "people's",
+          "start_ms": 15541,
+          "end_ms": 15821,
+          "alignment_score": 0.807
+        },
+        {
+          "index": 45,
+          "text": "expectations",
+          "start_ms": 15881,
+          "end_ms": 16581,
+          "alignment_score": 0.882
+        },
+        {
+          "index": 46,
+          "text": "and",
+          "start_ms": 16961,
+          "end_ms": 17061,
+          "alignment_score": 0.796
+        },
+        {
+          "index": 47,
+          "text": "years",
+          "start_ms": 17181,
+          "end_ms": 17541,
+          "alignment_score": 0.774
+        },
+        {
+          "index": 48,
+          "text": "working",
+          "start_ms": 17621,
+          "end_ms": 17861,
+          "alignment_score": 0.834
+        },
+        {
+          "index": 49,
+          "text": "at",
+          "start_ms": 17901,
+          "end_ms": 17981,
+          "alignment_score": 0.458
+        },
+        {
+          "index": 50,
+          "text": "a",
+          "start_ms": 18002,
+          "end_ms": 18022,
+          "alignment_score": 0.99
+        },
+        {
+          "index": 51,
+          "text": "job",
+          "start_ms": 18062,
+          "end_ms": 18242,
+          "alignment_score": 0.885
+        },
+        {
+          "index": 52,
+          "text": "I",
+          "start_ms": 18302,
+          "end_ms": 18362,
+          "alignment_score": 0.718
+        },
+        {
+          "index": 53,
+          "text": "wanted",
+          "start_ms": 18422,
+          "end_ms": 18702,
+          "alignment_score": 0.872
+        },
+        {
+          "index": 54,
+          "text": "to",
+          "start_ms": 18722,
+          "end_ms": 18762,
+          "alignment_score": 0.999
+        },
+        {
+          "index": 55,
+          "text": "leave.",
+          "start_ms": 18822,
+          "end_ms": 19022,
+          "alignment_score": 0.898
+        },
+        {
+          "index": 56,
+          "text": "When",
+          "start_ms": 20298,
+          "end_ms": 20398,
+          "alignment_score": 0.872
+        },
+        {
+          "index": 57,
+          "text": "I",
+          "start_ms": 20438,
+          "end_ms": 20478,
+          "alignment_score": 0.499
+        },
+        {
+          "index": 58,
+          "text": "finally",
+          "start_ms": 20538,
+          "end_ms": 20818,
+          "alignment_score": 0.928
+        },
+        {
+          "index": 59,
+          "text": "retired",
+          "start_ms": 20878,
+          "end_ms": 21218,
+          "alignment_score": 0.866
+        },
+        {
+          "index": 60,
+          "text": "at",
+          "start_ms": 21258,
+          "end_ms": 21298,
+          "alignment_score": 0.999
+        },
+        {
+          "index": 61,
+          "text": "31,",
+          "start_ms": 21378,
+          "end_ms": 21759,
+          "alignment_score": 0.617
+        },
+        {
+          "index": 62,
+          "text": "I",
+          "start_ms": 22099,
+          "end_ms": 22159,
+          "alignment_score": 0.668
+        },
+        {
+          "index": 63,
+          "text": "loved",
+          "start_ms": 22319,
+          "end_ms": 22719,
+          "alignment_score": 0.781
+        },
+        {
+          "index": 64,
+          "text": "waking",
+          "start_ms": 22859,
+          "end_ms": 23139,
+          "alignment_score": 0.902
+        },
+        {
+          "index": 65,
+          "text": "up",
+          "start_ms": 23219,
+          "end_ms": 23319,
+          "alignment_score": 0.92
+        },
+        {
+          "index": 66,
+          "text": "knowing",
+          "start_ms": 23479,
+          "end_ms": 23760,
+          "alignment_score": 0.831
+        },
+        {
+          "index": 67,
+          "text": "the",
+          "start_ms": 23800,
+          "end_ms": 23880,
+          "alignment_score": 0.832
+        },
+        {
+          "index": 68,
+          "text": "day",
+          "start_ms": 23900,
+          "end_ms": 24040,
+          "alignment_score": 0.957
+        },
+        {
+          "index": 69,
+          "text": "belonged",
+          "start_ms": 24080,
+          "end_ms": 24500,
+          "alignment_score": 0.819
+        },
+        {
+          "index": 70,
+          "text": "to",
+          "start_ms": 24600,
+          "end_ms": 24700,
+          "alignment_score": 0.968
+        },
+        {
+          "index": 71,
+          "text": "me.",
+          "start_ms": 24740,
+          "end_ms": 24840,
+          "alignment_score": 0.845
+        },
+        {
+          "index": 72,
+          "text": "That's",
+          "start_ms": 25880,
+          "end_ms": 26061,
+          "alignment_score": 0.911
+        },
+        {
+          "index": 73,
+          "text": "one",
+          "start_ms": 26161,
+          "end_ms": 26261,
+          "alignment_score": 0.752
+        },
+        {
+          "index": 74,
+          "text": "reason",
+          "start_ms": 26301,
+          "end_ms": 26521,
+          "alignment_score": 0.817
+        },
+        {
+          "index": 75,
+          "text": "I",
+          "start_ms": 26581,
+          "end_ms": 26641,
+          "alignment_score": 0.666
+        },
+        {
+          "index": 76,
+          "text": "was",
+          "start_ms": 26681,
+          "end_ms": 26781,
+          "alignment_score": 0.733
+        },
+        {
+          "index": 77,
+          "text": "afraid",
+          "start_ms": 26841,
+          "end_ms": 27061,
+          "alignment_score": 0.839
+        },
+        {
+          "index": 78,
+          "text": "to",
+          "start_ms": 27081,
+          "end_ms": 27141,
+          "alignment_score": 0.748
+        },
+        {
+          "index": 79,
+          "text": "have",
+          "start_ms": 27181,
+          "end_ms": 27281,
+          "alignment_score": 0.94
+        },
+        {
+          "index": 80,
+          "text": "a",
+          "start_ms": 27321,
+          "end_ms": 27341,
+          "alignment_score": 0.993
+        },
+        {
+          "index": 81,
+          "text": "child.",
+          "start_ms": 27381,
+          "end_ms": 27681,
+          "alignment_score": 0.899
+        },
+        {
+          "index": 82,
+          "text": "I",
+          "start_ms": 28142,
+          "end_ms": 28202,
+          "alignment_score": 0.669
+        },
+        {
+          "index": 83,
+          "text": "knew",
+          "start_ms": 28242,
+          "end_ms": 28402,
+          "alignment_score": 0.635
+        },
+        {
+          "index": 84,
+          "text": "what",
+          "start_ms": 28442,
+          "end_ms": 28542,
+          "alignment_score": 0.989
+        },
+        {
+          "index": 85,
+          "text": "it",
+          "start_ms": 28562,
+          "end_ms": 28602,
+          "alignment_score": 0.986
+        },
+        {
+          "index": 86,
+          "text": "would",
+          "start_ms": 28622,
+          "end_ms": 28762,
+          "alignment_score": 0.881
+        },
+        {
+          "index": 87,
+          "text": "mean",
+          "start_ms": 28802,
+          "end_ms": 28962,
+          "alignment_score": 0.801
+        },
+        {
+          "index": 88,
+          "text": "to",
+          "start_ms": 29282,
+          "end_ms": 29382,
+          "alignment_score": 0.827
+        },
+        {
+          "index": 89,
+          "text": "have",
+          "start_ms": 29422,
+          "end_ms": 29582,
+          "alignment_score": 0.94
+        },
+        {
+          "index": 90,
+          "text": "someone",
+          "start_ms": 29622,
+          "end_ms": 29842,
+          "alignment_score": 0.957
+        },
+        {
+          "index": 91,
+          "text": "need",
+          "start_ms": 29882,
+          "end_ms": 30002,
+          "alignment_score": 0.444
+        },
+        {
+          "index": 92,
+          "text": "me",
+          "start_ms": 30042,
+          "end_ms": 30162,
+          "alignment_score": 0.852
+        },
+        {
+          "index": 93,
+          "text": "every",
+          "start_ms": 30443,
+          "end_ms": 30703,
+          "alignment_score": 0.717
+        },
+        {
+          "index": 94,
+          "text": "day.",
+          "start_ms": 30743,
+          "end_ms": 30983,
+          "alignment_score": 0.929
+        },
+        {
+          "index": 95,
+          "text": "I",
+          "start_ms": 32261,
+          "end_ms": 32341,
+          "alignment_score": 0.678
+        },
+        {
+          "index": 96,
+          "text": "worried",
+          "start_ms": 32401,
+          "end_ms": 32781,
+          "alignment_score": 0.786
+        },
+        {
+          "index": 97,
+          "text": "that",
+          "start_ms": 32841,
+          "end_ms": 32961,
+          "alignment_score": 0.978
+        },
+        {
+          "index": 98,
+          "text": "after",
+          "start_ms": 33041,
+          "end_ms": 33221,
+          "alignment_score": 0.852
+        },
+        {
+          "index": 99,
+          "text": "working",
+          "start_ms": 33281,
+          "end_ms": 33542,
+          "alignment_score": 0.86
+        },
+        {
+          "index": 100,
+          "text": "so",
+          "start_ms": 33622,
+          "end_ms": 33782,
+          "alignment_score": 0.851
+        },
+        {
+          "index": 101,
+          "text": "hard",
+          "start_ms": 33822,
+          "end_ms": 33982,
+          "alignment_score": 0.821
+        },
+        {
+          "index": 102,
+          "text": "to",
+          "start_ms": 34002,
+          "end_ms": 34062,
+          "alignment_score": 0.832
+        },
+        {
+          "index": 103,
+          "text": "get",
+          "start_ms": 34082,
+          "end_ms": 34182,
+          "alignment_score": 0.79
+        },
+        {
+          "index": 104,
+          "text": "my",
+          "start_ms": 34222,
+          "end_ms": 34302,
+          "alignment_score": 0.963
+        },
+        {
+          "index": 105,
+          "text": "time",
+          "start_ms": 34342,
+          "end_ms": 34522,
+          "alignment_score": 0.925
+        },
+        {
+          "index": 106,
+          "text": "back,",
+          "start_ms": 34562,
+          "end_ms": 34742,
+          "alignment_score": 0.994
+        },
+        {
+          "index": 107,
+          "text": "I",
+          "start_ms": 34842,
+          "end_ms": 34902,
+          "alignment_score": 0.673
+        },
+        {
+          "index": 108,
+          "text": "would",
+          "start_ms": 34922,
+          "end_ms": 35082,
+          "alignment_score": 0.826
+        },
+        {
+          "index": 109,
+          "text": "give",
+          "start_ms": 35142,
+          "end_ms": 35302,
+          "alignment_score": 0.86
+        },
+        {
+          "index": 110,
+          "text": "it",
+          "start_ms": 35362,
+          "end_ms": 35402,
+          "alignment_score": 0.999
+        },
+        {
+          "index": 111,
+          "text": "all",
+          "start_ms": 35642,
+          "end_ms": 35762,
+          "alignment_score": 0.842
+        },
+        {
+          "index": 112,
+          "text": "away.",
+          "start_ms": 35822,
+          "end_ms": 36083,
+          "alignment_score": 0.873
+        },
+        {
+          "index": 113,
+          "text": "Then",
+          "start_ms": 36923,
+          "end_ms": 37123,
+          "alignment_score": 0.777
+        },
+        {
+          "index": 114,
+          "text": "my",
+          "start_ms": 37183,
+          "end_ms": 37303,
+          "alignment_score": 0.891
+        },
+        {
+          "index": 115,
+          "text": "father-in-law",
+          "start_ms": 37363,
+          "end_ms": 37963,
+          "alignment_score": 0.73
+        },
+        {
+          "index": 116,
+          "text": "said",
+          "start_ms": 37983,
+          "end_ms": 38123,
+          "alignment_score": 0.857
+        },
+        {
+          "index": 117,
+          "text": "something",
+          "start_ms": 38143,
+          "end_ms": 38383,
+          "alignment_score": 0.884
+        },
+        {
+          "index": 118,
+          "text": "I",
+          "start_ms": 38403,
+          "end_ms": 38443,
+          "alignment_score": 0.926
+        },
+        {
+          "index": 119,
+          "text": "didn't",
+          "start_ms": 38483,
+          "end_ms": 38664,
+          "alignment_score": 0.917
+        },
+        {
+          "index": 120,
+          "text": "expect.",
+          "start_ms": 38704,
+          "end_ms": 39084,
+          "alignment_score": 0.9
+        },
+        {
+          "index": 121,
+          "text": "He",
+          "start_ms": 39744,
+          "end_ms": 39824,
+          "alignment_score": 0.962
+        },
+        {
+          "index": 122,
+          "text": "told",
+          "start_ms": 39864,
+          "end_ms": 40064,
+          "alignment_score": 0.548
+        },
+        {
+          "index": 123,
+          "text": "my",
+          "start_ms": 40104,
+          "end_ms": 40204,
+          "alignment_score": 0.834
+        },
+        {
+          "index": 124,
+          "text": "husband",
+          "start_ms": 40244,
+          "end_ms": 40544,
+          "alignment_score": 0.836
+        },
+        {
+          "index": 125,
+          "text": "and",
+          "start_ms": 40584,
+          "end_ms": 40664,
+          "alignment_score": 0.935
+        },
+        {
+          "index": 126,
+          "text": "I",
+          "start_ms": 40784,
+          "end_ms": 40884,
+          "alignment_score": 0.595
+        },
+        {
+          "index": 127,
+          "text": "that",
+          "start_ms": 41024,
+          "end_ms": 41144,
+          "alignment_score": 0.998
+        },
+        {
+          "index": 128,
+          "text": "he",
+          "start_ms": 41204,
+          "end_ms": 41305,
+          "alignment_score": 0.877
+        },
+        {
+          "index": 129,
+          "text": "hoped",
+          "start_ms": 41365,
+          "end_ms": 41605,
+          "alignment_score": 0.752
+        },
+        {
+          "index": 130,
+          "text": "we'd",
+          "start_ms": 41705,
+          "end_ms": 41845,
+          "alignment_score": 0.78
+        },
+        {
+          "index": 131,
+          "text": "have",
+          "start_ms": 41885,
+          "end_ms": 42005,
+          "alignment_score": 0.817
+        },
+        {
+          "index": 132,
+          "text": "a",
+          "start_ms": 42025,
+          "end_ms": 42045,
+          "alignment_score": 0.994
+        },
+        {
+          "index": 133,
+          "text": "child,",
+          "start_ms": 42085,
+          "end_ms": 42425,
+          "alignment_score": 0.856
+        },
+        {
+          "index": 134,
+          "text": "but",
+          "start_ms": 42745,
+          "end_ms": 42845,
+          "alignment_score": 0.96
+        },
+        {
+          "index": 135,
+          "text": "if",
+          "start_ms": 42885,
+          "end_ms": 42945,
+          "alignment_score": 0.995
+        },
+        {
+          "index": 136,
+          "text": "we",
+          "start_ms": 42985,
+          "end_ms": 43065,
+          "alignment_score": 0.858
+        },
+        {
+          "index": 137,
+          "text": "never",
+          "start_ms": 43105,
+          "end_ms": 43285,
+          "alignment_score": 0.876
+        },
+        {
+          "index": 138,
+          "text": "did,",
+          "start_ms": 43345,
+          "end_ms": 43545,
+          "alignment_score": 0.848
+        },
+        {
+          "index": 139,
+          "text": "he",
+          "start_ms": 43806,
+          "end_ms": 43886,
+          "alignment_score": 0.666
+        },
+        {
+          "index": 140,
+          "text": "would",
+          "start_ms": 43926,
+          "end_ms": 44066,
+          "alignment_score": 0.9
+        },
+        {
+          "index": 141,
+          "text": "love",
+          "start_ms": 44146,
+          "end_ms": 44366,
+          "alignment_score": 0.832
+        },
+        {
+          "index": 142,
+          "text": "us",
+          "start_ms": 44526,
+          "end_ms": 44626,
+          "alignment_score": 0.748
+        },
+        {
+          "index": 143,
+          "text": "just",
+          "start_ms": 44746,
+          "end_ms": 44906,
+          "alignment_score": 0.835
+        },
+        {
+          "index": 144,
+          "text": "the",
+          "start_ms": 44966,
+          "end_ms": 45046,
+          "alignment_score": 0.863
+        },
+        {
+          "index": 145,
+          "text": "same.",
+          "start_ms": 45086,
+          "end_ms": 45306,
+          "alignment_score": 0.899
+        },
+        {
+          "index": 146,
+          "text": "He",
+          "start_ms": 46086,
+          "end_ms": 46186,
+          "alignment_score": 0.55
+        },
+        {
+          "index": 147,
+          "text": "wanted",
+          "start_ms": 46226,
+          "end_ms": 46467,
+          "alignment_score": 0.805
+        },
+        {
+          "index": 148,
+          "text": "a",
+          "start_ms": 46487,
+          "end_ms": 46527,
+          "alignment_score": 0.507
+        },
+        {
+          "index": 149,
+          "text": "grandchild,",
+          "start_ms": 46567,
+          "end_ms": 47147,
+          "alignment_score": 0.914
+        },
+        {
+          "index": 150,
+          "text": "but",
+          "start_ms": 47227,
+          "end_ms": 47327,
+          "alignment_score": 0.93
+        },
+        {
+          "index": 151,
+          "text": "he",
+          "start_ms": 47367,
+          "end_ms": 47447,
+          "alignment_score": 0.943
+        },
+        {
+          "index": 152,
+          "text": "didn't",
+          "start_ms": 47507,
+          "end_ms": 47727,
+          "alignment_score": 0.852
+        },
+        {
+          "index": 153,
+          "text": "make",
+          "start_ms": 47767,
+          "end_ms": 47907,
+          "alignment_score": 0.871
+        },
+        {
+          "index": 154,
+          "text": "his",
+          "start_ms": 47947,
+          "end_ms": 48027,
+          "alignment_score": 0.895
+        },
+        {
+          "index": 155,
+          "text": "love",
+          "start_ms": 48067,
+          "end_ms": 48227,
+          "alignment_score": 0.76
+        },
+        {
+          "index": 156,
+          "text": "dependent",
+          "start_ms": 48247,
+          "end_ms": 48607,
+          "alignment_score": 0.791
+        },
+        {
+          "index": 157,
+          "text": "on",
+          "start_ms": 48647,
+          "end_ms": 48727,
+          "alignment_score": 0.693
+        },
+        {
+          "index": 158,
+          "text": "one.",
+          "start_ms": 48827,
+          "end_ms": 48907,
+          "alignment_score": 0.904
+        },
+        {
+          "index": 159,
+          "text": "Somehow",
+          "start_ms": 49488,
+          "end_ms": 49868,
+          "alignment_score": 0.848
+        },
+        {
+          "index": 160,
+          "text": "being",
+          "start_ms": 49908,
+          "end_ms": 50088,
+          "alignment_score": 0.848
+        },
+        {
+          "index": 161,
+          "text": "given",
+          "start_ms": 50128,
+          "end_ms": 50368,
+          "alignment_score": 0.866
+        },
+        {
+          "index": 162,
+          "text": "room",
+          "start_ms": 50468,
+          "end_ms": 50668,
+          "alignment_score": 0.828
+        },
+        {
+          "index": 163,
+          "text": "to",
+          "start_ms": 50728,
+          "end_ms": 50808,
+          "alignment_score": 0.988
+        },
+        {
+          "index": 164,
+          "text": "say",
+          "start_ms": 50868,
+          "end_ms": 51048,
+          "alignment_score": 0.887
+        },
+        {
+          "index": 165,
+          "text": "no",
+          "start_ms": 51148,
+          "end_ms": 51388,
+          "alignment_score": 0.826
+        },
+        {
+          "index": 166,
+          "text": "made",
+          "start_ms": 51508,
+          "end_ms": 51669,
+          "alignment_score": 0.804
+        },
+        {
+          "index": 167,
+          "text": "it",
+          "start_ms": 51689,
+          "end_ms": 51749,
+          "alignment_score": 0.75
+        },
+        {
+          "index": 168,
+          "text": "easier",
+          "start_ms": 52029,
+          "end_ms": 52329,
+          "alignment_score": 0.798
+        },
+        {
+          "index": 169,
+          "text": "for",
+          "start_ms": 52369,
+          "end_ms": 52469,
+          "alignment_score": 0.972
+        },
+        {
+          "index": 170,
+          "text": "me",
+          "start_ms": 52509,
+          "end_ms": 52589,
+          "alignment_score": 0.834
+        },
+        {
+          "index": 171,
+          "text": "to",
+          "start_ms": 52629,
+          "end_ms": 52689,
+          "alignment_score": 0.964
+        },
+        {
+          "index": 172,
+          "text": "imagine",
+          "start_ms": 52769,
+          "end_ms": 53209,
+          "alignment_score": 0.792
+        },
+        {
+          "index": 173,
+          "text": "saying",
+          "start_ms": 53549,
+          "end_ms": 53789,
+          "alignment_score": 0.784
+        },
+        {
+          "index": 174,
+          "text": "yes.",
+          "start_ms": 53829,
+          "end_ms": 54069,
+          "alignment_score": 0.975
+        },
+        {
+          "index": 175,
+          "text": "But",
+          "start_ms": 55270,
+          "end_ms": 55390,
+          "alignment_score": 0.972
+        },
+        {
+          "index": 176,
+          "text": "years",
+          "start_ms": 55490,
+          "end_ms": 55750,
+          "alignment_score": 0.74
+        },
+        {
+          "index": 177,
+          "text": "later,",
+          "start_ms": 55810,
+          "end_ms": 56130,
+          "alignment_score": 0.716
+        },
+        {
+          "index": 178,
+          "text": "he",
+          "start_ms": 56410,
+          "end_ms": 56490,
+          "alignment_score": 0.75
+        },
+        {
+          "index": 179,
+          "text": "was",
+          "start_ms": 56510,
+          "end_ms": 56630,
+          "alignment_score": 0.776
+        },
+        {
+          "index": 180,
+          "text": "diagnosed",
+          "start_ms": 56670,
+          "end_ms": 57131,
+          "alignment_score": 0.908
+        },
+        {
+          "index": 181,
+          "text": "with",
+          "start_ms": 57171,
+          "end_ms": 57311,
+          "alignment_score": 0.75
+        },
+        {
+          "index": 182,
+          "text": "brain",
+          "start_ms": 57351,
+          "end_ms": 57591,
+          "alignment_score": 0.863
+        },
+        {
+          "index": 183,
+          "text": "cancer.",
+          "start_ms": 57611,
+          "end_ms": 58051,
+          "alignment_score": 0.897
+        },
+        {
+          "index": 184,
+          "text": "During",
+          "start_ms": 59111,
+          "end_ms": 59311,
+          "alignment_score": 0.935
+        },
+        {
+          "index": 185,
+          "text": "his",
+          "start_ms": 59352,
+          "end_ms": 59472,
+          "alignment_score": 0.721
+        },
+        {
+          "index": 186,
+          "text": "final...",
+          "start_ms": 59552,
+          "end_ms": 59972,
+          "alignment_score": 0.96
+        },
+        {
+          "index": 187,
+          "text": "During",
+          "start_ms": 61766,
+          "end_ms": 62046,
+          "alignment_score": 0.842
+        },
+        {
+          "index": 188,
+          "text": "his",
+          "start_ms": 62107,
+          "end_ms": 62247,
+          "alignment_score": 0.737
+        },
+        {
+          "index": 189,
+          "text": "final",
+          "start_ms": 62407,
+          "end_ms": 62727,
+          "alignment_score": 0.868
+        },
+        {
+          "index": 190,
+          "text": "month",
+          "start_ms": 62788,
+          "end_ms": 63048,
+          "alignment_score": 0.774
+        },
+        {
+          "index": 191,
+          "text": "of",
+          "start_ms": 63128,
+          "end_ms": 63208,
+          "alignment_score": 0.812
+        },
+        {
+          "index": 192,
+          "text": "life,",
+          "start_ms": 63288,
+          "end_ms": 63509,
+          "alignment_score": 0.841
+        },
+        {
+          "index": 193,
+          "text": "I",
+          "start_ms": 63869,
+          "end_ms": 63929,
+          "alignment_score": 0.848
+        },
+        {
+          "index": 194,
+          "text": "was",
+          "start_ms": 63949,
+          "end_ms": 64089,
+          "alignment_score": 0.79
+        },
+        {
+          "index": 195,
+          "text": "nine",
+          "start_ms": 64290,
+          "end_ms": 64570,
+          "alignment_score": 0.777
+        },
+        {
+          "index": 196,
+          "text": "months",
+          "start_ms": 64610,
+          "end_ms": 64851,
+          "alignment_score": 0.729
+        },
+        {
+          "index": 197,
+          "text": "pregnant.",
+          "start_ms": 64891,
+          "end_ms": 65271,
+          "alignment_score": 0.956
+        },
+        {
+          "index": 198,
+          "text": "Our",
+          "start_ms": 66553,
+          "end_ms": 66653,
+          "alignment_score": 0.929
+        },
+        {
+          "index": 199,
+          "text": "days",
+          "start_ms": 66673,
+          "end_ms": 66914,
+          "alignment_score": 0.893
+        },
+        {
+          "index": 200,
+          "text": "filled",
+          "start_ms": 66974,
+          "end_ms": 67194,
+          "alignment_score": 0.901
+        },
+        {
+          "index": 201,
+          "text": "with",
+          "start_ms": 67214,
+          "end_ms": 67354,
+          "alignment_score": 0.716
+        },
+        {
+          "index": 202,
+          "text": "family",
+          "start_ms": 67394,
+          "end_ms": 67735,
+          "alignment_score": 0.917
+        },
+        {
+          "index": 203,
+          "text": "calls",
+          "start_ms": 67795,
+          "end_ms": 68195,
+          "alignment_score": 0.874
+        },
+        {
+          "index": 204,
+          "text": "and",
+          "start_ms": 68236,
+          "end_ms": 68336,
+          "alignment_score": 0.691
+        },
+        {
+          "index": 205,
+          "text": "care",
+          "start_ms": 68396,
+          "end_ms": 68616,
+          "alignment_score": 0.781
+        },
+        {
+          "index": 206,
+          "text": "he",
+          "start_ms": 68656,
+          "end_ms": 68716,
+          "alignment_score": 0.889
+        },
+        {
+          "index": 207,
+          "text": "could",
+          "start_ms": 68756,
+          "end_ms": 68896,
+          "alignment_score": 0.829
+        },
+        {
+          "index": 208,
+          "text": "no",
+          "start_ms": 68937,
+          "end_ms": 69077,
+          "alignment_score": 0.826
+        },
+        {
+          "index": 209,
+          "text": "longer",
+          "start_ms": 69117,
+          "end_ms": 69357,
+          "alignment_score": 0.906
+        },
+        {
+          "index": 210,
+          "text": "manage",
+          "start_ms": 69397,
+          "end_ms": 69658,
+          "alignment_score": 0.595
+        },
+        {
+          "index": 211,
+          "text": "alone.",
+          "start_ms": 69998,
+          "end_ms": 70279,
+          "alignment_score": 0.928
+        },
+        {
+          "index": 212,
+          "text": "During",
+          "start_ms": 71820,
+          "end_ms": 72080,
+          "alignment_score": 0.805
+        },
+        {
+          "index": 213,
+          "text": "his",
+          "start_ms": 72120,
+          "end_ms": 72240,
+          "alignment_score": 0.655
+        },
+        {
+          "index": 214,
+          "text": "final",
+          "start_ms": 72360,
+          "end_ms": 72661,
+          "alignment_score": 0.842
+        },
+        {
+          "index": 215,
+          "text": "month",
+          "start_ms": 72701,
+          "end_ms": 72881,
+          "alignment_score": 0.874
+        },
+        {
+          "index": 216,
+          "text": "of",
+          "start_ms": 72901,
+          "end_ms": 72961,
+          "alignment_score": 0.749
+        },
+        {
+          "index": 217,
+          "text": "life,",
+          "start_ms": 73001,
+          "end_ms": 73201,
+          "alignment_score": 0.899
+        },
+        {
+          "index": 218,
+          "text": "I",
+          "start_ms": 73441,
+          "end_ms": 73481,
+          "alignment_score": 0.657
+        },
+        {
+          "index": 219,
+          "text": "was",
+          "start_ms": 73501,
+          "end_ms": 73641,
+          "alignment_score": 0.778
+        },
+        {
+          "index": 220,
+          "text": "nine",
+          "start_ms": 73781,
+          "end_ms": 74041,
+          "alignment_score": 0.811
+        },
+        {
+          "index": 221,
+          "text": "months",
+          "start_ms": 74101,
+          "end_ms": 74321,
+          "alignment_score": 0.837
+        },
+        {
+          "index": 222,
+          "text": "pregnant,",
+          "start_ms": 74382,
+          "end_ms": 74762,
+          "alignment_score": 0.922
+        },
+        {
+          "index": 223,
+          "text": "our",
+          "start_ms": 75282,
+          "end_ms": 75402,
+          "alignment_score": 0.8
+        },
+        {
+          "index": 224,
+          "text": "days",
+          "start_ms": 75422,
+          "end_ms": 75662,
+          "alignment_score": 0.802
+        },
+        {
+          "index": 225,
+          "text": "filled",
+          "start_ms": 75762,
+          "end_ms": 76123,
+          "alignment_score": 0.81
+        },
+        {
+          "index": 226,
+          "text": "with",
+          "start_ms": 76203,
+          "end_ms": 76383,
+          "alignment_score": 0.302
+        },
+        {
+          "index": 227,
+          "text": "family",
+          "start_ms": 76483,
+          "end_ms": 76823,
+          "alignment_score": 0.836
+        },
+        {
+          "index": 228,
+          "text": "calls",
+          "start_ms": 76863,
+          "end_ms": 77223,
+          "alignment_score": 0.903
+        },
+        {
+          "index": 229,
+          "text": "and",
+          "start_ms": 77343,
+          "end_ms": 77443,
+          "alignment_score": 0.813
+        },
+        {
+          "index": 230,
+          "text": "care",
+          "start_ms": 77503,
+          "end_ms": 77743,
+          "alignment_score": 0.82
+        },
+        {
+          "index": 231,
+          "text": "he",
+          "start_ms": 77784,
+          "end_ms": 77844,
+          "alignment_score": 0.797
+        },
+        {
+          "index": 232,
+          "text": "could",
+          "start_ms": 77884,
+          "end_ms": 78024,
+          "alignment_score": 0.814
+        },
+        {
+          "index": 233,
+          "text": "no",
+          "start_ms": 78064,
+          "end_ms": 78184,
+          "alignment_score": 0.833
+        },
+        {
+          "index": 234,
+          "text": "longer",
+          "start_ms": 78224,
+          "end_ms": 78484,
+          "alignment_score": 0.843
+        },
+        {
+          "index": 235,
+          "text": "manage",
+          "start_ms": 78544,
+          "end_ms": 78904,
+          "alignment_score": 0.72
+        },
+        {
+          "index": 236,
+          "text": "alone.",
+          "start_ms": 79024,
+          "end_ms": 80985,
+          "alignment_score": 0.81
+        },
+        {
+          "index": 237,
+          "text": "I",
+          "start_ms": 82426,
+          "end_ms": 83987,
+          "alignment_score": 0.871
+        },
+        {
+          "index": 238,
+          "text": "watched",
+          "start_ms": 84027,
+          "end_ms": 84307,
+          "alignment_score": 0.82
+        },
+        {
+          "index": 239,
+          "text": "his",
+          "start_ms": 84347,
+          "end_ms": 84447,
+          "alignment_score": 0.668
+        },
+        {
+          "index": 240,
+          "text": "daughter",
+          "start_ms": 84507,
+          "end_ms": 84788,
+          "alignment_score": 0.818
+        },
+        {
+          "index": 241,
+          "text": "gently",
+          "start_ms": 84928,
+          "end_ms": 85228,
+          "alignment_score": 0.85
+        },
+        {
+          "index": 242,
+          "text": "trim",
+          "start_ms": 85268,
+          "end_ms": 85488,
+          "alignment_score": 0.866
+        },
+        {
+          "index": 243,
+          "text": "his",
+          "start_ms": 85548,
+          "end_ms": 85648,
+          "alignment_score": 0.738
+        },
+        {
+          "index": 244,
+          "text": "nails.",
+          "start_ms": 85688,
+          "end_ms": 85948,
+          "alignment_score": 0.896
+        },
+        {
+          "index": 245,
+          "text": "I",
+          "start_ms": 86829,
+          "end_ms": 86889,
+          "alignment_score": 0.671
+        },
+        {
+          "index": 246,
+          "text": "watched",
+          "start_ms": 86949,
+          "end_ms": 87229,
+          "alignment_score": 0.867
+        },
+        {
+          "index": 247,
+          "text": "my",
+          "start_ms": 87289,
+          "end_ms": 87389,
+          "alignment_score": 0.824
+        },
+        {
+          "index": 248,
+          "text": "husband",
+          "start_ms": 87429,
+          "end_ms": 87769,
+          "alignment_score": 0.746
+        },
+        {
+          "index": 249,
+          "text": "helping",
+          "start_ms": 87829,
+          "end_ms": 88130,
+          "alignment_score": 0.855
+        },
+        {
+          "index": 250,
+          "text": "with",
+          "start_ms": 88150,
+          "end_ms": 88270,
+          "alignment_score": 0.918
+        },
+        {
+          "index": 251,
+          "text": "things",
+          "start_ms": 88310,
+          "end_ms": 88530,
+          "alignment_score": 0.908
+        },
+        {
+          "index": 252,
+          "text": "a",
+          "start_ms": 88690,
+          "end_ms": 88730,
+          "alignment_score": 0.541
+        },
+        {
+          "index": 253,
+          "text": "grown",
+          "start_ms": 88790,
+          "end_ms": 89050,
+          "alignment_score": 0.936
+        },
+        {
+          "index": 254,
+          "text": "man",
+          "start_ms": 89070,
+          "end_ms": 89290,
+          "alignment_score": 0.82
+        },
+        {
+          "index": 255,
+          "text": "would",
+          "start_ms": 89550,
+          "end_ms": 89711,
+          "alignment_score": 0.864
+        },
+        {
+          "index": 256,
+          "text": "rather",
+          "start_ms": 89771,
+          "end_ms": 90051,
+          "alignment_score": 0.752
+        },
+        {
+          "index": 257,
+          "text": "never",
+          "start_ms": 90151,
+          "end_ms": 90351,
+          "alignment_score": 0.794
+        },
+        {
+          "index": 258,
+          "text": "need",
+          "start_ms": 90411,
+          "end_ms": 90571,
+          "alignment_score": 0.827
+        },
+        {
+          "index": 259,
+          "text": "help",
+          "start_ms": 90611,
+          "end_ms": 90771,
+          "alignment_score": 0.808
+        },
+        {
+          "index": 260,
+          "text": "with,",
+          "start_ms": 90811,
+          "end_ms": 90971,
+          "alignment_score": 0.918
+        },
+        {
+          "index": 261,
+          "text": "and",
+          "start_ms": 91512,
+          "end_ms": 91612,
+          "alignment_score": 0.739
+        },
+        {
+          "index": 262,
+          "text": "friends",
+          "start_ms": 91672,
+          "end_ms": 91892,
+          "alignment_score": 0.782
+        },
+        {
+          "index": 263,
+          "text": "and",
+          "start_ms": 91952,
+          "end_ms": 92032,
+          "alignment_score": 0.876
+        },
+        {
+          "index": 264,
+          "text": "family",
+          "start_ms": 92092,
+          "end_ms": 92412,
+          "alignment_score": 0.858
+        },
+        {
+          "index": 265,
+          "text": "kept",
+          "start_ms": 92452,
+          "end_ms": 92632,
+          "alignment_score": 0.872
+        },
+        {
+          "index": 266,
+          "text": "coming",
+          "start_ms": 92672,
+          "end_ms": 92912,
+          "alignment_score": 0.824
+        },
+        {
+          "index": 267,
+          "text": "just",
+          "start_ms": 92992,
+          "end_ms": 93193,
+          "alignment_score": 0.719
+        },
+        {
+          "index": 268,
+          "text": "to",
+          "start_ms": 93233,
+          "end_ms": 93333,
+          "alignment_score": 0.74
+        },
+        {
+          "index": 269,
+          "text": "sit",
+          "start_ms": 93393,
+          "end_ms": 93533,
+          "alignment_score": 0.977
+        },
+        {
+          "index": 270,
+          "text": "beside",
+          "start_ms": 93573,
+          "end_ms": 93893,
+          "alignment_score": 0.823
+        },
+        {
+          "index": 271,
+          "text": "him.",
+          "start_ms": 93933,
+          "end_ms": 94033,
+          "alignment_score": 0.984
+        },
+        {
+          "index": 272,
+          "text": "By",
+          "start_ms": 94854,
+          "end_ms": 94974,
+          "alignment_score": 0.628
+        },
+        {
+          "index": 273,
+          "text": "then,",
+          "start_ms": 95014,
+          "end_ms": 95214,
+          "alignment_score": 0.86
+        },
+        {
+          "index": 274,
+          "text": "he",
+          "start_ms": 95674,
+          "end_ms": 95754,
+          "alignment_score": 0.74
+        },
+        {
+          "index": 275,
+          "text": "had",
+          "start_ms": 95794,
+          "end_ms": 95934,
+          "alignment_score": 0.818
+        },
+        {
+          "index": 276,
+          "text": "nothing",
+          "start_ms": 96114,
+          "end_ms": 96394,
+          "alignment_score": 0.861
+        },
+        {
+          "index": 277,
+          "text": "left",
+          "start_ms": 96434,
+          "end_ms": 96595,
+          "alignment_score": 0.875
+        },
+        {
+          "index": 278,
+          "text": "to",
+          "start_ms": 96615,
+          "end_ms": 96675,
+          "alignment_score": 0.75
+        },
+        {
+          "index": 279,
+          "text": "offer",
+          "start_ms": 96735,
+          "end_ms": 96955,
+          "alignment_score": 0.913
+        },
+        {
+          "index": 280,
+          "text": "them.",
+          "start_ms": 96975,
+          "end_ms": 97115,
+          "alignment_score": 0.93
+        },
+        {
+          "index": 281,
+          "text": "He",
+          "start_ms": 98418,
+          "end_ms": 98498,
+          "alignment_score": 1.0
+        },
+        {
+          "index": 282,
+          "text": "had",
+          "start_ms": 98538,
+          "end_ms": 98698,
+          "alignment_score": 0.964
+        },
+        {
+          "index": 283,
+          "text": "spent",
+          "start_ms": 98759,
+          "end_ms": 98999,
+          "alignment_score": 0.853
+        },
+        {
+          "index": 284,
+          "text": "years",
+          "start_ms": 99039,
+          "end_ms": 99279,
+          "alignment_score": 0.767
+        },
+        {
+          "index": 285,
+          "text": "loving",
+          "start_ms": 99460,
+          "end_ms": 99700,
+          "alignment_score": 0.917
+        },
+        {
+          "index": 286,
+          "text": "people",
+          "start_ms": 99740,
+          "end_ms": 100040,
+          "alignment_score": 0.776
+        },
+        {
+          "index": 287,
+          "text": "without",
+          "start_ms": 100281,
+          "end_ms": 100561,
+          "alignment_score": 0.824
+        },
+        {
+          "index": 288,
+          "text": "asking",
+          "start_ms": 100661,
+          "end_ms": 100922,
+          "alignment_score": 0.788
+        },
+        {
+          "index": 289,
+          "text": "them",
+          "start_ms": 100962,
+          "end_ms": 101062,
+          "alignment_score": 0.903
+        },
+        {
+          "index": 290,
+          "text": "to",
+          "start_ms": 101102,
+          "end_ms": 101182,
+          "alignment_score": 0.635
+        },
+        {
+          "index": 291,
+          "text": "earn",
+          "start_ms": 101262,
+          "end_ms": 101422,
+          "alignment_score": 0.81
+        },
+        {
+          "index": 292,
+          "text": "it,",
+          "start_ms": 101462,
+          "end_ms": 101562,
+          "alignment_score": 0.679
+        },
+        {
+          "index": 293,
+          "text": "and",
+          "start_ms": 101923,
+          "end_ms": 102023,
+          "alignment_score": 0.83
+        },
+        {
+          "index": 294,
+          "text": "now",
+          "start_ms": 102083,
+          "end_ms": 102364,
+          "alignment_score": 0.891
+        },
+        {
+          "index": 295,
+          "text": "they",
+          "start_ms": 102704,
+          "end_ms": 102844,
+          "alignment_score": 0.953
+        },
+        {
+          "index": 296,
+          "text": "wanted",
+          "start_ms": 102904,
+          "end_ms": 103165,
+          "alignment_score": 0.868
+        },
+        {
+          "index": 297,
+          "text": "to",
+          "start_ms": 103205,
+          "end_ms": 103265,
+          "alignment_score": 0.86
+        },
+        {
+          "index": 298,
+          "text": "be",
+          "start_ms": 103305,
+          "end_ms": 103385,
+          "alignment_score": 0.79
+        },
+        {
+          "index": 299,
+          "text": "there.",
+          "start_ms": 103425,
+          "end_ms": 103605,
+          "alignment_score": 0.92
+        },
+        {
+          "index": 300,
+          "text": "Watching",
+          "start_ms": 104867,
+          "end_ms": 105188,
+          "alignment_score": 0.843
+        },
+        {
+          "index": 301,
+          "text": "them,",
+          "start_ms": 105208,
+          "end_ms": 105348,
+          "alignment_score": 0.897
+        },
+        {
+          "index": 302,
+          "text": "I",
+          "start_ms": 105428,
+          "end_ms": 105508,
+          "alignment_score": 0.745
+        },
+        {
+          "index": 303,
+          "text": "understood",
+          "start_ms": 105628,
+          "end_ms": 106049,
+          "alignment_score": 0.85
+        },
+        {
+          "index": 304,
+          "text": "something",
+          "start_ms": 106109,
+          "end_ms": 106489,
+          "alignment_score": 0.821
+        },
+        {
+          "index": 305,
+          "text": "I",
+          "start_ms": 106650,
+          "end_ms": 106710,
+          "alignment_score": 0.934
+        },
+        {
+          "index": 306,
+          "text": "hadn't",
+          "start_ms": 106750,
+          "end_ms": 106990,
+          "alignment_score": 0.73
+        },
+        {
+          "index": 307,
+          "text": "understood",
+          "start_ms": 107030,
+          "end_ms": 107371,
+          "alignment_score": 0.837
+        },
+        {
+          "index": 308,
+          "text": "when",
+          "start_ms": 107391,
+          "end_ms": 107511,
+          "alignment_score": 0.755
+        },
+        {
+          "index": 309,
+          "text": "I",
+          "start_ms": 107531,
+          "end_ms": 107571,
+          "alignment_score": 0.507
+        },
+        {
+          "index": 310,
+          "text": "was",
+          "start_ms": 107591,
+          "end_ms": 107691,
+          "alignment_score": 0.83
+        },
+        {
+          "index": 311,
+          "text": "younger.",
+          "start_ms": 107711,
+          "end_ms": 108032,
+          "alignment_score": 0.869
+        },
+        {
+          "index": 312,
+          "text": "Being",
+          "start_ms": 108853,
+          "end_ms": 109073,
+          "alignment_score": 0.708
+        },
+        {
+          "index": 313,
+          "text": "needed",
+          "start_ms": 109113,
+          "end_ms": 109373,
+          "alignment_score": 0.801
+        },
+        {
+          "index": 314,
+          "text": "by",
+          "start_ms": 109413,
+          "end_ms": 109514,
+          "alignment_score": 0.816
+        },
+        {
+          "index": 315,
+          "text": "someone",
+          "start_ms": 109554,
+          "end_ms": 109814,
+          "alignment_score": 0.781
+        },
+        {
+          "index": 316,
+          "text": "you",
+          "start_ms": 109834,
+          "end_ms": 109974,
+          "alignment_score": 0.863
+        },
+        {
+          "index": 317,
+          "text": "love",
+          "start_ms": 110014,
+          "end_ms": 110275,
+          "alignment_score": 0.803
+        },
+        {
+          "index": 318,
+          "text": "can",
+          "start_ms": 110435,
+          "end_ms": 110555,
+          "alignment_score": 0.979
+        },
+        {
+          "index": 319,
+          "text": "feel",
+          "start_ms": 110595,
+          "end_ms": 110775,
+          "alignment_score": 0.876
+        },
+        {
+          "index": 320,
+          "text": "very",
+          "start_ms": 110856,
+          "end_ms": 111096,
+          "alignment_score": 0.758
+        },
+        {
+          "index": 321,
+          "text": "different",
+          "start_ms": 111156,
+          "end_ms": 111416,
+          "alignment_score": 0.944
+        },
+        {
+          "index": 322,
+          "text": "from",
+          "start_ms": 111456,
+          "end_ms": 111577,
+          "alignment_score": 0.896
+        },
+        {
+          "index": 323,
+          "text": "being",
+          "start_ms": 111617,
+          "end_ms": 111817,
+          "alignment_score": 0.837
+        },
+        {
+          "index": 324,
+          "text": "trapped.",
+          "start_ms": 111877,
+          "end_ms": 112237,
+          "alignment_score": 0.922
+        },
+        {
+          "index": 325,
+          "text": "Now",
+          "start_ms": 113302,
+          "end_ms": 113422,
+          "alignment_score": 0.781
+        },
+        {
+          "index": 326,
+          "text": "I",
+          "start_ms": 113462,
+          "end_ms": 113502,
+          "alignment_score": 0.771
+        },
+        {
+          "index": 327,
+          "text": "have",
+          "start_ms": 113542,
+          "end_ms": 113662,
+          "alignment_score": 0.874
+        },
+        {
+          "index": 328,
+          "text": "a",
+          "start_ms": 113682,
+          "end_ms": 113722,
+          "alignment_score": 0.499
+        },
+        {
+          "index": 329,
+          "text": "son",
+          "start_ms": 113762,
+          "end_ms": 113922,
+          "alignment_score": 0.889
+        },
+        {
+          "index": 330,
+          "text": "who",
+          "start_ms": 113982,
+          "end_ms": 114082,
+          "alignment_score": 0.96
+        },
+        {
+          "index": 331,
+          "text": "needs",
+          "start_ms": 114142,
+          "end_ms": 114342,
+          "alignment_score": 0.841
+        },
+        {
+          "index": 332,
+          "text": "lunch",
+          "start_ms": 114422,
+          "end_ms": 114663,
+          "alignment_score": 0.856
+        },
+        {
+          "index": 333,
+          "text": "made,",
+          "start_ms": 114703,
+          "end_ms": 114923,
+          "alignment_score": 0.842
+        },
+        {
+          "index": 334,
+          "text": "a",
+          "start_ms": 115543,
+          "end_ms": 115583,
+          "alignment_score": 0.619
+        },
+        {
+          "index": 335,
+          "text": "story",
+          "start_ms": 115623,
+          "end_ms": 115883,
+          "alignment_score": 0.867
+        },
+        {
+          "index": 336,
+          "text": "read",
+          "start_ms": 115943,
+          "end_ms": 116083,
+          "alignment_score": 0.894
+        },
+        {
+          "index": 337,
+          "text": "again,",
+          "start_ms": 116103,
+          "end_ms": 116343,
+          "alignment_score": 0.917
+        },
+        {
+          "index": 338,
+          "text": "and",
+          "start_ms": 116523,
+          "end_ms": 116603,
+          "alignment_score": 0.834
+        },
+        {
+          "index": 339,
+          "text": "someone",
+          "start_ms": 116643,
+          "end_ms": 116903,
+          "alignment_score": 0.887
+        },
+        {
+          "index": 340,
+          "text": "willing",
+          "start_ms": 116924,
+          "end_ms": 117144,
+          "alignment_score": 0.834
+        },
+        {
+          "index": 341,
+          "text": "to",
+          "start_ms": 117164,
+          "end_ms": 117224,
+          "alignment_score": 0.816
+        },
+        {
+          "index": 342,
+          "text": "stop",
+          "start_ms": 117284,
+          "end_ms": 117544,
+          "alignment_score": 0.916
+        },
+        {
+          "index": 343,
+          "text": "and",
+          "start_ms": 117624,
+          "end_ms": 117704,
+          "alignment_score": 0.845
+        },
+        {
+          "index": 344,
+          "text": "look",
+          "start_ms": 117724,
+          "end_ms": 117884,
+          "alignment_score": 0.745
+        },
+        {
+          "index": 345,
+          "text": "at",
+          "start_ms": 117904,
+          "end_ms": 117964,
+          "alignment_score": 0.738
+        },
+        {
+          "index": 346,
+          "text": "a",
+          "start_ms": 117984,
+          "end_ms": 118004,
+          "alignment_score": 0.983
+        },
+        {
+          "index": 347,
+          "text": "bug",
+          "start_ms": 118044,
+          "end_ms": 118224,
+          "alignment_score": 0.989
+        },
+        {
+          "index": 348,
+          "text": "with",
+          "start_ms": 118264,
+          "end_ms": 118364,
+          "alignment_score": 0.875
+        },
+        {
+          "index": 349,
+          "text": "him.",
+          "start_ms": 118404,
+          "end_ms": 118524,
+          "alignment_score": 0.911
+        },
+        {
+          "index": 350,
+          "text": "I",
+          "start_ms": 119124,
+          "end_ms": 119184,
+          "alignment_score": 0.762
+        },
+        {
+          "index": 351,
+          "text": "still",
+          "start_ms": 119284,
+          "end_ms": 119545,
+          "alignment_score": 0.787
+        },
+        {
+          "index": 352,
+          "text": "miss",
+          "start_ms": 119605,
+          "end_ms": 119785,
+          "alignment_score": 0.964
+        },
+        {
+          "index": 353,
+          "text": "the",
+          "start_ms": 119825,
+          "end_ms": 119925,
+          "alignment_score": 0.794
+        },
+        {
+          "index": 354,
+          "text": "ease",
+          "start_ms": 120105,
+          "end_ms": 120325,
+          "alignment_score": 0.739
+        },
+        {
+          "index": 355,
+          "text": "of",
+          "start_ms": 120485,
+          "end_ms": 120565,
+          "alignment_score": 0.8
+        },
+        {
+          "index": 356,
+          "text": "leaving",
+          "start_ms": 120605,
+          "end_ms": 120885,
+          "alignment_score": 0.629
+        },
+        {
+          "index": 357,
+          "text": "whenever",
+          "start_ms": 121145,
+          "end_ms": 121525,
+          "alignment_score": 0.914
+        },
+        {
+          "index": 358,
+          "text": "I",
+          "start_ms": 121585,
+          "end_ms": 121625,
+          "alignment_score": 0.961
+        },
+        {
+          "index": 359,
+          "text": "want,",
+          "start_ms": 121685,
+          "end_ms": 121946,
+          "alignment_score": 0.865
+        },
+        {
+          "index": 360,
+          "text": "but",
+          "start_ms": 122366,
+          "end_ms": 122486,
+          "alignment_score": 0.834
+        },
+        {
+          "index": 361,
+          "text": "when",
+          "start_ms": 122526,
+          "end_ms": 122626,
+          "alignment_score": 1.0
+        },
+        {
+          "index": 362,
+          "text": "he",
+          "start_ms": 122666,
+          "end_ms": 122766,
+          "alignment_score": 0.734
+        },
+        {
+          "index": 363,
+          "text": "runs",
+          "start_ms": 122846,
+          "end_ms": 123166,
+          "alignment_score": 0.801
+        },
+        {
+          "index": 364,
+          "text": "to",
+          "start_ms": 123306,
+          "end_ms": 123406,
+          "alignment_score": 0.808
+        },
+        {
+          "index": 365,
+          "text": "me",
+          "start_ms": 123426,
+          "end_ms": 123566,
+          "alignment_score": 0.678
+        },
+        {
+          "index": 366,
+          "text": "at",
+          "start_ms": 123586,
+          "end_ms": 123626,
+          "alignment_score": 0.0
+        },
+        {
+          "index": 367,
+          "text": "daycare,",
+          "start_ms": 123806,
+          "end_ms": 124166,
+          "alignment_score": 0.692
+        },
+        {
+          "index": 368,
+          "text": "I",
+          "start_ms": 124327,
+          "end_ms": 124387,
+          "alignment_score": 0.797
+        },
+        {
+          "index": 369,
+          "text": "think",
+          "start_ms": 124427,
+          "end_ms": 124587,
+          "alignment_score": 0.852
+        },
+        {
+          "index": 370,
+          "text": "about",
+          "start_ms": 124627,
+          "end_ms": 124807,
+          "alignment_score": 0.861
+        },
+        {
+          "index": 371,
+          "text": "his",
+          "start_ms": 124847,
+          "end_ms": 124947,
+          "alignment_score": 0.815
+        },
+        {
+          "index": 372,
+          "text": "grandfather.",
+          "start_ms": 124967,
+          "end_ms": 125487,
+          "alignment_score": 0.817
+        },
+        {
+          "index": 373,
+          "text": "I",
+          "start_ms": 126467,
+          "end_ms": 126507,
+          "alignment_score": 0.503
+        },
+        {
+          "index": 374,
+          "text": "want",
+          "start_ms": 126547,
+          "end_ms": 126708,
+          "alignment_score": 0.634
+        },
+        {
+          "index": 375,
+          "text": "my",
+          "start_ms": 126728,
+          "end_ms": 126828,
+          "alignment_score": 0.744
+        },
+        {
+          "index": 376,
+          "text": "son",
+          "start_ms": 126848,
+          "end_ms": 127008,
+          "alignment_score": 0.801
+        },
+        {
+          "index": 377,
+          "text": "to",
+          "start_ms": 127028,
+          "end_ms": 127088,
+          "alignment_score": 0.782
+        },
+        {
+          "index": 378,
+          "text": "feel",
+          "start_ms": 127128,
+          "end_ms": 127268,
+          "alignment_score": 0.922
+        },
+        {
+          "index": 379,
+          "text": "the",
+          "start_ms": 127308,
+          "end_ms": 127408,
+          "alignment_score": 0.936
+        },
+        {
+          "index": 380,
+          "text": "same",
+          "start_ms": 127468,
+          "end_ms": 127708,
+          "alignment_score": 0.706
+        },
+        {
+          "index": 381,
+          "text": "freedom",
+          "start_ms": 127788,
+          "end_ms": 128068,
+          "alignment_score": 0.755
+        },
+        {
+          "index": 382,
+          "text": "he",
+          "start_ms": 128148,
+          "end_ms": 128268,
+          "alignment_score": 0.818
+        },
+        {
+          "index": 383,
+          "text": "gave",
+          "start_ms": 128328,
+          "end_ms": 128548,
+          "alignment_score": 0.854
+        },
+        {
+          "index": 384,
+          "text": "us,",
+          "start_ms": 128628,
+          "end_ms": 128728,
+          "alignment_score": 0.872
+        },
+        {
+          "index": 385,
+          "text": "to",
+          "start_ms": 129329,
+          "end_ms": 129429,
+          "alignment_score": 0.868
+        },
+        {
+          "index": 386,
+          "text": "know",
+          "start_ms": 129489,
+          "end_ms": 129689,
+          "alignment_score": 0.596
+        },
+        {
+          "index": 387,
+          "text": "that",
+          "start_ms": 129749,
+          "end_ms": 129869,
+          "alignment_score": 0.944
+        },
+        {
+          "index": 388,
+          "text": "I",
+          "start_ms": 129909,
+          "end_ms": 129969,
+          "alignment_score": 0.353
+        },
+        {
+          "index": 389,
+          "text": "love",
+          "start_ms": 130029,
+          "end_ms": 130169,
+          "alignment_score": 0.987
+        },
+        {
+          "index": 390,
+          "text": "him",
+          "start_ms": 130209,
+          "end_ms": 130329,
+          "alignment_score": 0.702
+        },
+        {
+          "index": 391,
+          "text": "without",
+          "start_ms": 130429,
+          "end_ms": 130709,
+          "alignment_score": 0.735
+        },
+        {
+          "index": 392,
+          "text": "asking",
+          "start_ms": 130789,
+          "end_ms": 131069,
+          "alignment_score": 0.712
+        },
+        {
+          "index": 393,
+          "text": "him",
+          "start_ms": 131109,
+          "end_ms": 131209,
+          "alignment_score": 0.749
+        },
+        {
+          "index": 394,
+          "text": "to",
+          "start_ms": 131229,
+          "end_ms": 131309,
+          "alignment_score": 0.502
+        },
+        {
+          "index": 395,
+          "text": "repay",
+          "start_ms": 131349,
+          "end_ms": 131650,
+          "alignment_score": 0.862
+        },
+        {
+          "index": 396,
+          "text": "me.",
+          "start_ms": 131690,
+          "end_ms": 131810,
+          "alignment_score": 0.932
+        },
+        {
+          "index": 397,
+          "text": "Money",
+          "start_ms": 132830,
+          "end_ms": 133070,
+          "alignment_score": 0.712
+        },
+        {
+          "index": 398,
+          "text": "gave",
+          "start_ms": 133150,
+          "end_ms": 133310,
+          "alignment_score": 0.905
+        },
+        {
+          "index": 399,
+          "text": "me",
+          "start_ms": 133350,
+          "end_ms": 133430,
+          "alignment_score": 0.941
+        },
+        {
+          "index": 400,
+          "text": "the",
+          "start_ms": 133470,
+          "end_ms": 133550,
+          "alignment_score": 0.833
+        },
+        {
+          "index": 401,
+          "text": "freedom",
+          "start_ms": 133570,
+          "end_ms": 133830,
+          "alignment_score": 0.884
+        },
+        {
+          "index": 402,
+          "text": "to",
+          "start_ms": 133870,
+          "end_ms": 133970,
+          "alignment_score": 0.54
+        },
+        {
+          "index": 403,
+          "text": "choose",
+          "start_ms": 134011,
+          "end_ms": 134251,
+          "alignment_score": 0.767
+        },
+        {
+          "index": 404,
+          "text": "how",
+          "start_ms": 134331,
+          "end_ms": 134471,
+          "alignment_score": 0.892
+        },
+        {
+          "index": 405,
+          "text": "to",
+          "start_ms": 134491,
+          "end_ms": 134571,
+          "alignment_score": 0.748
+        },
+        {
+          "index": 406,
+          "text": "spend",
+          "start_ms": 134611,
+          "end_ms": 134791,
+          "alignment_score": 1.0
+        },
+        {
+          "index": 407,
+          "text": "my",
+          "start_ms": 134831,
+          "end_ms": 134931,
+          "alignment_score": 0.954
+        },
+        {
+          "index": 408,
+          "text": "life.",
+          "start_ms": 134991,
+          "end_ms": 135211,
+          "alignment_score": 0.903
+        },
+        {
+          "index": 409,
+          "text": "My",
+          "start_ms": 135911,
+          "end_ms": 136031,
+          "alignment_score": 0.986
+        },
+        {
+          "index": 410,
+          "text": "father-in-law",
+          "start_ms": 136091,
+          "end_ms": 136692,
+          "alignment_score": 0.755
+        },
+        {
+          "index": 411,
+          "text": "helped",
+          "start_ms": 136952,
+          "end_ms": 137192,
+          "alignment_score": 0.923
+        },
+        {
+          "index": 412,
+          "text": "me",
+          "start_ms": 137252,
+          "end_ms": 137372,
+          "alignment_score": 0.684
+        },
+        {
+          "index": 413,
+          "text": "see",
+          "start_ms": 137432,
+          "end_ms": 137612,
+          "alignment_score": 0.88
+        },
+        {
+          "index": 414,
+          "text": "why",
+          "start_ms": 137672,
+          "end_ms": 137912,
+          "alignment_score": 0.842
+        },
+        {
+          "index": 415,
+          "text": "I",
+          "start_ms": 138072,
+          "end_ms": 138112,
+          "alignment_score": 0.629
+        },
+        {
+          "index": 416,
+          "text": "might",
+          "start_ms": 138152,
+          "end_ms": 138312,
+          "alignment_score": 0.847
+        },
+        {
+          "index": 417,
+          "text": "choose",
+          "start_ms": 138352,
+          "end_ms": 138572,
+          "alignment_score": 0.818
+        },
+        {
+          "index": 418,
+          "text": "to",
+          "start_ms": 138612,
+          "end_ms": 138692,
+          "alignment_score": 0.728
+        },
+        {
+          "index": 419,
+          "text": "give",
+          "start_ms": 138812,
+          "end_ms": 139093,
+          "alignment_score": 0.751
+        },
+        {
+          "index": 420,
+          "text": "some",
+          "start_ms": 139453,
+          "end_ms": 139613,
+          "alignment_score": 0.888
+        },
+        {
+          "index": 421,
+          "text": "of",
+          "start_ms": 139653,
+          "end_ms": 139693,
+          "alignment_score": 0.996
+        },
+        {
+          "index": 422,
+          "text": "it",
+          "start_ms": 139753,
+          "end_ms": 139793,
+          "alignment_score": 0.995
+        },
+        {
+          "index": 423,
+          "text": "away.",
+          "start_ms": 139833,
+          "end_ms": 140013,
+          "alignment_score": 0.878
+        },
+        {
+          "index": 424,
+          "text": "Thank",
+          "start_ms": null,
+          "end_ms": null
+        },
+        {
+          "index": 425,
+          "text": "you.",
+          "start_ms": null,
+          "end_ms": null
+        }
+      ],
+      "audio": null
+    }
+  },
+  "links": [
+    {
+      "script": {
+        "word_start": 0,
+        "word_end": 19
+      },
+      "transcript": {
+        "word_start": 15,
+        "word_end": 34
+      },
+      "classification": "exact"
+    },
+    {
+      "script": {
+        "word_start": 20,
+        "word_end": 40
+      },
+      "transcript": {
+        "word_start": 35,
+        "word_end": 55
+      },
+      "classification": "flub"
+    },
+    {
+      "script": {
+        "word_start": 41,
+        "word_end": 56
+      },
+      "transcript": {
+        "word_start": 56,
+        "word_end": 71
+      },
+      "classification": "exact"
+    },
+    {
+      "script": {
+        "word_start": 57,
+        "word_end": 66
+      },
+      "transcript": {
+        "word_start": 72,
+        "word_end": 81
+      },
+      "classification": "partial"
+    },
+    {
+      "script": {
+        "word_start": 67,
+        "word_end": 79
+      },
+      "transcript": {
+        "word_start": 82,
+        "word_end": 94
+      },
+      "classification": "exact"
+    },
+    {
+      "script": {
+        "word_start": 80,
+        "word_end": 97
+      },
+      "transcript": {
+        "word_start": 95,
+        "word_end": 112
+      },
+      "classification": "exact"
+    },
+    {
+      "script": {
+        "word_start": 98,
+        "word_end": 105
+      },
+      "transcript": {
+        "word_start": 113,
+        "word_end": 120
+      },
+      "classification": "partial"
+    },
+    {
+      "script": {
+        "word_start": 106,
+        "word_end": 129
+      },
+      "transcript": {
+        "word_start": 121,
+        "word_end": 145
+      },
+      "classification": "partial"
+    },
+    {
+      "script": {
+        "word_start": 130,
+        "word_end": 142
+      },
+      "transcript": {
+        "word_start": 146,
+        "word_end": 158
+      },
+      "classification": "partial"
+    },
+    {
+      "script": {
+        "word_start": 143,
+        "word_end": 158
+      },
+      "transcript": {
+        "word_start": 159,
+        "word_end": 174
+      },
+      "classification": "flub"
+    },
+    {
+      "script": {
+        "word_start": 159,
+        "word_end": 166
+      },
+      "transcript": {
+        "word_start": 175,
+        "word_end": 183
+      },
+      "classification": "partial"
+    },
+    {
+      "script": {
+        "word_start": 167,
+        "word_end": 177
+      },
+      "transcript": {
+        "word_start": 184,
+        "word_end": 186
+      },
+      "classification": "flub"
+    },
+    {
+      "script": {
+        "word_start": 167,
+        "word_end": 177
+      },
+      "transcript": {
+        "word_start": 187,
+        "word_end": 197
+      },
+      "classification": "exact"
+    },
+    {
+      "script": {
+        "word_start": 178,
+        "word_end": 191
+      },
+      "transcript": {
+        "word_start": 198,
+        "word_end": 211
+      },
+      "classification": "exact"
+    },
+    {
+      "script": {
+        "word_start": 167,
+        "word_end": 177
+      },
+      "transcript": {
+        "word_start": 212,
+        "word_end": 222
+      },
+      "classification": "partial"
+    },
+    {
+      "script": {
+        "word_start": 178,
+        "word_end": 191
+      },
+      "transcript": {
+        "word_start": 223,
+        "word_end": 236
+      },
+      "classification": "partial"
+    },
+    {
+      "script": {
+        "word_start": 192,
+        "word_end": 199
+      },
+      "transcript": {
+        "word_start": 237,
+        "word_end": 244
+      },
+      "classification": "exact"
+    },
+    {
+      "script": {
+        "word_start": 200,
+        "word_end": 216
+      },
+      "transcript": {
+        "word_start": 245,
+        "word_end": 260
+      },
+      "classification": "flub"
+    },
+    {
+      "script": {
+        "word_start": 217,
+        "word_end": 227
+      },
+      "transcript": {
+        "word_start": 261,
+        "word_end": 271
+      },
+      "classification": "partial"
+    },
+    {
+      "script": {
+        "word_start": 228,
+        "word_end": 236
+      },
+      "transcript": {
+        "word_start": 272,
+        "word_end": 280
+      },
+      "classification": "exact"
+    },
+    {
+      "script": {
+        "word_start": 237,
+        "word_end": 255
+      },
+      "transcript": {
+        "word_start": 281,
+        "word_end": 299
+      },
+      "classification": "exact"
+    },
+    {
+      "script": {
+        "word_start": 256,
+        "word_end": 280
+      },
+      "transcript": {
+        "word_start": 300,
+        "word_end": 324
+      },
+      "classification": "partial"
+    },
+    {
+      "script": {
+        "word_start": 281,
+        "word_end": 305
+      },
+      "transcript": {
+        "word_start": 325,
+        "word_end": 349
+      },
+      "classification": "exact"
+    },
+    {
+      "script": {
+        "word_start": 306,
+        "word_end": 315
+      },
+      "transcript": {
+        "word_start": 350,
+        "word_end": 359
+      },
+      "classification": "partial"
+    },
+    {
+      "script": {
+        "word_start": 316,
+        "word_end": 328
+      },
+      "transcript": {
+        "word_start": 360,
+        "word_end": 372
+      },
+      "classification": "partial"
+    },
+    {
+      "script": {
+        "word_start": 329,
+        "word_end": 352
+      },
+      "transcript": {
+        "word_start": 373,
+        "word_end": 396
+      },
+      "classification": "partial"
+    },
+    {
+      "script": {
+        "word_start": 353,
+        "word_end": 364
+      },
+      "transcript": {
+        "word_start": 397,
+        "word_end": 408
+      },
+      "classification": "partial"
+    },
+    {
+      "script": {
+        "word_start": 365,
+        "word_end": 379
+      },
+      "transcript": {
+        "word_start": 409,
+        "word_end": 423
+      },
+      "classification": "exact"
+    }
+  ],
+  "discarded": [
+    {
+      "word_start": 0,
+      "word_end": 1
+    },
+    {
+      "word_start": 2,
+      "word_end": 7
+    },
+    {
+      "word_start": 8,
+      "word_end": 11
+    },
+    {
+      "word_start": 12,
+      "word_end": 14
+    },
+    {
+      "word_start": 424,
+      "word_end": 425
+    }
+  ],
+  "groupings": {
+    "script": [
+      {
+        "word_start": 0,
+        "word_end": 19
+      },
+      {
+        "word_start": 20,
+        "word_end": 40
+      },
+      {
+        "word_start": 41,
+        "word_end": 56
+      },
+      {
+        "word_start": 57,
+        "word_end": 66
+      },
+      {
+        "word_start": 67,
+        "word_end": 79
+      },
+      {
+        "word_start": 80,
+        "word_end": 97
+      },
+      {
+        "word_start": 98,
+        "word_end": 105
+      },
+      {
+        "word_start": 106,
+        "word_end": 129
+      },
+      {
+        "word_start": 130,
+        "word_end": 142
+      },
+      {
+        "word_start": 143,
+        "word_end": 158
+      },
+      {
+        "word_start": 159,
+        "word_end": 166
+      },
+      {
+        "word_start": 167,
+        "word_end": 177
+      },
+      {
+        "word_start": 178,
+        "word_end": 191
+      },
+      {
+        "word_start": 192,
+        "word_end": 199
+      },
+      {
+        "word_start": 200,
+        "word_end": 216
+      },
+      {
+        "word_start": 217,
+        "word_end": 227
+      },
+      {
+        "word_start": 228,
+        "word_end": 236
+      },
+      {
+        "word_start": 237,
+        "word_end": 255
+      },
+      {
+        "word_start": 256,
+        "word_end": 280
+      },
+      {
+        "word_start": 281,
+        "word_end": 305
+      },
+      {
+        "word_start": 306,
+        "word_end": 315
+      },
+      {
+        "word_start": 316,
+        "word_end": 328
+      },
+      {
+        "word_start": 329,
+        "word_end": 352
+      },
+      {
+        "word_start": 353,
+        "word_end": 364
+      },
+      {
+        "word_start": 365,
+        "word_end": 379
+      }
+    ],
+    "transcript": [
+      {
+        "word_start": 0,
+        "word_end": 1
+      },
+      {
+        "word_start": 2,
+        "word_end": 7
+      },
+      {
+        "word_start": 8,
+        "word_end": 11
+      },
+      {
+        "word_start": 12,
+        "word_end": 14
+      },
+      {
+        "word_start": 15,
+        "word_end": 34
+      },
+      {
+        "word_start": 35,
+        "word_end": 55
+      },
+      {
+        "word_start": 56,
+        "word_end": 71
+      },
+      {
+        "word_start": 72,
+        "word_end": 81
+      },
+      {
+        "word_start": 82,
+        "word_end": 94
+      },
+      {
+        "word_start": 95,
+        "word_end": 112
+      },
+      {
+        "word_start": 113,
+        "word_end": 120
+      },
+      {
+        "word_start": 121,
+        "word_end": 145
+      },
+      {
+        "word_start": 146,
+        "word_end": 158
+      },
+      {
+        "word_start": 159,
+        "word_end": 174
+      },
+      {
+        "word_start": 175,
+        "word_end": 183
+      },
+      {
+        "word_start": 184,
+        "word_end": 186
+      },
+      {
+        "word_start": 187,
+        "word_end": 197
+      },
+      {
+        "word_start": 198,
+        "word_end": 211
+      },
+      {
+        "word_start": 212,
+        "word_end": 222
+      },
+      {
+        "word_start": 223,
+        "word_end": 236
+      },
+      {
+        "word_start": 237,
+        "word_end": 244
+      },
+      {
+        "word_start": 245,
+        "word_end": 260
+      },
+      {
+        "word_start": 261,
+        "word_end": 271
+      },
+      {
+        "word_start": 272,
+        "word_end": 280
+      },
+      {
+        "word_start": 281,
+        "word_end": 299
+      },
+      {
+        "word_start": 300,
+        "word_end": 324
+      },
+      {
+        "word_start": 325,
+        "word_end": 349
+      },
+      {
+        "word_start": 350,
+        "word_end": 359
+      },
+      {
+        "word_start": 360,
+        "word_end": 372
+      },
+      {
+        "word_start": 373,
+        "word_end": 396
+      },
+      {
+        "word_start": 397,
+        "word_end": 408
+      },
+      {
+        "word_start": 409,
+        "word_end": 423
+      },
+      {
+        "word_start": 424,
+        "word_end": 425
+      }
+    ]
+  }
+}

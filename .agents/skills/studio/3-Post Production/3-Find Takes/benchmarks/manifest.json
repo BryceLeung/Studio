@@ -1,0 +1,40 @@
+{
+  "schema": "studio.find-takes.benchmark",
+  "schema_version": 2,
+  "project": "01-Love Compounds Too",
+  "cases": [
+    {
+      "name": "What Is Freedom For",
+      "script": "What Is Freedom For.docx",
+      "transcripts": [
+        "What Is Freedom For__C01__lav.json"
+      ],
+      "takes": "What Is Freedom For__Takes.v001.json",
+      "takes_role": "human-reviewed",
+      "reviewed_transcripts": [
+        "What Is Freedom For__C01__lav.json"
+      ]
+    }
+  ],
+  "files": [
+    {
+      "path": "What Is Freedom For/What Is Freedom For.docx",
+      "sha256": "022cc56d2ff6ebcc90710ec72446fb064301b33907c5ffcec4e0b3df9eb1897f",
+      "bytes": 28039
+    },
+    {
+      "path": "What Is Freedom For/What Is Freedom For__C01__lav.json",
+      "sha256": "1d8fc14266be3988664f031ee01af96a141e7476700744c0b879f1b5991d5f17",
+      "bytes": 61421
+    },
+    {
+      "path": "What Is Freedom For/What Is Freedom For__Takes.v001.json",
+      "sha256": "b7acac28c456f748274bf684c4689b95993e73fab03566f38dd95126d2934998",
+      "bytes": 136177
+    }
+  ],
+  "original_human_review": {
+    "sha256": "cff81b3dede0127fea06feb3f91921276f9487fd0460a084d75c25ee3ad1760e",
+    "source": "studio/line/review.v001.json"
+  }
+}

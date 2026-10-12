@@ -1,0 +1,286 @@
+{
+  "reference": "What Is Freedom For/What Is Freedom For__Takes.v001.json",
+  "reference_sha256": "b7acac28c456f748274bf684c4689b95993e73fab03566f38dd95126d2934998",
+  "script": {
+    "path": "What Is Freedom For.docx",
+    "sha256": "022cc56d2ff6ebcc90710ec72446fb064301b33907c5ffcec4e0b3df9eb1897f",
+    "segmentation_version": "line-sentences-v1",
+    "kind": "script",
+    "format": "docx-spoken-script"
+  },
+  "transcript": {
+    "path": "What Is Freedom For__C01__lav.json",
+    "sha256": "1d8fc14266be3988664f031ee01af96a141e7476700744c0b879f1b5991d5f17",
+    "segmentation_version": "line-sentences-v1",
+    "kind": "transcript",
+    "format": "whisperx-json"
+  },
+  "algorithm": {
+    "name": "cursor-word-alignment",
+    "version": 1,
+    "settings": {
+      "lookback": 3,
+      "lookahead": 3,
+      "min_similarity": 0.72,
+      "max_length_ratio": 1.4,
+      "extra_words": 4,
+      "cursor_distance_penalty": 0.012,
+      "min_partial_words": 3,
+      "recovery_similarity": 0.9
+    },
+    "code_sha256": {
+      "find_takes.py": "bdebf2179122cacbfb02fe0bd64ce389c92eec3582c2de4f13d57a136221364e",
+      "studio/tools/line/sources.py": "2e5bc89fd943ab822e2e0deb3fe7478f31359682bdb83dfa8c9accfd542e9d55",
+      "studio/tools/line/mapping.py": "bf5e5f93a90cb1b7f28f69a7d4d0f80af1f442fe7f2f0036a7e3f90c9924f726",
+      "studio/tools/line/actions.py": "9c63f83b36d54591b379417c47c8aca49ff400e51183025eb991fae5c7570d0b"
+    }
+  },
+  "exact_take_ranges": {
+    "correct": 23,
+    "predicted": 27,
+    "expected": 28,
+    "precision": 0.851852,
+    "recall": 0.821429,
+    "f1": 0.836364
+  },
+  "classification_agreement_on_exact_ranges": {
+    "correct": 23,
+    "compared": 23
+  },
+  "word_assignments": {
+    "correct": 418,
+    "total": 426,
+    "accuracy": 0.981221
+  },
+  "discarded_words": {
+    "correct": 10,
+    "predicted": 10,
+    "expected": 17,
+    "precision": 1.0,
+    "recall": 0.588235,
+    "f1": 0.740741
+  },
+  "script_group_coverage": {
+    "expected": 25,
+    "predicted": 25,
+    "total": 25
+  },
+  "missing_or_different": [
+    {
+      "script": {
+        "word_start": 0,
+        "word_end": 19
+      },
+      "transcript": {
+        "word_start": 15,
+        "word_end": 34
+      },
+      "classification": "exact",
+      "script_text": "For most of my adult life, freedom meant that no one could tell me what to do with my time.",
+      "transcript_text": "For most of my adult life, freedom meant that no one could tell me what to do with my time."
+    },
+    {
+      "script": {
+        "word_start": 167,
+        "word_end": 177
+      },
+      "transcript": {
+        "word_start": 184,
+        "word_end": 186
+      },
+      "classification": "flub",
+      "script_text": "During his final month of life, I was nine months pregnant.",
+      "transcript_text": "During his final..."
+    },
+    {
+      "script": {
+        "word_start": 167,
+        "word_end": 177
+      },
+      "transcript": {
+        "word_start": 187,
+        "word_end": 197
+      },
+      "classification": "exact",
+      "script_text": "During his final month of life, I was nine months pregnant.",
+      "transcript_text": "During his final month of life, I was nine months pregnant."
+    },
+    {
+      "script": {
+        "word_start": 353,
+        "word_end": 364
+      },
+      "transcript": {
+        "word_start": 397,
+        "word_end": 408
+      },
+      "classification": "partial",
+      "script_text": "Money gave me the freedom to choose how to spend my time.",
+      "transcript_text": "Money gave me the freedom to choose how to spend my life."
+    },
+    {
+      "script": {
+        "word_start": 365,
+        "word_end": 379
+      },
+      "transcript": {
+        "word_start": 409,
+        "word_end": 423
+      },
+      "classification": "exact",
+      "script_text": "My father-in-law helped me see why I might choose to give some of it away.",
+      "transcript_text": "My father-in-law helped me see why I might choose to give some of it away."
+    }
+  ],
+  "extra_or_different": [
+    {
+      "script": {
+        "word_start": 0,
+        "word_end": 19
+      },
+      "transcript": {
+        "word_start": 8,
+        "word_end": 34
+      },
+      "classification": "partial",
+      "script_text": "For most of my adult life, freedom meant that no one could tell me what to do with my time.",
+      "transcript_text": "What is freedom for? Whenever you're ready. For most of my adult life, freedom meant that no one could tell me what to do with my time."
+    },
+    {
+      "script": {
+        "word_start": 167,
+        "word_end": 177
+      },
+      "transcript": {
+        "word_start": 184,
+        "word_end": 197
+      },
+      "classification": "partial",
+      "script_text": "During his final month of life, I was nine months pregnant.",
+      "transcript_text": "During his final... During his final month of life, I was nine months pregnant."
+    },
+    {
+      "script": {
+        "word_start": 353,
+        "word_end": 364
+      },
+      "transcript": {
+        "word_start": 397,
+        "word_end": 407
+      },
+      "classification": "flub",
+      "script_text": "Money gave me the freedom to choose how to spend my time.",
+      "transcript_text": "Money gave me the freedom to choose how to spend my"
+    },
+    {
+      "script": {
+        "word_start": 365,
+        "word_end": 379
+      },
+      "transcript": {
+        "word_start": 408,
+        "word_end": 423
+      },
+      "classification": "partial",
+      "script_text": "My father-in-law helped me see why I might choose to give some of it away.",
+      "transcript_text": "life. My father-in-law helped me see why I might choose to give some of it away."
+    }
+  ],
+  "word_errors": [
+    {
+      "index": 8,
+      "word": "What",
+      "expected": "discarded",
+      "predicted": [
+        0,
+        19
+      ]
+    },
+    {
+      "index": 9,
+      "word": "is",
+      "expected": "discarded",
+      "predicted": [
+        0,
+        19
+      ]
+    },
+    {
+      "index": 10,
+      "word": "freedom",
+      "expected": "discarded",
+      "predicted": [
+        0,
+        19
+      ]
+    },
+    {
+      "index": 11,
+      "word": "for?",
+      "expected": "discarded",
+      "predicted": [
+        0,
+        19
+      ]
+    },
+    {
+      "index": 12,
+      "word": "Whenever",
+      "expected": "discarded",
+      "predicted": [
+        0,
+        19
+      ]
+    },
+    {
+      "index": 13,
+      "word": "you're",
+      "expected": "discarded",
+      "predicted": [
+        0,
+        19
+      ]
+    },
+    {
+      "index": 14,
+      "word": "ready.",
+      "expected": "discarded",
+      "predicted": [
+        0,
+        19
+      ]
+    },
+    {
+      "index": 408,
+      "word": "life.",
+      "expected": [
+        353,
+        364
+      ],
+      "predicted": [
+        365,
+        379
+      ]
+    }
+  ],
+  "generation": {
+    "scripts": 2,
+    "transcripts": 3,
+    "outputs": [
+      {
+        "path": "Love Compounds Too/Love Compounds Too__Takes.v001.json",
+        "status": "generated",
+        "takes": 131
+      },
+      {
+        "path": "What Is Freedom For/What Is Freedom For__Takes.v001.json",
+        "status": "generated",
+        "takes": 53
+      }
+    ]
+  },
+  "fixture_reorganization": {
+    "original_reference_sha256": "cff81b3dede0127fea06feb3f91921276f9487fd0460a084d75c25ee3ad1760e",
+    "note": "Source paths and row IDs rebased to the case directory; reviewed words, grouping boundaries, links, classifications, and discards are unchanged. Baseline measurements and matching algorithm are unchanged."
+  }
+}

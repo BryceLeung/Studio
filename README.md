@@ -82,6 +82,23 @@ or choose **Restore defaults**. Defaults are:
 | Up / down on transcript | K / M |
 | Discard / restore | Backspace |
 
+## Find Takes (3.3)
+
+[Find Takes](.agents/skills/studio/3-Post%20Production/3-Find%20Takes/SKILL.md)
+matches approved scripts from 1.1 against all corresponding 3.2 transcript JSON
+files. Run it from the repository:
+
+```sh
+.venv-dashboard/bin/python ".agents/skills/studio/3-Post Production/3-Find Takes/scripts/find_takes.py" "/path/to/OneDrive/project"
+```
+
+It writes `3-Post Production/3-Find Takes/<Script>__Takes.json` per approved
+script, combining multiple recordings and using Line's word-range link format.
+Generation completes when every approved script has a valid take file;
+matching accuracy is measured separately against the stage's frozen benchmark.
+Current outputs are reused, and stale outputs are preserved unless explicitly
+replaced with `--overwrite`. The Studio agent manages the stage log and `DONE`.
+
 ## Project state
 
 All project files created by the dashboard are under the project's OneDrive
