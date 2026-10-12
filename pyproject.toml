@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "studio-dashboard"
+version = "0.1.0"
+description = "Native Studio dashboard and Line sentence review tool"
+requires-python = ">=3.9"
+dependencies = ["PySide6>=6.7,<7"]
+
+[project.scripts]
+studio-dashboard = "studio.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["studio*"]
+
+[tool.setuptools.data-files]
+"share/studio-dashboard" = ["scripts/append-log.py"]
