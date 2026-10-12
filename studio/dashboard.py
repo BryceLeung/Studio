@@ -71,6 +71,10 @@ class Dashboard(QMainWindow):
             item.triggered.connect(lambda checked=False, p=path: self.open_project(p))
         recent.setEnabled(bool(projects))
         project_menu.addAction(self.close_action)
+        line_menu = self.menuBar().addMenu("Line!")
+        self.keyboard_action = line_menu.addAction("Keyboard mappings…")
+        self.keyboard_action.setEnabled(False)
+        self.keyboard_action.triggered.connect(self.configure_line_shortcuts)
         self.statusBar().showMessage("Choose a Studio project.")
 
         self.guard = QTimer(self)
@@ -133,6 +137,12 @@ class Dashboard(QMainWindow):
             self.widgets[name] = widget
             self.stack.addWidget(widget)
         self.stack.setCurrentWidget(self.widgets[name])
+        self.keyboard_action.setEnabled(name == "line")
+
+    def configure_line_shortcuts(self) -> None:
+        widget = self.widgets.get("line")
+        if widget is not None:
+            widget._run_ui(widget.configure_shortcuts)
 
     def confirm_tools(self) -> bool:
         for widget in self.widgets.values():
@@ -170,6 +180,7 @@ class Dashboard(QMainWindow):
         self.lock = None
         self.stack.setCurrentIndex(0)
         self.tool_picker.setEnabled(False)
+        self.keyboard_action.setEnabled(False)
         self.close_action.setEnabled(False)
         self.project_label.setText("No project open")
         self.setWindowTitle("Studio")

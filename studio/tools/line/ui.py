@@ -10,7 +10,7 @@ from PySide6.QtCore import QEvent, Qt, QTimer
 from PySide6.QtGui import QBrush, QColor, QIcon, QKeySequence, QPixmap, QShortcut
 from PySide6.QtWidgets import (
     QAbstractItemView,
-    QComboBox,
+    QDialog,
     QFileDialog,
     QHBoxLayout,
     QHeaderView,
@@ -31,10 +31,11 @@ from PySide6.QtWidgets import (
 from studio.actions import ActionLogError, invoke
 from . import actions as _registered_actions  # noqa: F401
 from .mapping import active_source, coverage, new_state, review_status
+from .shortcuts import KeyboardMappingsDialog, load_mappings, save_mappings
 
 
-_COLORS = {"exact": "#c8ecd5", "good": "#fff0b3", "flub": "#f7cece"}
-_INK = {"exact": "#21643a", "good": "#715000", "flub": "#8b2525"}
+_COLORS = {"exact": "#c8ecd5", "partial": "#fff0b3", "flub": "#f7cece"}
+_INK = {"exact": "#21643a", "partial": "#715000", "flub": "#8b2525"}
 
 
 def _status_icon(status: str) -> QIcon:
@@ -96,6 +97,8 @@ class LineWidget(QWidget):
         self._review_key: Any = None
         self._panels: dict[str, dict[str, Any]] = {}
         self._shortcuts: list[QShortcut] = []
+        self._review_shortcuts: dict[str, QShortcut] = {}
+        self.keyboard_mappings = load_mappings()
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 12, 16, 12)
@@ -131,19 +134,9 @@ class LineWidget(QWidget):
         controls = QHBoxLayout()
         self.pair_label = QLabel("Select one sentence in each panel.")
         controls.addWidget(self.pair_label, 1)
-        self.classification = QComboBox()
-        for status in ("exact", "good", "flub"):
-            self.classification.addItem(_status_icon(status), status.title(), status)
-        self.classification.setToolTip("Classification of the selected reading.")
-        controls.addWidget(self.classification)
         self.link_button = self._button("Link", self.link_selected)
-        self.link_button.setToolTip("Link the selected sentences (⌘/Ctrl+L).")
-        self.unlink_button = self._button("Unlink", lambda: self._dispatch("line.unlink"))
-        self.discard_button = self._button("Discard", lambda: self._dispatch("line.discard"))
-        self.restore_button = self._button("Restore", lambda: self._dispatch("line.restore"))
-        self.discard_button.setToolTip("Exclude the selected transcript sentence from matching.")
-        self.restore_button.setToolTip("Return a discarded transcript sentence to review.")
-        for button in (self.link_button, self.unlink_button, self.discard_button, self.restore_button):
+        self.discard_button = self._button("Discard", self.discard_selected)
+        for button in (self.link_button, self.discard_button):
             controls.addWidget(button)
         layout.addLayout(controls)
 
@@ -165,8 +158,8 @@ class LineWidget(QWidget):
         layout.addWidget(self.review_progress)
 
         self._shortcut(QKeySequence.StandardKey.Save, self.save_mapping)
-        self._shortcut(QKeySequence("Ctrl+L"), self.link_selected)
         self._shortcut(QKeySequence("Ctrl+G"), lambda: self.jump(self._active_panel))
+        self._apply_review_shortcuts()
         self._refresh()
 
     def _button(self, text: str, callback: Any) -> QPushButton:
@@ -187,6 +180,41 @@ class LineWidget(QWidget):
         shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
         shortcut.activated.connect(lambda: self._run_ui(callback))
         self._shortcuts.append(shortcut)
+
+    def _apply_review_shortcuts(self) -> None:
+        for shortcut in self._review_shortcuts.values():
+            shortcut.setEnabled(False)
+            shortcut.deleteLater()
+        self._review_shortcuts.clear()
+        callbacks = {
+            "script_up": lambda: self.navigate("script", -1),
+            "script_down": lambda: self.navigate("script", 1),
+            "link": self.link_selected,
+            "transcript_up": lambda: self.navigate("transcript", -1),
+            "transcript_down": lambda: self.navigate("transcript", 1),
+            "discard": self.discard_selected,
+        }
+        for name, callback in callbacks.items():
+            key = self.keyboard_mappings[name]
+            if not key:
+                continue
+            shortcut = QShortcut(QKeySequence(key), self)
+            shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+            shortcut.setAutoRepeat(name not in ("link", "discard"))
+            shortcut.activated.connect(lambda callback=callback: self._run_ui(callback))
+            self._review_shortcuts[name] = shortcut
+        for name, widgets in self._panels.items():
+            for direction, control in (("up", "previous"), ("down", "next")):
+                key = self.keyboard_mappings[f"{name}_{direction}"]
+                widgets[control].setToolTip(f"{direction.title()} on {name}" + (f" ({key})" if key else ""))
+
+    def configure_shortcuts(self) -> None:
+        dialog = KeyboardMappingsDialog(self.keyboard_mappings, self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            save_mappings(dialog.mappings)
+            self.keyboard_mappings = dialog.mappings
+            self._apply_review_shortcuts()
+            self._refresh()
 
     def _make_panel(self, panel: str, title: str) -> QWidget:
         widget = QWidget()
@@ -389,9 +417,27 @@ class LineWidget(QWidget):
         return success
 
     def link_selected(self) -> None:
-        if self._selected_row("script") is None or self._selected_row("transcript") is None:
+        transcript = self._selected_row("transcript")
+        if transcript is None:
             return
-        self._dispatch("line.link", classification=self.classification.currentData())
+        linked = any(link["transcript_id"] == transcript["id"] for link in self.state["links"])
+        if linked:
+            self._dispatch("line.unlink")
+        elif self._selected_row("script") is not None and transcript["id"] not in self.state["discarded"]:
+            success, _result = self._dispatch("line.link")
+            if success:
+                self.navigate("transcript", 1)
+
+    def discard_selected(self) -> None:
+        transcript = self._selected_row("transcript")
+        if transcript is None:
+            return
+        if transcript["id"] in self.state["discarded"]:
+            self._dispatch("line.restore")
+        else:
+            success, _result = self._dispatch("line.discard")
+            if success:
+                self.navigate("transcript", 1)
 
     def _reading_clicked(self, item: QListWidgetItem) -> None:
         index = item.data(Qt.ItemDataRole.UserRole)
@@ -461,7 +507,7 @@ class LineWidget(QWidget):
         if script_row is None:
             self.readings_label.setText("Readings — select a script sentence")
             return
-        self.readings_label.setText(f"Readings for script line {script_row['line']} — exact / good / flub")
+        self.readings_label.setText(f"Readings for script line {script_row['line']} — exact / partial / flub")
         transcript = active_source(self.state, "transcript")
         rows = {row["id"]: (index, row) for index, row in enumerate(transcript["rows"])} if transcript else {}
         selected_item = None
@@ -543,27 +589,26 @@ class LineWidget(QWidget):
                 link for link in self.state["links"]
                 if transcript_row and link["transcript_id"] == transcript_row["id"]
             ), None)
-            selected_link = next((
-                link for link in self.state["links"]
-                if script_row and transcript_row and link["script_id"] == script_row["id"]
-                and link["transcript_id"] == transcript_row["id"]
-            ), None)
             discarded = transcript_row is not None and transcript_row["id"] in self.state["discarded"]
             can_link = (
                 script_row is not None and transcript_row is not None and not discarded
-                and (transcript_link is None or transcript_link["script_id"] == script_row["id"])
             )
-            self.link_button.setEnabled(can_link)
-            self.classification.setEnabled(can_link)
-            self.unlink_button.setEnabled(transcript_link is not None)
+            self.link_button.setText("Unlink" if transcript_link else "Link")
+            self.link_button.setEnabled(transcript_link is not None or can_link)
+            link_key = self.keyboard_mappings["link"]
             self.link_button.setToolTip(
-                "Unlink this transcript reading before assigning it to another script sentence."
-                if transcript_link and not selected_link else "Link the selected sentences (⌘/Ctrl+L)."
+                ("Remove this transcript sentence's existing link." if transcript_link
+                 else "Link with automatic quality, then advance the transcript.")
+                + (f" ({link_key})" if link_key else "")
             )
-            self.discard_button.setEnabled(transcript_row is not None and not discarded)
-            self.restore_button.setEnabled(discarded)
-            if selected_link:
-                self.classification.setCurrentIndex(self.classification.findData(selected_link["classification"]))
+            self.discard_button.setText("Restore" if discarded else "Discard")
+            self.discard_button.setEnabled(transcript_row is not None)
+            discard_key = self.keyboard_mappings["discard"]
+            self.discard_button.setToolTip(
+                ("Return this transcript sentence to review." if discarded
+                 else "Discard this transcript sentence, then advance.")
+                + (f" ({discard_key})" if discard_key else "")
+            )
             self.pair_label.setText(
                 f"Selected pair: S{script_row['line']} → T{transcript_row['line']}"
                 if script_row and transcript_row else "Select one sentence in each panel."
@@ -577,14 +622,14 @@ class LineWidget(QWidget):
             )
             self.save_button.setEnabled(bool(active_source(self.state, "script") and active_source(self.state, "transcript")))
             exact = sum(status == "exact" for status in script_status.values())
-            good = sum(status == "good" for status in script_status.values())
+            partial = sum(status == "partial" for status in script_status.values())
             flub = sum(status == "flub" for status in script_status.values())
             missing = sum(status == "missing" for status in script_status.values())
             linked = sum(status == "linked" for status in transcript_status.values())
             rejected = sum(status == "discarded" for status in transcript_status.values())
             unreviewed = sum(status == "unreviewed" for status in transcript_status.values())
             self.coverage_label.setText(
-                f"Script coverage (best reading): {exact} exact · {good} good · {flub} flub · {missing} missing"
+                f"Script coverage (best reading): {exact} exact · {partial} partial · {flub} flub · {missing} missing"
                 f"\nTranscript review: {linked} linked · {rejected} discarded · {unreviewed} unreviewed"
             )
             total = len(transcript_status)

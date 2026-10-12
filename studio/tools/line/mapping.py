@@ -16,7 +16,7 @@ from .sources import SEGMENTATION_VERSION, load_script, load_transcript, project
 
 SCHEMA = "studio.line.mapping"
 SCHEMA_VERSION = 1
-CLASSIFICATIONS = ("exact", "good", "flub")
+CLASSIFICATIONS = ("exact", "partial", "flub")
 PANELS = ("script", "transcript")
 
 
@@ -39,10 +39,10 @@ def coverage(state: dict) -> dict[str, str]:
     if not script:
         return {}
     statuses = {row["id"]: "missing" for row in script["rows"]}
-    rank = {"missing": 0, "flub": 1, "good": 2, "exact": 3}
+    rank = {"missing": 0, "flub": 1, "partial": 2, "exact": 3}
     for link in state["links"]:
         script_id = link["script_id"]
-        classification = link["classification"]
+        classification = "partial" if link["classification"] == "good" else link["classification"]
         if script_id in statuses and rank[classification] > rank[statuses[script_id]]:
             statuses[script_id] = classification
     return statuses
@@ -174,8 +174,8 @@ def validate_document(project_root: Any, document: Any, *, verify_inputs: bool =
             raise ValueError("Mapping link sentence IDs must be strings.")
         if link["script_id"] not in script_ids or link["transcript_id"] not in transcript_ids:
             raise ValueError("A mapping link refers to an unknown sentence.")
-        if not isinstance(link.get("classification"), str) or link["classification"] not in CLASSIFICATIONS:
-            raise ValueError("Link classification must be exact, good, or flub.")
+        if not isinstance(link.get("classification"), str) or link["classification"] not in (*CLASSIFICATIONS, "good"):
+            raise ValueError("Link classification must be exact, partial, or flub (legacy good is accepted).")
         if link["transcript_id"] in linked:
             raise ValueError("Each transcript sentence can link to only one script sentence.")
         if link["transcript_id"] in discarded:
@@ -259,4 +259,7 @@ def read_mapping(project_root: Any, path: Any) -> dict:
         "mapping_name": document["mapping_name"],
         "selected": {"script": 0, "transcript": 0},
     })
+    for link in state["links"]:
+        if link["classification"] == "good":
+            link["classification"] = "partial"
     return state

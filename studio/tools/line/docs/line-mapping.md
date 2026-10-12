@@ -120,14 +120,17 @@ transcript’s stem in `2-Production/1-Footage Intake/`. If no unique WAV exists
 
 ## Review behavior
 
-Links contain only a script ID, transcript ID, and `exact`, `good`, or `flub`
-classification. There is no separate link schema or per-link provenance label
+Links contain only a script ID, transcript ID, and `exact`, `partial`, or `flub`
+classification. Legacy `good` values are accepted and load as `partial`.
+The link action infers quality using literal text equality (`exact`), a shorter
+transcript character count (`flub`), or any other equal/longer text (`partial`).
+There is no separate link schema or per-link provenance label
 for human and algorithm results. Algorithms can obtain the same canonical
 source objects through `sources.load_script()` and `sources.load_transcript()`,
 populate links/discarded, and save through `mapping.save_version()`.
 
 Coverage is calculated per script sentence from its best linked reading:
-`exact` outranks `good`, which outranks `flub`; a sentence without a link is
+`exact` outranks `partial`, which outranks `flub`; a sentence without a link is
 `missing`. Each transcript sentence is separately `linked`, `discarded`, or
 `unreviewed`. Loading or saving never marks unseen sentences reviewed.
 
@@ -154,7 +157,7 @@ checking to the desktop interface, command line, and agent callers.
 | `line.select` | `panel`, zero-based `index` or `null` |
 | `line.navigate` | `panel`, integer `delta` |
 | `line.jump` | `panel`, one-based `line` |
-| `line.link` | `classification` |
+| `line.link` | None; quality is inferred from selected sentence texts |
 | `line.unlink`, `line.discard`, `line.restore` | None; selected transcript sentence |
 | `line.save` | `name` |
 
