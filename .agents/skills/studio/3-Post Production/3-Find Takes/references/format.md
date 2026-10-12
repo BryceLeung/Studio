@@ -23,6 +23,12 @@ Each `recordings` item contains:
   full-sentence RapidFuzz score (0–100) used for classification. Neither score
   is a probability. `partial_prefix` identifies an abandoned
   literal prefix used to hold the script cursor.
+- `boundary_analysis` records the searched windows,
+  selected regroupings, score gains, and retained-alternative margins. New take
+  ranges have `boundary_proposal: true` in `match_scores`, with a recalculated
+  `quality_score`; they do not inherit the old span's token-distance diagnostic.
+  Top-level `algorithm.boundary_refinement` fingerprints this pass and records
+  its settings. See the skill's boundary trial section for the scoring rules.
 
 One ordinary link looks like:
 

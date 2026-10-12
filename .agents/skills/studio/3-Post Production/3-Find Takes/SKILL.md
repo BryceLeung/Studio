@@ -62,6 +62,12 @@ source adapters and quality classifier. It does not require PySide6 or audio dep
 supports an isolated trial; such a run does not complete the OneDrive stage.
 The generator never reads benchmark mappings.
 
+The base algorithm applies the scored transcript regroupings described below
+after the initial alignment, keeps script groups fixed, and records the boundary
+settings, code fingerprint, and per-recording diagnostics in the take file.
+There is no boundary-refinement switch. Earlier alignment-only files are stale
+under reuse validation and are preserved unless explicitly replaced.
+
 The initial algorithm advances through transcript words, comparing variable
 spans to script groupings near a script cursor. It can revisit recent script
 groups, search for a strong distant restart, and emit spans across or inside
@@ -91,6 +97,9 @@ Line review of C01 and C02. The previous single-recording v001 review remains
 preserved. Both Line schema v2 and multi-recording schema v3 are supported.
 Love Compounds Too has no human-reviewed reference and is excluded. The manifest records fingerprints and the reviewed transcript
 inventory; the runner rejects unreviewed cases or extra unreviewed transcripts.
+The optional `reviews` inventory lists preserved versions and the transcripts
+reviewed in each version. `--all-versions` evaluates these separately rather
+than treating an archived single-recording review as covering later recordings.
 Review JSON fingerprints normalize checkout line endings to LF; script and
 transcript source fingerprints continue to verify exact bytes.
 These project copies are explicitly requested fixtures; general project data
@@ -109,6 +118,52 @@ first comparison report is preserved at `reports/initial/What Is Freedom
 For.json` and `What Is Freedom For.md`. Preserve those measurements when tuning;
 use fresh external destinations for new predictions and reports. Moving the
 fixtures changes paths and fingerprints, not the initial accuracy measurements.
+
+### Boundary proposal trial
+
+Add `--all-versions --boundary-proposals` to compare the initial matcher with
+separate regrouping previews against both checked-in review versions:
+
+```text
+python "<workflow-root>/.agents/skills/studio/3-Post Production/3-Find Takes/scripts/benchmark.py" --all-versions --boundary-proposals --output-dir <new-directory>/predictions --report <new-directory>/report.json
+```
+
+The trial writes `baseline/` and `preview/` predictions plus `.proposals.json`
+diagnostics. It finishes all prediction and boundary searches before opening
+human reference mappings. This comparison retains the earlier alignment pass as
+its baseline; normal generation and ordinary benchmark runs use the complete
+algorithm, including boundary refinement.
+Previews use the normal Find Takes JSON structure; the Markdown report includes
+the proposed readings.
+
+`studio/tools/line/boundaries.py` searches one to three adjacent transcript
+groups (up to 80 words) at individual word gaps, keeping approved script groups
+fixed. Paths can skip chatter, merge fragments, split a restart, or move a cut
+between readings. Repeated readings are allowed; normalized Exact links are
+anchors. The search keeps three alternatives per position/script/count state
+and emits up to four readings per window, so it is a bounded search rather than
+an exhaustive global optimum.
+
+The window text score is the sum of each reading's full normalized RapidFuzz
+score times its normalized word count, capped at its script group's normalized
+word count, divided by all normalized words in the window. Unmatched words earn
+zero credit. Capping prevents extra chatter from increasing a reading's weight.
+Literal abandoned prefixes of at least three words are also candidates when an
+original boundary or following restart supports them; quality labels still use
+the shared classifier.
+
+Require at least five points of text improvement and five points after evidence
+and costs. An existing reading's newly discarded edges must independently earn
+five text points, so a strong neighboring repair cannot carry a weak crop along.
+Eligible paths receive boundary evidence: up to two points per one-second pause,
+one for sentence-ending punctuation, and half a point for an original transcript
+cut. Subtract a quarter point per changed word gap. Evidence is measured relative
+to the current path. Select non-overlapping windows by total added credit.
+
+Reports include raw and adjusted gains, before/after readings, and the next
+retained alternative's score margin. These margins are search diagnostics, not
+confidence probabilities. Reference versions can conflict; report each result
+without changing frozen mappings to manufacture agreement.
 
 ## Reruns, logs, and completion
 

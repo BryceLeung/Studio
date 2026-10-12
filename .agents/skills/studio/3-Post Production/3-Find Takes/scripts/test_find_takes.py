@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
+from unittest.mock import patch
 
 import find_takes
 
@@ -75,6 +76,27 @@ class GenerationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "Preserved stale/invalid"):
                 find_takes.generate(root, output)
             self.assertEqual(target.read_bytes(), edited)
+
+    def test_base_algorithm_refines_boundaries_and_preserves_legacy_outputs(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            self.fixture(root)
+            output = root / find_takes.OUTPUT
+            with patch.object(find_takes.boundaries, "propose", wraps=find_takes.boundaries.propose) as propose:
+                result = find_takes.generate(root, output)
+                self.assertEqual(propose.call_count, 2)
+            self.assertEqual(result["transcripts"], 2)
+            target = output / "A__Takes.json"
+            document = json.loads(target.read_text())
+            self.assertEqual(document["algorithm"]["boundary_refinement"], find_takes.boundary_provenance())
+            self.assertTrue(all(recording["boundary_analysis"]["selected_count"] == 0 for recording in document["recordings"]))
+            self.assertEqual(find_takes.generate(root, output)["outputs"][0]["status"], "reused")
+            document["algorithm"] = find_takes.alignment_provenance()
+            target.write_text(json.dumps(document), encoding="utf-8")
+            original = target.read_bytes()
+            with self.assertRaisesRegex(ValueError, "Preserved stale/invalid"):
+                find_takes.generate(root, output)
+            self.assertEqual(target.read_bytes(), original)
 
     def test_missing_transcript_is_not_generation_success(self):
         with TemporaryDirectory() as directory:

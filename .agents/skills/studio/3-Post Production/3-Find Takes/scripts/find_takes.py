@@ -24,7 +24,7 @@ def workflow_root() -> Path:
 
 ROOT = workflow_root()
 sys.path.insert(0, str(ROOT))
-from studio.tools.line import mapping, sources, quality  # noqa: E402
+from studio.tools.line import boundaries, mapping, sources, quality  # noqa: E402
 from studio.tools.line.actions import infer_classification  # noqa: E402
 
 SCHEMA = "studio.find-takes"
@@ -44,7 +44,12 @@ def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def provenance() -> dict:
+def boundary_provenance() -> dict:
+    return {"name": "local-transcript-regrouping", "version": 1,
+            "settings": dict(boundaries.SETTINGS), "code_sha256": sha256(Path(boundaries.__file__))}
+
+
+def alignment_provenance() -> dict:
     return {
         "name": "cursor-word-alignment", "version": 3, "settings": dict(SETTINGS),
         "quality": quality.provenance(),
@@ -57,6 +62,13 @@ def provenance() -> dict:
             "studio/tools/line/combined.py": sha256(ROOT / "studio/tools/line/combined.py"),
         },
     }
+
+
+def provenance() -> dict:
+    algorithm = alignment_provenance()
+    algorithm["version"] = 4
+    algorithm["boundary_refinement"] = boundary_provenance()
+    return algorithm
 
 
 def normalize(word: str) -> str:
@@ -107,7 +119,7 @@ def best_candidate(script_tokens: list[list[str]], spoken: list[str], start: int
     return best
 
 
-def match_recording(script: dict, transcript: dict, settings: dict | None = None) -> dict:
+def align_recording(script: dict, transcript: dict, settings: dict | None = None) -> dict:
     settings = dict(SETTINGS if settings is None else settings)
     script_groups = mapping.initial_groupings(script)
     script_tokens = [[normalize(word["text"]) for word in script["words"][g["word_start"]:g["word_end"] + 1]]
@@ -153,9 +165,17 @@ def match_recording(script: dict, transcript: dict, settings: dict | None = None
     points = sorted(boundaries)
     groups = [{"word_start": start, "word_end": end - 1} for start, end in zip(points, points[1:])]
     linked = {mapping.range_key(link["transcript"]) for link in links}
-    return {"transcript": transcript, "groupings": groups, "links": links,
-            "discarded": [dict(group) for group in groups if mapping.range_key(group) not in linked],
-            "match_scores": scores}
+    recording = {"transcript": transcript, "groupings": groups, "links": links,
+                 "discarded": [dict(group) for group in groups if mapping.range_key(group) not in linked],
+                 "match_scores": scores}
+    return recording
+
+
+def match_recording(script: dict, transcript: dict, settings: dict | None = None) -> dict:
+    recording = align_recording(script, transcript, settings)
+    analysis, recording = boundaries.propose(script, recording)
+    recording["boundary_analysis"] = analysis
+    return recording
 
 
 def discover(project: Path) -> list[tuple[Path, list[Path]]]:

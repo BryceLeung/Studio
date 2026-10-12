@@ -12,6 +12,7 @@ import re
 import sys
 
 import find_takes
+from studio.tools.line import boundaries
 
 
 def rate(numerator: int, denominator: int) -> float:
@@ -184,15 +185,54 @@ def summary(report: dict) -> str:
     lines = ["# Find Takes benchmark", ""]
     quality = report["cases"][0]["algorithm"]["quality"]
     lines.extend((f"Exact requires identical normalized text. Other readings use full-sentence `{quality['method']}`: Partial ≥{quality['partial_threshold']:g}, Flub below Partial. Normalization: {quality['normalization']}.", ""))
+    if report.get("boundary_trial"):
+        lines.extend(("| Review / recording | Correct take ranges before → preview | Correct word assignments before → preview |",
+                      "| --- | --- | --- |"))
+        for case in report["cases"]:
+            preview = case["boundary_preview"]
+            before, after = case["exact_take_ranges"], preview["exact_take_ranges"]
+            lines.append(f"| {Path(case['reference']).name} / {Path(case['transcript']['path']).name} "
+                         f"| {before['correct']}/{before['expected']} → {after['correct']}/{after['expected']} "
+                         f"| {case['word_assignments']['correct']}/{case['word_assignments']['total']} → "
+                         f"{preview['word_assignments']['correct']}/{preview['word_assignments']['total']} |")
+        lines.append("")
+    for conflict in report.get("reference_conflicts", []):
+        lines.extend((f"**Reference conflict:** {conflict['transcript']} has different script/transcript ranges in "
+                      f"{conflict['earlier']} ({conflict['earlier_only_ranges']} unique ranges) and "
+                      f"{conflict['later']} ({conflict['later_only_ranges']} unique ranges). "
+                      "A single prediction cannot match both versions completely.", ""))
     for case in report["cases"]:
         lines.extend((f"## {case['case']} — {Path(case['transcript']['path']).name}", ""))
         lines.extend(comparison_lines(case))
+        if "boundary_preview" in case:
+            preview = case["boundary_preview"]
+            before, after = case["exact_take_ranges"], preview["exact_take_ranges"]
+            lines.extend(("", "### Boundary proposal preview", "",
+                          f"Correct take ranges: {before['correct']}/{before['expected']} → {after['correct']}/{after['expected']}. "
+                          f"Correct word assignments: {case['word_assignments']['correct']}/{case['word_assignments']['total']} → "
+                          f"{preview['word_assignments']['correct']}/{preview['word_assignments']['total']}.", ""))
+            for proposal in case["boundary_proposals"]:
+                window = proposal["window"]
+                lines.extend((f"- Words {window['word_start']}–{window['word_end']}: text score "
+                              f"{proposal['before_score']:.2f} → {proposal['after_score']:.2f}; "
+                              f"adjusted gain {proposal['gain']:.2f}; runner-up margin {proposal['runner_up_margin']:.2f}.",))
+                for label in ("before", "after"):
+                    readings = "; ".join(f"{item['transcript']['word_start']}–{item['transcript']['word_end']}: "
+                                         f"{item['transcript_text']} ({item['quality_score']:.2f})"
+                                         for item in proposal[label]) or "No linked reading"
+                    lines.append(f"  - {label.title()}: {readings}")
+            lines.extend(("", "Preview comparison:", ""))
+            lines.extend(comparison_lines(preview))
         lines.append("")
+    if report.get("boundary_trial"):
+        lines.extend(("Boundary previews are separate proposed outputs. Script groups and source words/times are unchanged. "
+                      "At least five points of text improvement are required; pause, punctuation, and original cuts rank eligible paths. "
+                      "Reference versions are scored independently and can disagree with each other.", ""))
     lines.extend(("Scores are text similarity measures, not probabilities. Reference labels were saved under the previous classification rules; disagreement is not an independent quality-accuracy measurement. The first comparison report remains preserved under reports/initial/.", ""))
     return "\n".join(lines)
 
 
-def load_cases(fixture: Path, name: str | None = None) -> tuple[dict, list[dict]]:
+def load_cases(fixture: Path, name: str | None = None, *, all_versions: bool = False) -> tuple[dict, list[dict]]:
     manifest = json.loads((fixture / "manifest.json").read_text(encoding="utf-8"))
     if manifest.get("schema") != "studio.find-takes.benchmark" or manifest.get("schema_version") != 2:
         raise ValueError("Unsupported benchmark manifest.")
@@ -217,20 +257,34 @@ def load_cases(fixture: Path, name: str | None = None) -> tuple[dict, list[dict]
             raise ValueError("Only human-reviewed Takes files belong in benchmarks.")
         if case["transcripts"] != case["reviewed_transcripts"]:
             raise ValueError("Every benchmark transcript must have a human-reviewed mapping.")
+    if all_versions:
+        expanded = []
+        for case in cases:
+            versions = set()
+            for review in case.get("reviews", [case]):
+                takes, reviewed = review["takes"], review["reviewed_transcripts"]
+                if (not re.fullmatch(re.escape(case["name"]) + r"__Takes\.v[0-9]+\.json", takes)
+                        or takes in versions or not reviewed or len(set(reviewed)) != len(reviewed)
+                        or not set(reviewed) <= set(case["transcripts"])):
+                    raise ValueError("Invalid human-reviewed version inventory.")
+                versions.add(takes)
+                expanded.append({**case, "takes": takes, "transcripts": reviewed, "reviewed_transcripts": reviewed})
+        cases = expanded
     return manifest, cases
 
 
-def generate_case(fixture: Path, case: dict, output_dir: Path) -> dict:
+def generate_case(fixture: Path, case: dict, output_dir: Path, *, alignment_only: bool = False) -> dict:
     project = (fixture / case["name"]).resolve(strict=True)
     script = find_takes.sources.load_script(project, project / case["script"])
     transcripts = [find_takes.sources.load_transcript(project, project / name) for name in case["transcripts"]]
-    algorithm = find_takes.provenance()
+    algorithm = find_takes.alignment_provenance() if alignment_only else find_takes.provenance()
+    matcher = find_takes.align_recording if alignment_only else find_takes.match_recording
     document = {
         "schema": find_takes.SCHEMA, "schema_version": find_takes.VERSION,
         "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "algorithm": algorithm, "script": script,
         "script_groupings": find_takes.mapping.initial_groupings(script),
-        "recordings": [find_takes.match_recording(script, transcript) for transcript in transcripts],
+        "recordings": [matcher(script, transcript) for transcript in transcripts],
     }
     find_takes.validate_takes(project, document, script, transcripts, algorithm)
     target = output_dir / case["name"] / case["takes"]
@@ -239,15 +293,43 @@ def generate_case(fixture: Path, case: dict, output_dir: Path) -> dict:
             "takes": sum(len(recording["links"]) for recording in document["recordings"])}
 
 
-def run(fixture: Path, output_dir: Path, case_name: str | None = None) -> dict:
+def preview_case(fixture: Path, case: dict, baseline: Path, output_dir: Path) -> dict:
+    project = fixture / case["name"]
+    relative = Path(case["name"]) / case["takes"]
+    document = json.loads((baseline / relative).read_text(encoding="utf-8"))
+    diagnostics = []
+    previews = []
+    for recording in document["recordings"]:
+        analysis, preview = boundaries.propose(document["script"], recording)
+        preview["boundary_analysis"] = analysis
+        diagnostics.append({"transcript": recording["transcript"]["source"]["path"], **analysis})
+        previews.append(preview)
+    document["recordings"] = previews
+    document["algorithm"] = find_takes.provenance()
+    find_takes.validate_takes(project, document, document["script"],
+                              [recording["transcript"] for recording in previews], document["algorithm"])
+    find_takes.write_json(output_dir / relative, document)
+    proposal_path = relative.with_suffix(".proposals.json")
+    find_takes.write_json(output_dir / proposal_path, {"recordings": diagnostics})
+    return {"path": relative.as_posix(), "proposals": proposal_path.as_posix(), "status": "proposed",
+            "takes": sum(len(recording["links"]) for recording in previews)}
+
+
+def run(fixture: Path, output_dir: Path, case_name: str | None = None, *,
+        all_versions: bool = False, boundary_proposals: bool = False) -> dict:
     fixture = fixture.resolve(strict=True)
     output_dir = output_dir.resolve()
     if output_dir == fixture or fixture in output_dir.parents:
         raise ValueError("Predictions must be outside the frozen benchmark directory.")
-    manifest, cases = load_cases(fixture, case_name)
+    manifest, cases = load_cases(fixture, case_name, all_versions=all_versions)
+    baseline_dir = output_dir / "baseline" if boundary_proposals else output_dir
     # Generate every prediction before reading any expected mappings.
-    generated = [generate_case(fixture, case, output_dir) for case in cases]
+    generated = [generate_case(fixture, case, baseline_dir, alignment_only=boundary_proposals) for case in cases]
+    # Boundary search also finishes before any human mappings are opened.
+    previews = [preview_case(fixture, case, baseline_dir, output_dir / "preview") for case in cases] if boundary_proposals else []
     results = []
+    reviewed_versions = {}
+    reference_conflicts = []
     fingerprints = {entry["path"]: entry for entry in manifest["files"]}
     for case in cases:
         project = fixture / case["name"]
@@ -264,12 +346,45 @@ def run(fixture: Path, output_dir: Path, case_name: str | None = None) -> dict:
         reviewed = [reference["sources"]["transcript"]["source"]["path"] for reference in references]
         if reviewed != case["reviewed_transcripts"]:
             raise ValueError("Reviewed transcript inventory differs from the benchmark manifest.")
-        prediction = json.loads((output_dir / case["name"] / case["takes"]).read_text(encoding="utf-8"))
+        relative = Path(case["name"]) / case["takes"]
+        prediction = json.loads((baseline_dir / relative).read_text(encoding="utf-8"))
+        if boundary_proposals:
+            preview = json.loads((output_dir / "preview" / relative).read_text(encoding="utf-8"))
+            diagnostics = json.loads((output_dir / "preview" / relative.with_suffix(".proposals.json")).read_text(encoding="utf-8"))
         for reference in references:
+            transcript_name = reference["sources"]["transcript"]["source"]["path"]
+            key = (case["name"], transcript_name)
+            expected_ranges = {link_key(link) for link in reference["links"]}
+            for previous_name, previous_ranges in reviewed_versions.get(key, []):
+                if previous_ranges != expected_ranges:
+                    reference_conflicts.append({"case": case["name"], "transcript": transcript_name,
+                                                "earlier": previous_name, "later": reference_path.name,
+                                                "earlier_only_ranges": len(previous_ranges - expected_ranges),
+                                                "later_only_ranges": len(expected_ranges - previous_ranges)})
+            reviewed_versions.setdefault(key, []).append((reference_path.name, expected_ranges))
             result = compare_recording(project, reference, reference_path, prediction)
+            if boundary_proposals:
+                result["boundary_preview"] = compare_recording(project, reference, reference_path, preview)
+                analysis = next(item for item in diagnostics["recordings"] if item["transcript"] == result["transcript"]["path"])
+                proposals = deepcopy([item for item in analysis["candidates"] if item["selected"]])
+                for proposal in proposals:
+                    for label in ("before", "after"):
+                        for link in proposal[label]:
+                            link["transcript_text"] = find_takes.mapping.range_text(reference["sources"]["transcript"], link["transcript"])
+                            link["script_text"] = find_takes.mapping.range_text(reference["sources"]["script"], link["script"])
+                result["boundary_proposals"] = proposals
             results.append({"case": case["name"], "status": "compared", **result})
-    return {"generation": {"scripts": len(cases), "transcripts": sum(len(case["transcripts"]) for case in cases),
-                           "outputs": generated}, "cases": results}
+    generation = {"scripts": len({case["name"] for case in cases}),
+                  "transcripts": len({(case["name"], filename) for case in cases for filename in case["transcripts"]}),
+                  "outputs": generated}
+    report = {"generation": generation, "cases": results}
+    if all_versions:
+        generation["reference_versions"] = len(cases)
+        report["reference_conflicts"] = reference_conflicts
+    if boundary_proposals:
+        report["boundary_trial"] = {"settings": boundaries.SETTINGS, "baseline_directory": "baseline",
+                                    "preview_directory": "preview", "outputs": previews}
+    return report
 
 
 def main() -> int:
@@ -278,6 +393,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--fixture", type=Path, default=Path(__file__).resolve().parents[1] / "benchmarks")
     parser.add_argument("--case", help="Run only the named script's benchmark case.")
+    parser.add_argument("--all-versions", action="store_true", help="Compare every inventoried human review version.")
+    parser.add_argument("--boundary-proposals", action="store_true", help="Write and score separate boundary proposal previews.")
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--report", type=Path, required=True)
     args = parser.parse_args()
@@ -286,7 +403,8 @@ def main() -> int:
         report_path = args.report.resolve()
         if report_path == fixture or fixture in report_path.parents:
             raise ValueError("Comparison reports must be outside the frozen benchmark directory.")
-        report = run(args.fixture, args.output_dir, args.case)
+        report = run(args.fixture, args.output_dir, args.case,
+                     all_versions=args.all_versions, boundary_proposals=args.boundary_proposals)
         find_takes.write_json(args.report, report)
         args.report.with_suffix(".md").write_text(summary(report), encoding="utf-8")
         print(summary(report))
