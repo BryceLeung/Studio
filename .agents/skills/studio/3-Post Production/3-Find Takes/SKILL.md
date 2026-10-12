@@ -83,7 +83,9 @@ the span matcher's token-distance scores or candidate thresholds.
 
 ## Benchmark
 
-The `benchmarks/` directory has one flat subdirectory per script. Each case
+The `benchmarks/manifest.json` lists each script case and its fixture-relative
+`directory`. Keep the current nesting: `benchmarks/What Is Freedom For/` contains
+separate `What Is Freedom For/` and `Love Compounds Too/` case folders. Each case
 contains `<Script>.docx`, its `<Script>__C<nn>__lav.json` transcript files, and
 human-reviewed `<Script>__Takes.json` or `<Script>__Takes.vNNN.json` files.
 Source references inside a case's
@@ -92,12 +94,13 @@ adjacent filenames in memory and verifies source bytes and word snapshots.
 It never rewrites the human review. A case contains no audio.
 
 Only human-reviewed mappings and their corresponding script/transcript inputs
-belong in `benchmarks/`. The current case is What Is Freedom For, using the
-user-approved `What Is Freedom For__Takes.json` for C01 and C02, including the
-local rewind correction after "having...". Find Takes schema v1 and Line review
+belong in `benchmarks/`. What Is Freedom For uses the user-approved mapping of
+C01 and C02, including the local rewind correction after "having...". Love
+Compounds Too uses the human-edited v001 review of C01, copied as
+`Love Compounds Too__Takes.json`. Find Takes schema v1 and Line review
 schemas v2/v3 are supported. A generated mapping becomes a reference only after
 the user explicitly approves it; generation alone does not establish approval.
-Love Compounds Too has no human-reviewed reference and is excluded. The manifest records fingerprints and the reviewed transcript
+The manifest records fingerprints and the reviewed transcript
 inventory; the runner rejects unreviewed cases or extra unreviewed transcripts.
 The optional `reviews` inventory lists preserved versions and the transcripts
 reviewed in each version. `--all-versions` evaluates these separately rather
@@ -107,9 +110,17 @@ transcript source fingerprints continue to verify exact bytes.
 These project copies are explicitly requested fixtures; general project data
 belongs in OneDrive.
 
+See [the benchmark guide](benchmarks/README.md) for the folder tree, reference
+inventory, and known imperfect Partial match in Love Compounds Too. The two
+shortened "then another" readings require a human interpretation of repeated
+script lines. Retain the edited mapping as the reference and count the current
+algorithm's disagreement in ordinary metrics. It remains a case for manual
+review; do not tune the algorithm solely to force agreement with this example.
+
 Run `scripts/benchmark.py --output-dir <new-temporary-directory> --report
 <new-report.json>`. Add `--case "<Script>"` to run one case. Predictions use the
-same flat case directories and reference filenames under the output directory.
+script-named directories and reference filenames under the output directory,
+independently of the nested input layout.
 It generates predictions first, then reads the references.
 It writes JSON and Markdown results with exact take-range precision/recall,
 word-assignment agreement, classification changes and scores, and individual
@@ -124,7 +135,8 @@ fixtures changes paths and fingerprints, not the initial accuracy measurements.
 ### Boundary proposal trial
 
 Add `--all-versions --boundary-proposals` to compare the initial matcher with
-separate regrouping previews against every inventoried review (currently one):
+separate regrouping previews against every inventoried review (currently two,
+one per script):
 
 ```text
 python "<workflow-root>/.agents/skills/studio/3-Post Production/3-Find Takes/scripts/benchmark.py" --all-versions --boundary-proposals --output-dir <new-directory>/predictions --report <new-directory>/report.json

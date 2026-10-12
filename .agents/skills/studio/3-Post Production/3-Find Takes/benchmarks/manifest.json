@@ -5,6 +5,7 @@
   "cases": [
     {
       "name": "What Is Freedom For",
+      "directory": "What Is Freedom For/What Is Freedom For",
       "script": "What Is Freedom For.docx",
       "transcripts": [
         "What Is Freedom For__C01__lav.json",
@@ -16,29 +17,58 @@
         "What Is Freedom For__C01__lav.json",
         "What Is Freedom For__C02__lav.json"
       ]
+    },
+    {
+      "name": "Love Compounds Too",
+      "directory": "What Is Freedom For/Love Compounds Too",
+      "script": "Love Compounds Too.docx",
+      "transcripts": [
+        "Love Compounds Too__C01__lav.json"
+      ],
+      "takes": "Love Compounds Too__Takes.json",
+      "takes_role": "human-reviewed",
+      "reviewed_transcripts": [
+        "Love Compounds Too__C01__lav.json"
+      ]
     }
   ],
   "files": [
     {
-      "path": "What Is Freedom For/What Is Freedom For.docx",
+      "path": "What Is Freedom For/What Is Freedom For/What Is Freedom For.docx",
       "sha256": "022cc56d2ff6ebcc90710ec72446fb064301b33907c5ffcec4e0b3df9eb1897f",
       "bytes": 28039
     },
     {
-      "path": "What Is Freedom For/What Is Freedom For__C01__lav.json",
+      "path": "What Is Freedom For/What Is Freedom For/What Is Freedom For__C01__lav.json",
       "sha256": "1d8fc14266be3988664f031ee01af96a141e7476700744c0b879f1b5991d5f17",
       "bytes": 61421
     },
     {
-      "path": "What Is Freedom For/What Is Freedom For__C02__lav.json",
+      "path": "What Is Freedom For/What Is Freedom For/What Is Freedom For__C02__lav.json",
       "sha256": "bd89c1f1320176d20a5d1b2782e795e3a1fa65d0b77f58b3f7c2321e359e017e",
       "bytes": 59720
     },
     {
-      "path": "What Is Freedom For/What Is Freedom For__Takes.json",
+      "path": "What Is Freedom For/What Is Freedom For/What Is Freedom For__Takes.json",
       "hash_mode": "lf",
       "sha256": "5360c2d5391524bea5654c09d8acc149a2e92d18238d07875eee81cac50e921f",
       "bytes": 292065
+    },
+    {
+      "path": "What Is Freedom For/Love Compounds Too/Love Compounds Too.docx",
+      "sha256": "0927dd47ff77f1ac3f39d9d60c678ac250f8ec66cf92925aea4743a91341c0c6",
+      "bytes": 30126
+    },
+    {
+      "path": "What Is Freedom For/Love Compounds Too/Love Compounds Too__C01__lav.json",
+      "sha256": "6731844dbab4cb911856a73093ccbe38b981b09e1aafa32903e8ce382dc56adb",
+      "bytes": 167265
+    },
+    {
+      "path": "What Is Freedom For/Love Compounds Too/Love Compounds Too__Takes.json",
+      "hash_mode": "lf",
+      "sha256": "11bb1f683ed4178de1fa53c32402187739e3321a6b660199090e201967836a9c",
+      "bytes": 381384
     }
   ],
   "original_human_review": {

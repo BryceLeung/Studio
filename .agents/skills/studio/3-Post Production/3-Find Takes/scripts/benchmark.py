@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run flat, script-named benchmark cases and score human-reviewed Takes files."""
+"""Run script-named benchmark cases and score human-reviewed Takes files."""
 from __future__ import annotations
 
 import argparse
@@ -253,6 +253,12 @@ def load_cases(fixture: Path, name: str | None = None, *, all_versions: bool = F
                 or Path(case["name"]).name != case["name"] or "\\" in case["name"] or case["name"] in seen):
             raise ValueError("Each benchmark needs a unique script-named case directory.")
         seen.add(case["name"])
+        directory = case.get("directory", case["name"])
+        if (not isinstance(directory, str) or not directory or "\\" in directory
+                or Path(directory).is_absolute() or ".." in Path(directory).parts
+                or Path(directory).name != case["name"]
+                or not (fixture / directory).resolve().is_relative_to(fixture.resolve())):
+            raise ValueError("Benchmark case directories must stay inside the fixture and end with the script name.")
         expected_takes = re.fullmatch(re.escape(case["name"]) + r"__Takes(?:\.v[0-9]+)?\.json", case["takes"])
         if case["script"] != f"{case['name']}.docx" or not expected_takes or not case["transcripts"]:
             raise ValueError("Benchmark filenames must match the case's script name.")
@@ -280,7 +286,7 @@ def load_cases(fixture: Path, name: str | None = None, *, all_versions: bool = F
 
 
 def generate_case(fixture: Path, case: dict, output_dir: Path, *, alignment_only: bool = False) -> dict:
-    project = (fixture / case["name"]).resolve(strict=True)
+    project = (fixture / case.get("directory", case["name"])).resolve(strict=True)
     script = find_takes.sources.load_script(project, project / case["script"])
     transcripts = [find_takes.sources.load_transcript(project, project / name) for name in case["transcripts"]]
     algorithm = find_takes.alignment_provenance() if alignment_only else find_takes.provenance()
@@ -300,7 +306,7 @@ def generate_case(fixture: Path, case: dict, output_dir: Path, *, alignment_only
 
 
 def preview_case(fixture: Path, case: dict, baseline: Path, output_dir: Path) -> dict:
-    project = fixture / case["name"]
+    project = fixture / case.get("directory", case["name"])
     relative = Path(case["name"]) / case["takes"]
     document = json.loads((baseline / relative).read_text(encoding="utf-8"))
     diagnostics = []
@@ -338,9 +344,9 @@ def run(fixture: Path, output_dir: Path, case_name: str | None = None, *,
     reference_conflicts = []
     fingerprints = {entry["path"]: entry for entry in manifest["files"]}
     for case in cases:
-        project = fixture / case["name"]
+        project = fixture / case.get("directory", case["name"])
         for filename in (case["script"], *case["transcripts"], case["takes"]):
-            relative = f"{case['name']}/{filename}"
+            relative = (project.relative_to(fixture) / filename).as_posix()
             entry = fingerprints[relative]
             content = (fixture / relative).read_bytes()
             if entry.get("hash_mode") == "lf":
@@ -369,8 +375,10 @@ def run(fixture: Path, output_dir: Path, case_name: str | None = None, *,
                                                 "later_only_ranges": len(expected_ranges - previous_ranges)})
             reviewed_versions.setdefault(key, []).append((reference_path.name, expected_ranges))
             result = compare_recording(project, reference, reference_path, prediction)
+            result["reference"] = reference_path.relative_to(fixture).as_posix()
             if boundary_proposals:
                 result["boundary_preview"] = compare_recording(project, reference, reference_path, preview)
+                result["boundary_preview"]["reference"] = result["reference"]
                 analysis = next(item for item in diagnostics["recordings"] if item["transcript"] == result["transcript"]["path"])
                 proposals = deepcopy([item for item in analysis["candidates"] if item["selected"]])
                 for proposal in proposals:

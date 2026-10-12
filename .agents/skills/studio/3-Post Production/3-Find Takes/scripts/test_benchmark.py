@@ -1,4 +1,4 @@
-"""Check that the flat benchmark cases remain runnable and honestly scored."""
+"""Check that benchmark cases remain runnable and honestly scored."""
 import json
 from pathlib import Path
 import shutil
@@ -11,6 +11,7 @@ import benchmark
 
 FIXTURE = Path(__file__).resolve().parents[1] / "benchmarks"
 TAKES = Path("What Is Freedom For/What Is Freedom For__Takes.json")
+REFERENCE = FIXTURE / "What Is Freedom For" / TAKES
 
 
 class BenchmarkTests(unittest.TestCase):
@@ -30,7 +31,7 @@ class BenchmarkTests(unittest.TestCase):
                 return real_references(project, path)
 
             with patch.object(benchmark, "reference_documents", side_effect=references):
-                report = benchmark.run(FIXTURE, output, all_versions=True, boundary_proposals=True)
+                report = benchmark.run(FIXTURE, output, "What Is Freedom For", all_versions=True, boundary_proposals=True)
             self.assertEqual(report["generation"]["reference_versions"], 1)
             self.assertEqual(report["generation"]["transcripts"], 2)
             self.assertEqual(generated_before_references, [TAKES.name])
@@ -67,11 +68,11 @@ class BenchmarkTests(unittest.TestCase):
         self.assertEqual(json.loads(initial_bytes)["exact_take_ranges"]["correct"], 23)
 
     def test_multirecording_review_preserves_reference_and_scores_each_recording(self):
-        reference = FIXTURE / TAKES
+        reference = REFERENCE
         original = reference.read_bytes()
         with TemporaryDirectory() as directory:
             output = Path(directory)
-            report = benchmark.run(FIXTURE, output)
+            report = benchmark.run(FIXTURE, output, "What Is Freedom For")
             self.assertEqual((report["generation"]["scripts"], report["generation"]["transcripts"]), (1, 2))
             self.assertEqual(len(report["cases"]), 2)
             first, second = report["cases"]
@@ -93,9 +94,9 @@ class BenchmarkTests(unittest.TestCase):
         self.assertEqual(reference.read_bytes(), original)
 
     def test_legacy_line_reviews_remain_supported(self):
-        project = FIXTURE / TAKES.parent
-        reference = json.loads((FIXTURE / TAKES).read_text(encoding="utf-8"))
-        expected = benchmark.reference_documents(project, FIXTURE / TAKES)
+        project = REFERENCE.parent
+        reference = json.loads(REFERENCE.read_text(encoding="utf-8"))
+        expected = benchmark.reference_documents(project, REFERENCE)
         multi = {**reference, "schema": benchmark.find_takes.mapping.SCHEMA,
                  "schema_version": 3, "mapping_name": TAKES.stem, "version": 1}
         with TemporaryDirectory() as directory:
@@ -106,18 +107,18 @@ class BenchmarkTests(unittest.TestCase):
                     self.assertEqual(benchmark.reference_documents(project, path), documents)
 
     def test_unsupported_reference_formats_are_rejected(self):
-        reference = json.loads((FIXTURE / TAKES).read_text(encoding="utf-8"))
+        reference = json.loads(REFERENCE.read_text(encoding="utf-8"))
         with TemporaryDirectory() as directory:
             path = Path(directory) / TAKES.name
             for changes in ({"schema": "unknown"}, {"schema_version": 2}, {"schema_version": True}):
                 with self.subTest(changes=changes):
                     path.write_text(json.dumps({**reference, **changes}), encoding="utf-8")
                     with self.assertRaises(ValueError):
-                        benchmark.reference_documents(FIXTURE / TAKES.parent, path)
+                        benchmark.reference_documents(REFERENCE.parent, path)
 
     def test_rebasing_still_checks_exact_source_bytes_and_word_snapshots(self):
-        project = FIXTURE / "What Is Freedom For"
-        reference_path = FIXTURE / TAKES
+        project = REFERENCE.parent
+        reference_path = REFERENCE
         original = reference_path.read_bytes()
         for mode in ("fingerprint", "words"):
             with self.subTest(mode=mode):
@@ -131,6 +132,49 @@ class BenchmarkTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, message):
                     benchmark.compare_recording(project, reference, reference_path, {})
         self.assertEqual(reference_path.read_bytes(), original)
+
+    def test_nested_cases_keep_the_reviewed_imperfect_partial_match_visible(self):
+        frozen = {path: path.read_bytes() for path in FIXTURE.rglob("*") if path.is_file()}
+        real_references = benchmark.reference_documents
+        with TemporaryDirectory() as directory:
+            output = Path(directory)
+
+            def references(project, path):
+                # Both cases must be generated before either expected mapping is read.
+                for name in ("What Is Freedom For", "Love Compounds Too"):
+                    self.assertTrue((output / name / f"{name}__Takes.json").is_file())
+                return real_references(project, path)
+
+            with patch.object(benchmark, "reference_documents", side_effect=references):
+                report = benchmark.run(FIXTURE, output)
+            self.assertEqual((report["generation"]["scripts"], report["generation"]["transcripts"]), (2, 3))
+            self.assertEqual(len(report["cases"]), 3)
+            love = next(case for case in report["cases"] if case["case"] == "Love Compounds Too")
+            self.assertEqual(love["reference"], "What Is Freedom For/Love Compounds Too/Love Compounds Too__Takes.json")
+            self.assertEqual(love["exact_take_ranges"], benchmark.metrics(136, 137, 138))
+            self.assertEqual(love["word_assignments"]["correct"], 1110)
+            self.assertEqual(love["word_assignments"]["total"], 1113)
+            self.assertEqual([link["transcript"] for link in love["missing_or_different"]], [
+                {"word_start": 491, "word_end": 492}, {"word_start": 493, "word_end": 494}])
+            self.assertEqual([link["script"] for link in love["missing_or_different"]], [
+                {"word_start": 428, "word_end": 430}, {"word_start": 431, "word_end": 433}])
+            self.assertTrue(all(link["classification"] == "partial" for link in love["missing_or_different"]))
+            self.assertEqual([error["index"] for error in love["word_errors"]], [491, 492, 494])
+            self.assertEqual(love["classification_changes"], [])
+        self.assertTrue(all(path.read_bytes() == content for path, content in frozen.items()))
+
+    def test_case_directory_cannot_escape_the_fixture(self):
+        for directory in ("../What Is Freedom For", str(FIXTURE.resolve()), "What Is Freedom For/../What Is Freedom For"):
+            with self.subTest(directory=directory), TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                fixture = root / "fixtures"
+                fixture.mkdir()
+                manifest = json.loads((FIXTURE / "manifest.json").read_text(encoding="utf-8"))
+                manifest["cases"][0]["directory"] = directory
+                (fixture / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+                with self.assertRaisesRegex(ValueError, "case directories"):
+                    benchmark.run(fixture, root / "predictions")
+                self.assertFalse((root / "predictions").exists())
 
     def test_single_case_run_and_frozen_directory_protection(self):
         with TemporaryDirectory() as directory:
