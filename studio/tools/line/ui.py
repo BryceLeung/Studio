@@ -32,7 +32,7 @@ from PySide6.QtWidgets import (
 
 from studio.actions import ActionLogError, invoke
 from . import actions as _registered_actions  # noqa: F401
-from .mapping import active_source, coverage, group_rows, is_discarded, linked_group, new_state, range_key, range_text, review_status, word_range
+from .mapping import active_source, coverage, default_mapping_name, group_rows, is_discarded, linked_group, new_state, range_key, range_text, review_status, word_range
 from .shortcuts import KeyboardMappingsDialog, load_mappings, save_mappings
 
 
@@ -614,7 +614,9 @@ class LineWidget(QWidget):
             return False
         name = self.state.get("mapping_name")
         if not name:
-            name, accepted = QInputDialog.getText(self, "Save Line project version", "Project name:", text="review")
+            name, accepted = QInputDialog.getText(
+                self, "Save Line project version", "Project name:", text=default_mapping_name(self.state)
+            )
             if not accepted:
                 return False
         success, _path = self._dispatch("line.save", name=name)

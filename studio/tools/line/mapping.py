@@ -35,6 +35,13 @@ def active_source(state: dict, panel: str) -> dict | None:
     return state.get(panel) or state.get("_closed_sources", {}).get(panel)
 
 
+def default_mapping_name(state: dict) -> str:
+    """Suggest a save name from the loaded script's file name: ``<stem>__Takes``."""
+    script = active_source(state, "script")
+    stem = Path(script["source"]["path"]).stem if script else ""
+    return f"{stem}__Takes" if stem else "review"
+
+
 def word_range(group: dict) -> dict:
     return {"word_start": group["word_start"], "word_end": group["word_end"]}
 

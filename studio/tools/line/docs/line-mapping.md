@@ -1,8 +1,10 @@
 # Line project format
 
 Line! saves each review under its OneDrive project's `studio/line/` directory as
-`<name>.v001.json`, `v002.json`, and so on. Each save creates a new file. A Line
-project contains immutable source snapshots, editable word groupings, links,
+`<name>.v001.json`, `v002.json`, and so on. The save dialog suggests the loaded
+script's file name suffixed with `__Takes` (for example `freedom-c01__Takes`),
+which produces `freedom-c01__Takes.v001.json`. Each save creates a new file. A
+Line project contains immutable source snapshots, editable word groupings, links,
 and discarded transcript groupings. Source files are never edited.
 
 ## Schema
