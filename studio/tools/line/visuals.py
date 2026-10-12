@@ -33,6 +33,8 @@ class OverviewStrip(QWidget):
         super().__init__(parent)
         self.table = table
         self.statuses = []
+        self.rows = None
+        self._heights = {}
         self.setFixedWidth(18)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setToolTip("Click or drag to select a group. Green: Exact; yellow: Partial; red: Flub. "
@@ -52,16 +54,21 @@ class OverviewStrip(QWidget):
 
     def boundaries(self):
         edges = [0]
-        for row in range(self.table.rowCount()):
-            edges.append(edges[-1] + self.table.rowHeight(row))
+        for row in self.document_rows():
+            if not self.table.isRowHidden(row):
+                self._heights[row] = self.table.rowHeight(row)
+            edges.append(edges[-1] + self._heights.get(row, self.table.verticalHeader().defaultSectionSize()))
         return edges
+
+    def document_rows(self):
+        return self.rows if self.rows is not None else list(range(self.table.rowCount()))
 
     def row_at(self, y):
         edges, track = self.boundaries(), self.track()
         if len(edges) < 2 or track.height() <= 0 or edges[-1] <= 0:
             return None
         position = max(0, min(1, (y - track.top()) / track.height())) * edges[-1]
-        return min(len(edges) - 2, bisect_right(edges, position) - 1)
+        return self.document_rows()[min(len(edges) - 2, bisect_right(edges, position) - 1)]
 
     def _activate(self, event):
         row = self.row_at(event.position().y())
@@ -90,15 +97,22 @@ class OverviewStrip(QWidget):
             inset = 4 if status == "discarded" else 1
             painter.fillRect(QRectF(track.left() + inset, top, track.width() - 2 * inset, height),
                              QColor(MARKERS.get(status, MARKERS["unreviewed"])))
-        offset = -self.table.rowViewportPosition(0)
-        visible_top = max(0, offset)
-        visible_end = min(edges[-1], offset + self.table.viewport().height())
+        visible = [(i, row) for i, row in enumerate(self.document_rows()) if not self.table.isRowHidden(row)
+                   and self.table.rowViewportPosition(row) + self.table.rowHeight(row) > 0
+                   and self.table.rowViewportPosition(row) < self.table.viewport().height()]
+        visible_top = visible_end = 0
+        if visible:
+            i, row = visible[0]
+            visible_top = edges[i] + max(0, -self.table.rowViewportPosition(row))
+            i, row = visible[-1]
+            visible_end = min(edges[i + 1], edges[i] + self.table.viewport().height() - self.table.rowViewportPosition(row))
         painter.setPen(QPen(self.palette().text().color(), 1))
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawRect(QRectF(track.left() + .5, track.top() + visible_top * scale,
                                 track.width() - 1, max(2, (visible_end - visible_top) * scale)))
-        row = self.table.currentRow()
-        if 0 <= row < len(edges) - 1:
+        current = self.table.currentRow()
+        row = self.document_rows().index(current) if current in self.document_rows() else -1
+        if self.table.selectedItems() and 0 <= row < len(edges) - 1:
             y = track.top() + (edges[row] + edges[row + 1]) * .5 * scale
             painter.setPen(QPen(QColor("#1671bd"), 2))
             painter.drawLine(QPoint(0, round(y)), QPoint(self.width(), round(y)))
@@ -152,6 +166,8 @@ class ConnectionBands(QWidget):
         for link in sorted(self.links, key=self.emphasized):
             left, right, quality = link
             if left >= self.tables[0].rowCount() or right >= self.tables[1].rowCount():
+                continue
+            if self.tables[0].isRowHidden(left) or self.tables[1].isRowHidden(right):
                 continue
             lt, lb, lo = self.endpoint(0, left)
             rt, rb, ro = self.endpoint(1, right)

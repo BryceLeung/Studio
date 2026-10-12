@@ -12,6 +12,7 @@ import re
 from typing import Any
 
 from .sources import SEGMENTATION_VERSION, load_script, load_transcript, project_path, row_id
+from . import combined
 
 
 SCHEMA = "studio.line.mapping"
@@ -70,6 +71,10 @@ def group_rows(state: dict, panel: str) -> list[dict]:
         if panel == "transcript":
             row.update(start_ms=source["words"][group["word_start"]]["start_ms"],
                        end_ms=source["words"][group["word_end"]]["end_ms"])
+            recording = combined.recording_for(source, group)
+            if recording:
+                row["recording"] = recording[0]
+                row["filename"] = Path(recording[1].get("source", {}).get("path", "Transcript")).name
         rows.append(row)
     return rows
 
@@ -214,6 +219,8 @@ def validate_document(project_root: Any, document: Any, *, verify_inputs: bool =
     root = Path(project_root).resolve(strict=True)
     if not isinstance(document, dict) or document.get("schema") != SCHEMA:
         raise ValueError(f"Expected a {SCHEMA} mapping document.")
+    if type(document.get("schema_version")) is int and document["schema_version"] == 3:
+        return combined.validate(root, document, verify_inputs)
     if document.get("schema_version") != SCHEMA_VERSION or type(document.get("schema_version")) is not int:
         raise ValueError("Unsupported Line! mapping schema version.")
     document = deepcopy(document)
@@ -283,7 +290,7 @@ def _document(state: dict, name: str, version: int) -> dict:
     transcript = active_source(state, "transcript")
     if not script or not transcript:
         raise ValueError("Load a script and transcript before saving a mapping.")
-    return {
+    document = {
         "schema": SCHEMA, "schema_version": SCHEMA_VERSION,
         "mapping_name": name, "version": version,
         "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -292,6 +299,15 @@ def _document(state: dict, name: str, version: int) -> dict:
         "links": deepcopy(state["links"]), "discarded": deepcopy(state["discarded"]),
         "groupings": deepcopy(state["groupings"]),
     }
+    if len(combined.recordings(transcript)) > 1:
+        document.pop("sources")
+        document.pop("groupings")
+        document.pop("links")
+        document.pop("discarded")
+        document.update(schema_version=3, script=deepcopy(script),
+                        script_groupings=deepcopy(state["groupings"]["script"]),
+                        recordings=combined.pack(state))
+    return document
 
 
 def save_version(project_root: Any, state: dict, name: str) -> str:
@@ -339,7 +355,16 @@ def read_mapping(project_root: Any, path: Any) -> dict:
     root = Path(project_root).resolve(strict=True)
     source_path = project_path(root, path)
     document = json.loads(source_path.read_text(encoding="utf-8-sig"))
+    if isinstance(document, dict) and document.get("schema") == "studio.find-takes":
+        if type(document.get("schema_version")) is not int or document["schema_version"] != 1:
+            raise ValueError("Unsupported Find Takes schema version.")
+        document = dict(document, schema=SCHEMA, schema_version=3,
+                        mapping_name=source_path.stem, version=1)
     document = validate_document(root, document)
+    if document["schema_version"] == 3:
+        state = combined.unpack(document)
+        state.update(mapping_path=source_path.relative_to(root).as_posix(), mapping_name=document["mapping_name"])
+        return state
     state = new_state()
     state.update({
         "script": deepcopy(document["sources"]["script"]),

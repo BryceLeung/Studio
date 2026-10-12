@@ -39,8 +39,10 @@ The GUI uses PySide6 and the operating system's desktop window system.
 
 1. Load an approved Word script. Only the content after **Spoken script** becomes
    initial word groupings; the title and filming instructions are excluded.
-2. Load a word-timestamped transcript JSON from `3-Post Production/2-Transcribe/`.
-   Existing WhisperX files are supported; source text and files remain intact.
+2. Use **Add files…** to load one or more word-timestamped transcript JSON files
+   from `3-Post Production/2-Transcribe/`. Existing WhisperX files are supported;
+   source text and files remain intact. Multiple files appear under clickable
+   filename headers. Click a header to collapse or expand that recording.
 3. Sentence boundaries supply the initial word groupings. To fix a boundary,
    right-click one unlinked group and choose **Split group**, then click the gap
    between words (or use Left/Right and Enter; Escape cancels). To combine groups,
@@ -78,6 +80,14 @@ whole document using actual row heights. Click or drag it to select a group.
 Green means Exact, yellow Partial, and red Flub. Script markers show the best
 linked quality; grey marks missing/unreviewed groups, while pale inset markers
 identify discarded passages. The outline shows the visible area.
+
+Coverage and the readings list include all loaded recordings, even collapsed
+ones. Selecting a reading or overview marker expands its file automatically;
+Previous/Next skips collapsed files. Groups cannot be merged across files.
+**Open Line project…** also accepts Find Takes JSON files and opens all their
+recordings together. Saving a review with multiple recordings creates a Line
+schema v3 file, with each recording's original sources, timestamps, and local
+word ranges. Single-recording reviews continue using schema v2.
 
 Use **Line! → Keyboard mappings…** to edit shortcuts. Changes take effect
 immediately and persist across restarts. Clear a field to disable its shortcut,

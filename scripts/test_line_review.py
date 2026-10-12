@@ -17,7 +17,7 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
 from studio.project import Project
-from studio.tools.line import actions, mapping, sources
+from studio.tools.line import actions, combined, mapping, sources
 from studio.tools.line.shortcuts import DEFAULT_MAPPINGS, KeyboardMappingsDialog, load_mappings, save_mappings, validate_mappings
 from studio.tools.line.ui import LineWidget
 
@@ -423,6 +423,126 @@ class ReviewUiTests(QtTests):
         self.app.processEvents()
         table = self.widget._panels["transcript"]["table"]
         self.assertGreater(table.rowHeight(0), 42)
+
+
+class MultiTranscriptUiTests(QtTests):
+    setUp = ReviewUiTests.setUp
+    tearDown = ReviewUiTests.tearDown
+
+    def add_second(self):
+        second = deepcopy(self.widget.state["transcript"])
+        second["source"]["path"] = "Second.json"
+        with patch("studio.tools.line.actions.sources.load_transcript", return_value=second):
+            self.widget._dispatch("line.add_transcripts", paths=["Second.json"])
+        self.app.processEvents()
+
+    def test_headers_collapse_without_losing_coverage_and_readings_expand(self):
+        self.add_second()
+        state = self.widget.state
+        state["selected"] = {"script": 1, "transcript": 3}
+        actions.link(None, state)
+        self.widget._refresh()
+        table = self.widget._panels["transcript"]["table"]
+        self.assertEqual(table.rowCount(), 8)
+        self.assertEqual(self.widget._table_rows["transcript"], {0: 1, 1: 2, 2: 3, 3: 5, 4: 6, 5: 7})
+        self.assertEqual(self.widget.bands.links, [(1, 5, "flub")])
+        before = mapping.coverage(state)
+        self.widget._headers["Second.json"][1].click()
+        self.app.processEvents()
+        self.assertTrue(table.isRowHidden(5))
+        self.assertFalse(table.isRowHidden(4))
+        self.assertTrue(self.widget._headers["Second.json"][1].isVisible())
+        self.assertIsNone(state["selected"]["transcript"])
+        self.assertEqual(mapping.coverage(state), before)
+        self.assertEqual(len(state["links"]), 1)
+        self.assertIn("Second.json", self.widget.readings.item(0).text())
+        self.widget._reading_clicked(self.widget.readings.item(0))
+        self.assertFalse(table.isRowHidden(5))
+        self.assertEqual(state["selected"]["transcript"], 3)
+        self.assertEqual(table.currentRow(), 5)
+
+    def test_overview_and_keyboard_navigation_handle_collapsed_sections(self):
+        self.add_second()
+        self.widget._toggle_recording("Transcript.json")
+        self.widget.navigate("transcript", 1)
+        self.assertEqual(self.widget.state["selected"]["transcript"], 3)
+        self.assertIn("Transcript.json", self.widget._collapsed)
+        strip = self.widget._panels["transcript"]["overview"]
+        self.assertEqual(len(strip.statuses), 6)
+        self.assertGreater(strip.boundaries()[3], 0)
+        self.widget._overview_selected("transcript", 1)
+        self.assertEqual(self.widget.state["selected"]["transcript"], 0)
+        self.assertNotIn("Transcript.json", self.widget._collapsed)
+
+    def test_regrouping_and_row_selection_use_group_indexes_after_headers(self):
+        self.add_second()
+        table = self.widget._panels["transcript"]["table"]
+        table.setCurrentCell(7, 1)
+        self.assertEqual(self.widget.state["selected"]["transcript"], 5)
+        self.widget._begin_split("transcript", 5)
+        self.assertIsNotNone(table.cellWidget(7, 1))
+        self.widget._split_at("transcript", 11)
+        self.assertEqual(len(self.widget.state["groupings"]["transcript"]), 7)
+        self.assertEqual(self.widget._selected_indexes("transcript"), [5, 6])
+        self.assertIn("different transcript files", actions.grouping_edit_error(self.widget.state, "transcript", [2, 3]))
+        self.widget._merge_groups("transcript", [5, 6])
+        self.assertEqual(len(self.widget.state["groupings"]["transcript"]), 6)
+
+    def test_reloading_same_project_resets_collapsed_geometry(self):
+        self.add_second()
+        state = deepcopy(self.widget.state)
+        state["dirty"] = False
+        self.widget._toggle_recording("Second.json")
+        with patch("studio.tools.line.mapping.read_mapping", return_value=state):
+            self.widget.state["dirty"] = False
+            self.widget._dispatch("line.load_mapping", path="review.json")
+        self.assertFalse(self.widget._collapsed)
+        self.assertFalse(self.widget._panels["transcript"]["table"].isRowHidden(5))
+
+
+class MultiTranscriptFileTests(unittest.TestCase):
+    def test_save_reopen_find_takes_import_and_source_verification(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            (root / "script.txt").write_text("Hello world. Second sentence.", encoding="utf-8")
+            for name in ("C01.json", "C02.json"):
+                (root / name).write_text(json.dumps({"words": [
+                    {"text": "Hello", "start_ms": 0, "end_ms": 100},
+                    {"text": "world.", "start_ms": 100, "end_ms": 200},
+                ]}), encoding="utf-8")
+            project = SimpleNamespace(root=root)
+            state = mapping.new_state()
+            actions.load_script(project, state, "script.txt")
+            actions.add_transcripts(project, state, ["C01.json", "C02.json"])
+            state["selected"]["transcript"] = 1
+            actions.link(project, state)
+            path = mapping.save_version(root, state, "Combined")
+            document = json.loads((root / path).read_text())
+            self.assertEqual(document["schema_version"], 3)
+            self.assertEqual(document["recordings"][1]["links"][0]["transcript"], {"word_start": 0, "word_end": 1})
+            reopened = mapping.read_mapping(root, path)
+            for key in ("groupings", "links", "discarded"):
+                self.assertEqual(reopened[key], state[key])
+            self.assertEqual(mapping.group_rows(reopened, "transcript")[1]["start_ms"], 0)
+            # Re-adding a file is harmless, including after closing the panel.
+            actions.close_transcript(project, reopened)
+            actions.add_transcripts(project, reopened, ["C02.json"])
+            self.assertEqual(len(combined.recordings(reopened["transcript"])), 2)
+            takes = dict(document, schema="studio.find-takes", schema_version=1)
+            (root / "Takes.json").write_text(json.dumps(takes), encoding="utf-8")
+            imported = mapping.read_mapping(root, "Takes.json")
+            self.assertEqual(imported["links"], state["links"])
+            (root / "C02.json").write_text("{}", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "input has changed"):
+                mapping.read_mapping(root, path)
+
+    def test_addition_is_atomic_and_cross_file_merge_is_rejected(self):
+        state = review_state()
+        original = deepcopy(state)
+        with patch("studio.tools.line.actions.sources.load_transcript", side_effect=[state["transcript"], ValueError("bad file")]):
+            with self.assertRaisesRegex(ValueError, "bad file"):
+                actions.add_transcripts(SimpleNamespace(root=Path.cwd()), state, ["one.json", "bad.json"])
+        self.assertEqual(state, original)
 
 
 if __name__ == "__main__":

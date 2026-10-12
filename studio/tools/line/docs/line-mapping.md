@@ -9,8 +9,9 @@ and discarded transcript groupings. Source files are never edited.
 
 ## Schema
 
-The current schema is `studio.line.mapping`, version `2`. Each file maps one
-script to one transcript. Every grouping, link, and discard uses an **inclusive,
+The schema is `studio.line.mapping`. Version `2` maps one script to one
+transcript; version `3` supports multiple recordings (described below).
+Every grouping, link, and discard uses an **inclusive,
 zero-based word range**. The same link format applies to ordinary sentence-sized
 readings and manually split or merged readings.
 
@@ -63,6 +64,31 @@ review files are not supported; start a new review from their sources.
 
 ## Initial groupings and review
 
+### Multiple recordings (version 3)
+
+Multi-recording reviews retain the same mapping name, version, creation time,
+and parent fields. Instead of v2's `sources`, `groupings`, `links`, and
+`discarded` fields, they contain:
+
+- `script`: one canonical script source object.
+- `script_groupings`: the editable script word groups shared by all recordings.
+- `recordings`: an ordered list of objects containing `transcript` (canonical
+  source), `groupings`, `links`, and `discarded`.
+
+Every recording uses its own original zero-based transcript word indexes and
+timestamps. Script ranges refer to the shared script. Each recording is
+validated using the v2 rules and source fingerprints; duplicate source paths
+are rejected. Groups cannot cross recording boundaries. The combined UI uses
+temporary concatenated indexes internally, which are converted back to local
+ranges on save. Coverage considers all recordings, regardless of collapsed
+sections. Collapse state is a temporary viewing preference.
+
+Line also opens `studio.find-takes` version 1 files directly, validating each
+recording's sources and mappings. Reviews are saved as new Line files under
+`studio/line/`; Find Takes input files are preserved.
+
+### Grouping operations
+
 Initial groupings come from sentence segmentation. Word scripts include only
 paragraphs after the `Spoken script` heading. Script words retain whitespace
 before each word so a merged group can display original line breaks. Transcript
@@ -108,6 +134,7 @@ common logging and project-lock checks.
 | Action | Additional arguments |
 | --- | --- |
 | `line.load_script`, `line.load_transcript`, `line.load_mapping` | `path` |
+| `line.add_transcripts` | `paths`: nonempty list of project file paths; preserves existing review and skips unchanged duplicates |
 | `line.close_script`, `line.close_transcript`, `line.reset` | None |
 | `line.select` | `panel`, zero-based grouping `index` or `null` |
 | `line.navigate` | `panel`, integer `delta` |

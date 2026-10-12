@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QProgressBar,
     QPushButton,
+    QStyle,
     QSplitter,
     QTableWidget,
     QTableWidgetItem,
@@ -35,6 +36,7 @@ from . import actions as _registered_actions  # noqa: F401
 from .mapping import active_source, coverage, default_mapping_name, group_rows, is_discarded, linked_group, new_state, range_key, range_text, review_status, word_range
 from .shortcuts import KeyboardMappingsDialog, load_mappings, save_mappings
 from .visuals import COLORS, ConnectionBands, OverviewStrip
+from . import combined
 
 
 _COLORS = COLORS
@@ -203,6 +205,9 @@ class LineWidget(QWidget):
         self._split_mode: tuple[str, int] | None = None
         self._shortcuts: list[QShortcut] = []
         self._review_shortcuts: dict[str, QShortcut] = {}
+        self._collapsed: set[str] = set()
+        self._table_rows: dict[str, dict[int, int]] = {"script": {}, "transcript": {}}
+        self._headers: dict[str, tuple[int, QPushButton]] = {}
         self.keyboard_mappings = load_mappings()
 
         layout = QVBoxLayout(self)
@@ -339,7 +344,7 @@ class LineWidget(QWidget):
         source_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         layout.addWidget(source_label)
         controls = QHBoxLayout()
-        load = self._button("Load…", lambda: self.load_source(panel))
+        load = self._button("Add files…" if panel == "transcript" else "Load…", lambda: self.load_source(panel))
         close = self._button("Close", lambda: self._dispatch(f"line.close_{panel}"))
         previous = self._button("Previous", lambda: self.navigate(panel, -1))
         next_button = self._button("Next", lambda: self.navigate(panel, 1))
@@ -357,6 +362,7 @@ class LineWidget(QWidget):
             lambda row, column, old_row, old_column: self._table_selected(panel, row)
         )
         table.itemSelectionChanged.connect(lambda: self._selection_changed(panel))
+        table.cellClicked.connect(lambda row, _column: self._header_clicked(panel, row))
         overview = OverviewStrip(table, widget)
         overview.activated.connect(lambda index: self._overview_selected(panel, index))
         table_layout = QHBoxLayout()
@@ -389,7 +395,45 @@ class LineWidget(QWidget):
 
     def _selected_indexes(self, panel: str) -> list[int]:
         table = self._panels[panel]["table"]
-        return sorted(index.row() for index in table.selectionModel().selectedRows())
+        reverse = {row: index for index, row in self._table_rows[panel].items()}
+        return sorted(reverse[index.row()] for index in table.selectionModel().selectedRows() if index.row() in reverse)
+
+    def _display_row(self, panel: str, index: int) -> int:
+        return self._table_rows[panel][index]
+
+    def _header_clicked(self, panel: str, row: int) -> None:
+        if panel == "transcript":
+            for path, (header, _button) in self._headers.items():
+                if header == row:
+                    self._toggle_recording(path)
+                    break
+
+    def _apply_collapsed(self) -> None:
+        table = self._panels["transcript"]["table"]
+        for path, (_header, button) in self._headers.items():
+            collapsed = path in self._collapsed
+            button.setText(Path(path).name)
+            button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_ArrowRight if collapsed else QStyle.StandardPixmap.SP_ArrowDown))
+        for index, group in enumerate(self.state["groupings"]["transcript"]):
+            recording = combined.recording_for(self.state["transcript"], group)
+            if recording and index in self._table_rows["transcript"]:
+                table.setRowHidden(self._display_row("transcript", index), recording[1]["source"]["path"] in self._collapsed)
+        self.bands.update()
+        self._panels["transcript"]["overview"].update()
+
+    def _toggle_recording(self, path: str) -> None:
+        self._cancel_split(refresh=False)
+        self._panels["transcript"]["overview"].boundaries()
+        if path in self._collapsed:
+            self._collapsed.remove(path)
+        else:
+            self._collapsed.add(path)
+        selected = self._selected_row("transcript")
+        self._apply_collapsed()
+        if selected and combined.recording_for(self.state["transcript"], selected)[1]["source"]["path"] in self._collapsed:
+            self._dispatch("line.select", panel="transcript", index=None)
+        else:
+            self._refresh()
 
     def _selection_changed(self, panel: str) -> None:
         if not self._refreshing:
@@ -400,7 +444,10 @@ class LineWidget(QWidget):
         row = table.rowAt(point.y())
         if row < 0 or self.state[panel] is None:
             return
-        if row not in self._selected_indexes(panel):
+        reverse = {display: index for index, display in self._table_rows[panel].items()}
+        if row not in reverse:
+            return
+        if reverse[row] not in self._selected_indexes(panel):
             table.selectRow(row)
         indexes = self._selected_indexes(panel)
         menu = QMenu(table)
@@ -442,8 +489,9 @@ class LineWidget(QWidget):
         picker.preferred_height_changed.connect(
             lambda height: self._resize_split_row(panel, index, picker, height)
         )
-        table.setCellWidget(index, 1, picker)
-        table.resizeRowToContents(index)
+        display = self._display_row(panel, index)
+        table.setCellWidget(display, 1, picker)
+        table.resizeRowToContents(display)
         self._split_mode = panel, index
         for shortcut in self._review_shortcuts.values():
             shortcut.setEnabled(False)
@@ -452,8 +500,9 @@ class LineWidget(QWidget):
 
     def _resize_split_row(self, panel: str, index: int, picker: _SplitPicker, height: int) -> None:
         table = self._panels[panel]["table"]
-        if self._split_mode == (panel, index) and table.cellWidget(index, 1) is picker and abs(table.rowHeight(index) - height) > 2:
-            table.setRowHeight(index, height)
+        display = self._display_row(panel, index)
+        if self._split_mode == (panel, index) and table.cellWidget(display, 1) is picker and abs(table.rowHeight(display) - height) > 2:
+            table.setRowHeight(display, height)
 
     def _cancel_split(self, *, refresh: bool = True) -> None:
         if self._split_mode is None:
@@ -461,8 +510,9 @@ class LineWidget(QWidget):
         panel, index = self._split_mode
         self._split_mode = None
         table = self._panels[panel]["table"]
-        table.removeCellWidget(index, 1)
-        table.resizeRowToContents(index)
+        display = self._display_row(panel, index)
+        table.removeCellWidget(display, 1)
+        table.resizeRowToContents(display)
         for shortcut in self._review_shortcuts.values():
             shortcut.setEnabled(True)
         if refresh:
@@ -476,14 +526,14 @@ class LineWidget(QWidget):
             index = self.state["selected"][panel]
             table.clearSelection()
             for row in (index, index + 1):
-                table.selectionModel().select(table.model().index(row, 0),
+                table.selectionModel().select(table.model().index(self._display_row(panel, row), 0),
                                               QItemSelectionModel.SelectionFlag.Select | QItemSelectionModel.SelectionFlag.Rows)
             self._refresh()
 
     def _merge_groups(self, panel: str, indexes: list[int]) -> None:
         success, _result = self._dispatch("line.merge", panel=panel, indexes=indexes)
         if success:
-            self._panels[panel]["table"].selectRow(indexes[0])
+            self._panels[panel]["table"].selectRow(self._display_row(panel, indexes[0]))
             self._refresh()
 
     def _dispatch(self, action_name: str, /, **kwargs: Any) -> tuple[bool, Any]:
@@ -499,11 +549,17 @@ class LineWidget(QWidget):
             self._refresh()
             QMessageBox.warning(self, "Line!", str(error))
             return False, None
+        if action_name in ("line.reset", "line.load_mapping"):
+            self._collapsed.clear()
+            self._source_keys.clear()
         self._refresh()
         return True, result
 
     def _table_selected(self, panel: str, row: int) -> None:
         if self._refreshing or row < 0:
+            return
+        row = next((index for index, display in self._table_rows[panel].items() if display == row), None)
+        if row is None:
             return
         if self._split_mode and self._split_mode != (panel, row):
             self._cancel_split(refresh=False)
@@ -512,7 +568,9 @@ class LineWidget(QWidget):
 
     def _overview_selected(self, panel: str, index: int) -> None:
         self._active_panel = panel
-        self._dispatch("line.jump", panel=panel, line=index + 1)
+        index = next((group for group, row in self._table_rows[panel].items() if row == index), None)
+        if index is not None:
+            self._dispatch("line.jump", panel=panel, line=index + 1)
 
     def _selected_row(self, panel: str) -> dict | None:
         source = self.state[panel]
@@ -524,6 +582,14 @@ class LineWidget(QWidget):
     def navigate(self, panel: str, delta: int) -> None:
         self._active_panel = panel
         if self.state[panel] is not None:
+            if panel == "transcript" and self._collapsed:
+                visible = [index for index, group in enumerate(self.state["groupings"][panel])
+                           if combined.recording_for(self.state[panel], group)[1]["source"]["path"] not in self._collapsed]
+                selected = self.state["selected"][panel]
+                candidates = visible if selected is None else [i for i in visible if (i - selected) * delta > 0]
+                if candidates:
+                    self._dispatch("line.select", panel=panel, index=candidates[0] if delta > 0 else candidates[-1])
+                return
             self._dispatch("line.navigate", panel=panel, delta=delta)
 
     def jump(self, panel: str) -> None:
@@ -562,7 +628,10 @@ class LineWidget(QWidget):
             file_filter = "Script files (*.docx *.txt *.json)"
         else:
             directory = root / "3-Post Production" / "2-Transcribe"
-            file_filter = "Word transcripts (*.json)"
+            filenames, _filter = QFileDialog.getOpenFileNames(self, "Add transcript files", str(directory), "Word transcripts (*.json)")
+            if filenames:
+                self._dispatch("line.add_transcripts", paths=filenames)
+            return
         path = self._choose_file(f"Load {panel}", directory, file_filter)
         if path is None:
             return
@@ -614,11 +683,13 @@ class LineWidget(QWidget):
         # retaining the other source when replacing only one panel.
         other = "transcript" if keep_other == "script" else "script"
         retained = active_source(self.state, other) if keep_other else None
-        path = retained["source"]["path"] if retained else None
+        paths = ([item["source"]["path"] for item in combined.recordings(retained)] if other == "transcript"
+                 else [retained["source"]["path"]]) if retained else []
         was_closed = self.state[other] is None
         success, _result = self._dispatch("line.reset")
-        if success and path:
-            success, _result = self._dispatch(f"line.load_{other}", path=path)
+        if success and paths:
+            success, _result = (self._dispatch("line.add_transcripts", paths=paths) if other == "transcript"
+                                else self._dispatch(f"line.load_{other}", path=paths[0]))
             if success and was_closed:
                 success, _result = self._dispatch(f"line.close_{other}")
         return success
@@ -689,11 +760,35 @@ class LineWidget(QWidget):
             return False
         self._source_keys[panel] = key
         table = self._panels[panel]["table"]
+        self._panels[panel]["overview"]._heights.clear()
+        table.clearSpans()
         table.setRowCount(0)
+        self._table_rows[panel] = {}
+        if panel == "transcript":
+            self._headers = {}
         if source is not None:
             rows = group_rows(self.state, panel)
-            table.setRowCount(len(rows))
+            sectioned = panel == "transcript" and len(combined.recordings(source)) > 1
+            table.setRowCount(len(rows) + (len(combined.recordings(source)) if sectioned else 0))
+            display = 0
+            previous_recording = None
             for index, row in enumerate(rows):
+                if sectioned and row["recording"] != previous_recording:
+                    previous_recording = row["recording"]
+                    path = combined.recordings(source)[previous_recording]["source"]["path"]
+                    button = QPushButton(table)
+                    button.setStyleSheet("QPushButton { text-align: left; padding: 6px; font-weight: bold; border: 0; "
+                                         "background: palette(midlight); color: palette(text); }")
+                    button.setToolTip(f"{path}\nClick to collapse or expand this file. Coverage includes hidden files.")
+                    button.clicked.connect(lambda _checked=False, path=path: self._toggle_recording(path))
+                    header = QTableWidgetItem()
+                    header.setFlags(Qt.ItemFlag.ItemIsEnabled)
+                    table.setItem(display, 0, header)
+                    table.setSpan(display, 0, 1, 3)
+                    table.setCellWidget(display, 0, button)
+                    self._headers[path] = display, button
+                    display += 1
+                self._table_rows[panel][index] = display
                 number = QTableWidgetItem(str(row["line"]))
                 number.setTextAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter)
                 sentence = QTableWidgetItem(row["text"])
@@ -701,9 +796,12 @@ class LineWidget(QWidget):
                 sentence.setToolTip(row["text"])
                 status = QTableWidgetItem()
                 status.setTextAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
-                table.setItem(index, 0, number)
-                table.setItem(index, 1, sentence)
-                table.setItem(index, 2, status)
+                table.setItem(display, 0, number)
+                table.setItem(display, 1, sentence)
+                table.setItem(display, 2, status)
+                display += 1
+            if sectioned:
+                self._apply_collapsed()
         table._resize_timer.start()
         return True
 
@@ -716,6 +814,7 @@ class LineWidget(QWidget):
                 continue
             table = self._panels[panel]["table"]
             for index, row in enumerate(group_rows(self.state, panel)):
+                display = self._display_row(panel, index)
                 key = range_key(row)
                 status = script_status.get(key, "missing") if panel == "script" else transcript_status[key]
                 color_status = status
@@ -726,13 +825,13 @@ class LineWidget(QWidget):
                     color_status = link["classification"]
                     text = f"{color_status.title()} → S{script_lines.get(range_key(link['script']), '?')}"
                     tooltip = "Classification of this individual reading."
-                cell = table.item(index, 2)
+                cell = table.item(display, 2)
                 cell.setText(text)
                 cell.setToolTip(tooltip)
                 cell.setIcon(_status_icon(color_status) if color_status in _COLORS else QIcon())
                 cell.setBackground(QBrush(QColor(_COLORS[color_status])) if color_status in _COLORS else QBrush())
                 cell.setForeground(QBrush(QColor(_INK[color_status])) if color_status in _INK else QBrush())
-                sentence = table.item(index, 1)
+                sentence = table.item(display, 1)
                 font = sentence.font()
                 font.setStrikeOut(status == "discarded")
                 sentence.setFont(font)
@@ -744,12 +843,13 @@ class LineWidget(QWidget):
         indexes = {}
         for panel in ("script", "transcript"):
             rows = group_rows(self.state, panel) if self.state[panel] is not None else []
-            indexes[panel] = {range_key(row): index for index, row in enumerate(rows)}
+            indexes[panel] = {range_key(row): self._display_row(panel, index) for index, row in enumerate(rows)}
             statuses = []
             for row in rows:
                 key = range_key(row)
                 statuses.append(script_status[key] if panel == "script" else links.get(key, transcript_status[key]))
             overview = self._panels[panel]["overview"]
+            overview.rows = list(self._table_rows[panel].values())
             overview.statuses = statuses
             overview.setEnabled(bool(rows))
             overview.update()
@@ -778,7 +878,8 @@ class LineWidget(QWidget):
             classification = link["classification"]
             item = QListWidgetItem(
                 _status_icon(classification),
-                f"T{row['line']} · {classification.title()} · {_timestamp(row.get('start_ms'))} — {row['text']}",
+                (f"{row['filename']} · " if len(combined.recordings(transcript)) > 1 else "")
+                + f"T{row['line']} · {classification.title()} · {_timestamp(row.get('start_ms'))} — {row['text']}",
             )
             item.setData(Qt.ItemDataRole.UserRole, index)
             item.setBackground(QColor(_COLORS[classification]))
@@ -821,14 +922,20 @@ class LineWidget(QWidget):
                     widgets["source_label"].setText(text)
                     widgets["source_label"].setToolTip("")
                 if selected is not None and loaded:
-                    if widgets["table"].currentRow() != selected:
+                    if panel == "transcript":
+                        recording = combined.recording_for(source, rows[selected])
+                        if recording and recording[1]["source"]["path"] in self._collapsed:
+                            self._collapsed.remove(recording[1]["source"]["path"])
+                            self._apply_collapsed()
+                    display = self._display_row(panel, selected)
+                    if widgets["table"].currentRow() != display:
                         widgets["table"].clearSelection()
-                        widgets["table"].setCurrentCell(selected, 1)
-                    widgets["table"].scrollToItem(widgets["table"].item(selected, 1))
+                        widgets["table"].setCurrentCell(display, 1)
+                        widgets["table"].scrollToItem(widgets["table"].item(display, 1))
                     row = rows[selected]
                     detail = f"Selected: group {row['line']} of {len(rows)} · words {row['word_start'] + 1}–{row['word_end'] + 1}"
                     if panel == "transcript":
-                        detail += f" · {_timestamp(row.get('start_ms'))}–{_timestamp(row.get('end_ms'))}"
+                        detail += f" · {row['filename']} · {_timestamp(row.get('start_ms'))}–{_timestamp(row.get('end_ms'))}"
                     if self._split_mode == (panel, selected):
                         detail += " · Click a gap to split (←/→, Enter, Esc)"
                     widgets["detail"].setText(detail)

@@ -8,6 +8,7 @@ from typing import Any
 from studio.actions import action
 
 from . import mapping, sources
+from . import combined
 
 
 def _describe_line(operation: str):
@@ -24,6 +25,8 @@ def _describe_line(operation: str):
             panel = operation.removeprefix("load_")
             source = result[panel]
             return f"Loaded {panel}: {Path(source['source']['path']).name} ({len(result['groupings'][panel])} word groupings)"
+        if operation == "add_transcripts":
+            return "Added transcript files: " + ", ".join(Path(path).name for path in inputs["paths"])
         if operation in ("close_script", "close_transcript"):
             return f"Closed {operation.removeprefix('close_')} panel"
         if operation == "link":
@@ -99,6 +102,34 @@ def load_script(project: Any, state: dict, path: Any) -> dict:
 @action("line.load_transcript", description="Load timestamped transcript words and initial groupings from a project file.", describe=_describe_line("load_transcript"))
 def load_transcript(project: Any, state: dict, path: Any) -> dict:
     return _load_source(project, state, "transcript", path)
+
+
+@action("line.add_transcripts", description="Add transcript files while retaining the current review.", describe=_describe_line("add_transcripts"))
+def add_transcripts(project: Any, state: dict, paths: list[str]) -> dict:
+    if not isinstance(paths, list) or not paths:
+        raise ValueError("Choose at least one transcript file.")
+    # Read and check the whole selection before mutating review state.
+    loaded = [sources.load_transcript(_root(project), path) for path in paths]
+    items = list(combined.recordings(mapping.active_source(state, "transcript")))
+    additions = []
+    for source in loaded:
+        previous = next((item for item in items if item["source"]["path"] == source["source"]["path"]), None)
+        if previous:
+            if previous["source"] != source["source"]:
+                raise ValueError(f"Transcript source has changed: {source['source']['path']}")
+            continue
+        offset = sum(len(item["words"]) for item in items)
+        additions.extend(combined.shifted(group, offset)
+                         for group in mapping.initial_groupings(source))
+        items.append(source)
+    state["transcript"] = combined.combine(items)
+    state["_closed_sources"]["transcript"] = None
+    state["groupings"]["transcript"].extend(additions)
+    if state["selected"]["transcript"] is None:
+        state["selected"]["transcript"] = 0
+    if additions:
+        state["dirty"] = True
+    return state
 
 
 def _close(state: dict, panel: str) -> dict:
@@ -227,6 +258,10 @@ def grouping_edit_error(state: dict, panel: str, indexes: list[int]) -> str | No
         return "Select valid word groupings first."
     if any(mapping.linked_group(state, panel, groups[index]) for index in indexes):
         return "Unlink the selected word groupings before splitting or merging."
+    if panel == "transcript" and len(indexes) > 1:
+        recordings = {combined.recording_for(state[panel], groups[index])[0] for index in indexes}
+        if len(recordings) > 1:
+            return "Groups from different transcript files cannot be merged."
     return None
 
 
