@@ -49,8 +49,8 @@ def _parser() -> argparse.ArgumentParser:
     action.add_argument("--mapping", help="Existing common mapping JSON to load")
     action.add_argument("--script", help="Script input, relative to project or full path")
     action.add_argument("--transcript", help="Transcript JSON, relative to project or full path")
-    action.add_argument("--script-line", type=int, help="Select a script line (numbered from 1)")
-    action.add_argument("--transcript-line", type=int, help="Select a transcript line (numbered from 1)")
+    action.add_argument("--script-line", type=int, help="Select a script grouping (numbered from 1)")
+    action.add_argument("--transcript-line", type=int, help="Select a transcript grouping (numbered from 1)")
     action.add_argument("--args", default="{}", help="JSON object containing action keyword arguments")
     action.add_argument("--save", metavar="NAME", help="Save the result as a new mapping version")
     return parser
@@ -103,7 +103,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             print(json.dumps({
                 "action": args.name,
                 "result": result if not isinstance(result, dict) else None,
-                "links": state["links"], "discarded": state["discarded"],
+                "groupings": state["groupings"], "links": state["links"], "discarded": state["discarded"],
                 "mapping_path": state["mapping_path"], "dirty": state["dirty"],
             }, ensure_ascii=False, indent=2))
         finally:

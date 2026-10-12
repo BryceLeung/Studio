@@ -1,4 +1,4 @@
-"""Native sentence review controls for Line!."""
+"""Native word-group review controls for Line!."""
 
 from __future__ import annotations
 
@@ -6,8 +6,8 @@ import hashlib
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QEvent, Qt, QTimer
-from PySide6.QtGui import QBrush, QColor, QIcon, QKeySequence, QPixmap, QShortcut
+from PySide6.QtCore import QEvent, QItemSelectionModel, Qt, QTimer, Signal, QSize
+from PySide6.QtGui import QBrush, QColor, QIcon, QKeySequence, QPainter, QPen, QPixmap, QShortcut, QTextCursor
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QDialog,
@@ -18,19 +18,21 @@ from PySide6.QtWidgets import (
     QLabel,
     QListWidget,
     QListWidgetItem,
+    QMenu,
     QMessageBox,
     QProgressBar,
     QPushButton,
     QSplitter,
     QTableWidget,
     QTableWidgetItem,
+    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
 
 from studio.actions import ActionLogError, invoke
 from . import actions as _registered_actions  # noqa: F401
-from .mapping import active_source, coverage, new_state, review_status
+from .mapping import active_source, coverage, group_rows, is_discarded, linked_group, new_state, range_key, range_text, review_status, word_range
 from .shortcuts import KeyboardMappingsDialog, load_mappings, save_mappings
 
 
@@ -52,8 +54,8 @@ def _timestamp(value: Any) -> str:
     return f"{minutes:02d}:{seconds:02d}.{milliseconds:03d}"
 
 
-class _SentenceTable(QTableWidget):
-    """Keep wrapped sentences readable after a window or splitter resize."""
+class _GroupingTable(QTableWidget):
+    """Keep wrapped word groups readable after a window or splitter resize."""
 
     def __init__(self, parent: QWidget):
         super().__init__(0, 3, parent)
@@ -61,9 +63,9 @@ class _SentenceTable(QTableWidget):
         self._resize_timer.setSingleShot(True)
         self._resize_timer.setInterval(100)
         self._resize_timer.timeout.connect(self.resizeRowsToContents)
-        self.setHorizontalHeaderLabels(["Line", "Sentence", "Status"])
+        self.setHorizontalHeaderLabels(["Group", "Words", "Status"])
         self.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.setWordWrap(True)
         self.setAlternatingRowColors(True)
@@ -83,6 +85,101 @@ class _SentenceTable(QTableWidget):
             self._resize_timer.start()
 
 
+class _SplitPicker(QTextEdit):
+    """A temporary, wrapped word display with a movable split caret."""
+
+    chosen = Signal(int)
+    cancelled = Signal()
+    preferred_height_changed = Signal(int)
+
+    def __init__(self, source: dict, group: dict, parent: QWidget):
+        super().__init__(parent)
+        words = source["words"][group["word_start"]:group["word_end"] + 1]
+        text = range_text(source, group)
+        positions = []
+        offset = 0
+        for index, word in enumerate(words):
+            if index:
+                offset += len(word.get("separator", " ").encode("utf-16-le")) // 2
+                positions.append(offset)
+            offset += len(word["text"].encode("utf-16-le")) // 2
+        self._positions = positions
+        self._first_word = group["word_start"]
+        self._boundary = 0
+        self.setPlainText(text)
+        self.setReadOnly(True)
+        self.setFrameShape(QTextEdit.Shape.NoFrame)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setCursorWidth(3)
+        self.setStyleSheet("background: #eaf4ff; padding: 3px;")
+        self.setToolTip("Click a gap between words to split. Left/Right moves the marker; Enter confirms; Escape cancels.")
+        self._height_timer = QTimer(self)
+        self._height_timer.setSingleShot(True)
+        self._height_timer.timeout.connect(lambda: self.preferred_height_changed.emit(self.sizeHint().height()))
+        self.document().documentLayout().documentSizeChanged.connect(lambda _size: self._height_timer.start(0))
+        self._show_boundary()
+
+    def sizeHint(self) -> QSize:
+        return QSize(max(160, self.width()), max(42, int(self.document().size().height()) + 12))
+
+    def resizeEvent(self, event: Any) -> None:
+        super().resizeEvent(event)
+        if hasattr(self, "_height_timer"):
+            self._height_timer.start(0)
+
+    def _show_boundary(self) -> None:
+        cursor = QTextCursor(self.document())
+        cursor.setPosition(self._positions[self._boundary])
+        self.setTextCursor(cursor)
+        self.ensureCursorVisible()
+        self.viewport().update()
+
+    def viewportEvent(self, event: Any) -> bool:
+        handled = super().viewportEvent(event)
+        if event.type() == QEvent.Type.Paint and self._positions:
+            cursor = QTextCursor(self.document())
+            cursor.setPosition(self._positions[self._boundary])
+            marker = self.cursorRect(cursor)
+            painter = QPainter(self.viewport())
+            painter.setPen(QPen(QColor("#0878d1"), 3))
+            painter.drawLine(marker.left() - 2, marker.top(), marker.left() - 2, marker.bottom())
+            painter.end()
+        return handled
+
+    def _closest(self, point: Any) -> int:
+        cursor = self.cursorForPosition(point)
+        return min(range(len(self._positions)), key=lambda index: abs(self._positions[index] - cursor.position()))
+
+    def mouseMoveEvent(self, event: Any) -> None:
+        self._boundary = self._closest(event.position().toPoint())
+        self._show_boundary()
+        event.accept()
+
+    def mousePressEvent(self, event: Any) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._boundary = self._closest(event.position().toPoint())
+            self.chosen.emit(self._first_word + self._boundary + 1)
+            event.accept()
+        else:
+            super().mousePressEvent(event)
+
+    def keyPressEvent(self, event: Any) -> None:
+        key = event.key()
+        if key == Qt.Key.Key_Escape:
+            self.cancelled.emit()
+        elif key == Qt.Key.Key_Left:
+            self._boundary = max(0, self._boundary - 1)
+            self._show_boundary()
+        elif key == Qt.Key.Key_Right:
+            self._boundary = min(len(self._positions) - 1, self._boundary + 1)
+            self._show_boundary()
+        elif key in (Qt.Key.Key_Enter, Qt.Key.Key_Return):
+            self.chosen.emit(self._first_word + self._boundary + 1)
+        else:
+            event.ignore()
+
+
 class LineWidget(QWidget):
     """Two source panels using the same registered actions as CLI callers."""
 
@@ -96,6 +193,7 @@ class LineWidget(QWidget):
         self._source_keys: dict[str, Any] = {}
         self._review_key: Any = None
         self._panels: dict[str, dict[str, Any]] = {}
+        self._split_mode: tuple[str, int] | None = None
         self._shortcuts: list[QShortcut] = []
         self._review_shortcuts: dict[str, QShortcut] = {}
         self.keyboard_mappings = load_mappings()
@@ -112,9 +210,9 @@ class LineWidget(QWidget):
         toolbar.addWidget(title)
         toolbar.addStretch()
         self.new_button = self._button("New review", self.new_review)
-        self.open_button = self._button("Open mapping…", self.open_mapping)
+        self.open_button = self._button("Open Line project…", self.open_mapping)
         self.save_button = self._button("Save new version", self.save_mapping)
-        self.save_button.setToolTip("Save a new mapping version (⌘/Ctrl+S).")
+        self.save_button.setToolTip("Save groupings and mappings as a new Line project version (⌘/Ctrl+S).")
         for button in (self.new_button, self.open_button, self.save_button):
             toolbar.addWidget(button)
         layout.addLayout(toolbar)
@@ -132,7 +230,7 @@ class LineWidget(QWidget):
         layout.addWidget(splitter, 1)
 
         controls = QHBoxLayout()
-        self.pair_label = QLabel("Select one sentence in each panel.")
+        self.pair_label = QLabel("Select one word grouping in each panel.")
         controls.addWidget(self.pair_label, 1)
         self.link_button = self._button("Link", self.link_selected)
         self.discard_button = self._button("Discard", self.discard_selected)
@@ -140,13 +238,13 @@ class LineWidget(QWidget):
             controls.addWidget(button)
         layout.addLayout(controls)
 
-        self.readings_label = QLabel("Readings for selected script sentence")
+        self.readings_label = QLabel("Readings for selected script grouping")
         layout.addWidget(self.readings_label)
         self.readings = QListWidget()
         self.readings.setMaximumHeight(135)
         self.readings.setMinimumHeight(70)
         self.readings.setWordWrap(True)
-        self.readings.setToolTip("Select a linked reading to jump to its transcript sentence.")
+        self.readings.setToolTip("Select a linked reading to jump to its transcript grouping.")
         self.readings.itemClicked.connect(self._reading_clicked)
         layout.addWidget(self.readings)
 
@@ -235,16 +333,19 @@ class LineWidget(QWidget):
         previous = self._button("Previous", lambda: self.navigate(panel, -1))
         next_button = self._button("Next", lambda: self.navigate(panel, 1))
         jump = self._button("Jump…", lambda: self.jump(panel))
-        jump.setToolTip("Jump to a sentence number (⌘/Ctrl+G for the active panel).")
+        jump.setToolTip("Jump to a grouping number (⌘/Ctrl+G for the active panel).")
         for button in (load, close, previous, next_button, jump):
             controls.addWidget(button)
         controls.addStretch()
         layout.addLayout(controls)
-        table = _SentenceTable(widget)
+        table = _GroupingTable(widget)
         table.installEventFilter(self)
+        table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        table.customContextMenuRequested.connect(lambda point: self._group_menu(panel, point))
         table.currentCellChanged.connect(
             lambda row, column, old_row, old_column: self._table_selected(panel, row)
         )
+        table.itemSelectionChanged.connect(lambda: self._selection_changed(panel))
         layout.addWidget(table, 1)
         detail = QLabel()
         detail.setWordWrap(True)
@@ -265,7 +366,108 @@ class LineWidget(QWidget):
                     break
         return super().eventFilter(watched, event)
 
+    def _selected_indexes(self, panel: str) -> list[int]:
+        table = self._panels[panel]["table"]
+        return sorted(index.row() for index in table.selectionModel().selectedRows())
+
+    def _selection_changed(self, panel: str) -> None:
+        if not self._refreshing:
+            QTimer.singleShot(0, self._refresh)
+
+    def _group_menu(self, panel: str, point: Any) -> None:
+        table = self._panels[panel]["table"]
+        row = table.rowAt(point.y())
+        if row < 0 or self.state[panel] is None:
+            return
+        if row not in self._selected_indexes(panel):
+            table.selectRow(row)
+        indexes = self._selected_indexes(panel)
+        menu = QMenu(table)
+        if len(indexes) == 1:
+            group = self.state["groupings"][panel][indexes[0]]
+            error = _registered_actions.grouping_edit_error(self.state, panel, indexes)
+            if group["word_start"] == group["word_end"]:
+                error = "A grouping needs at least two words to split."
+            action = menu.addAction("Split group" if error is None else f"Split group ({error})")
+            action.setEnabled(error is None)
+            action.triggered.connect(lambda: self._run_ui(lambda: self._begin_split(panel, indexes[0])))
+        if len(indexes) >= 2:
+            error = _registered_actions.grouping_edit_error(self.state, panel, indexes)
+            if indexes != list(range(indexes[0], indexes[-1] + 1)):
+                error = "Select adjacent groups."
+            if panel == "transcript" and error is None:
+                discarded = [is_discarded(self.state, self.state["groupings"][panel][index]) for index in indexes]
+                if any(value != discarded[0] for value in discarded):
+                    error = "Restore discarded groups first."
+            action = menu.addAction("Merge groups" if error is None else f"Merge groups ({error})")
+            action.setEnabled(error is None)
+            action.triggered.connect(lambda: self._run_ui(lambda: self._merge_groups(panel, indexes)))
+        if not menu.isEmpty():
+            menu.exec(table.viewport().mapToGlobal(point))
+        menu.deleteLater()
+
+    def _begin_split(self, panel: str, index: int) -> None:
+        error = _registered_actions.grouping_edit_error(self.state, panel, [index])
+        if error:
+            raise ValueError(error)
+        group = self.state["groupings"][panel][index]
+        if group["word_start"] == group["word_end"]:
+            raise ValueError("A grouping needs at least two words to split.")
+        self._cancel_split(refresh=False)
+        table = self._panels[panel]["table"]
+        picker = _SplitPicker(self.state[panel], group, table)
+        picker.chosen.connect(lambda boundary: self._split_at(panel, boundary))
+        picker.cancelled.connect(self._cancel_split)
+        picker.preferred_height_changed.connect(
+            lambda height: self._resize_split_row(panel, index, picker, height)
+        )
+        table.setCellWidget(index, 1, picker)
+        table.resizeRowToContents(index)
+        self._split_mode = panel, index
+        for shortcut in self._review_shortcuts.values():
+            shortcut.setEnabled(False)
+        self._refresh()
+        picker.setFocus()
+
+    def _resize_split_row(self, panel: str, index: int, picker: _SplitPicker, height: int) -> None:
+        table = self._panels[panel]["table"]
+        if self._split_mode == (panel, index) and table.cellWidget(index, 1) is picker and abs(table.rowHeight(index) - height) > 2:
+            table.setRowHeight(index, height)
+
+    def _cancel_split(self, *, refresh: bool = True) -> None:
+        if self._split_mode is None:
+            return
+        panel, index = self._split_mode
+        self._split_mode = None
+        table = self._panels[panel]["table"]
+        table.removeCellWidget(index, 1)
+        table.resizeRowToContents(index)
+        for shortcut in self._review_shortcuts.values():
+            shortcut.setEnabled(True)
+        if refresh:
+            self._refresh()
+
+    def _split_at(self, panel: str, boundary: int) -> None:
+        self._cancel_split(refresh=False)
+        success, _result = self._dispatch("line.split", panel=panel, boundary=boundary)
+        if success:
+            table = self._panels[panel]["table"]
+            index = self.state["selected"][panel]
+            table.clearSelection()
+            for row in (index, index + 1):
+                table.selectionModel().select(table.model().index(row, 0),
+                                              QItemSelectionModel.SelectionFlag.Select | QItemSelectionModel.SelectionFlag.Rows)
+            self._refresh()
+
+    def _merge_groups(self, panel: str, indexes: list[int]) -> None:
+        success, _result = self._dispatch("line.merge", panel=panel, indexes=indexes)
+        if success:
+            self._panels[panel]["table"].selectRow(indexes[0])
+            self._refresh()
+
     def _dispatch(self, action_name: str, /, **kwargs: Any) -> tuple[bool, Any]:
+        if self._split_mode is not None and action_name != "line.select":
+            self._cancel_split(refresh=False)
         try:
             result = invoke(action_name, self.project, self.state, _lock=self.lock, **kwargs)
         except ActionLogError as error:
@@ -282,15 +484,17 @@ class LineWidget(QWidget):
     def _table_selected(self, panel: str, row: int) -> None:
         if self._refreshing or row < 0:
             return
+        if self._split_mode and self._split_mode != (panel, row):
+            self._cancel_split(refresh=False)
         self._active_panel = panel
         self._dispatch("line.select", panel=panel, index=row)
 
     def _selected_row(self, panel: str) -> dict | None:
         source = self.state[panel]
         index = self.state["selected"][panel]
-        if source is None or index is None or not 0 <= index < len(source["rows"]):
+        if source is None or index is None or not 0 <= index < len(self.state["groupings"][panel]):
             return None
-        return source["rows"][index]
+        return group_rows(self.state, panel)[index]
 
     def navigate(self, panel: str, delta: int) -> None:
         self._active_panel = panel
@@ -304,8 +508,8 @@ class LineWidget(QWidget):
         self._active_panel = panel
         current = self.state["selected"][panel]
         line, accepted = QInputDialog.getInt(
-            self, f"Jump to {panel} sentence", "Sentence number:",
-            (current + 1) if current is not None else 1, 1, len(source["rows"]),
+            self, f"Jump to {panel} grouping", "Group number:",
+            (current + 1) if current is not None else 1, 1, len(self.state["groupings"][panel]),
         )
         if accepted:
             self._dispatch("line.jump", panel=panel, line=line)
@@ -400,17 +604,17 @@ class LineWidget(QWidget):
             self._dispatch("line.reset")
 
     def open_mapping(self) -> None:
-        path = self._choose_file("Open Line! mapping", Path(self.project.line_dir), "Line! mappings (*.json)")
+        path = self._choose_file("Open Line project", Path(self.project.line_dir), "Line projects (*.json)")
         if path is not None and self._prepare_replacement("open another mapping"):
             self._dispatch("line.load_mapping", path=str(path))
 
     def save_mapping(self) -> bool:
         if not active_source(self.state, "script") or not active_source(self.state, "transcript"):
-            QMessageBox.information(self, "Line!", "Load a script and transcript before saving a mapping.")
+            QMessageBox.information(self, "Line!", "Load a script and transcript before saving a Line project.")
             return False
         name = self.state.get("mapping_name")
         if not name:
-            name, accepted = QInputDialog.getText(self, "Save mapping version", "Mapping name:", text="review")
+            name, accepted = QInputDialog.getText(self, "Save Line project version", "Project name:", text="review")
             if not accepted:
                 return False
         success, _path = self._dispatch("line.save", name=name)
@@ -418,21 +622,22 @@ class LineWidget(QWidget):
 
     def link_selected(self) -> None:
         transcript = self._selected_row("transcript")
-        if transcript is None:
+        if transcript is None or self._split_mode or len(self._selected_indexes("transcript")) != 1:
             return
-        linked = any(link["transcript_id"] == transcript["id"] for link in self.state["links"])
+        linked = linked_group(self.state, "transcript", transcript)
         if linked:
             self._dispatch("line.unlink")
-        elif self._selected_row("script") is not None and transcript["id"] not in self.state["discarded"]:
+        elif self._selected_row("script") is not None and len(self._selected_indexes("script")) == 1 and not is_discarded(self.state, transcript):
             success, _result = self._dispatch("line.link")
             if success:
+                self.navigate("script", 1)
                 self.navigate("transcript", 1)
 
     def discard_selected(self) -> None:
         transcript = self._selected_row("transcript")
-        if transcript is None:
+        if transcript is None or self._split_mode or len(self._selected_indexes("transcript")) != 1:
             return
-        if transcript["id"] in self.state["discarded"]:
+        if is_discarded(self.state, transcript):
             self._dispatch("line.restore")
         else:
             success, _result = self._dispatch("line.discard")
@@ -449,15 +654,19 @@ class LineWidget(QWidget):
 
     def _populate(self, panel: str) -> bool:
         source = self.state[panel]
-        key = id(source) if source is not None else None
+        key = (
+            source["source"].get("path"), source["source"].get("sha256"),
+            tuple(range_key(group) for group in self.state["groupings"][panel]),
+        ) if source is not None else None
         if self._source_keys.get(panel, object()) == key:
             return False
         self._source_keys[panel] = key
         table = self._panels[panel]["table"]
         table.setRowCount(0)
         if source is not None:
-            table.setRowCount(len(source["rows"]))
-            for index, row in enumerate(source["rows"]):
+            rows = group_rows(self.state, panel)
+            table.setRowCount(len(rows))
+            for index, row in enumerate(rows):
                 number = QTableWidgetItem(str(row["line"]))
                 number.setTextAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter)
                 sentence = QTableWidgetItem(row["text"])
@@ -472,23 +681,23 @@ class LineWidget(QWidget):
         return True
 
     def _paint_statuses(self, script_status: dict, transcript_status: dict) -> None:
-        script = active_source(self.state, "script")
-        script_lines = {row["id"]: row["line"] for row in script["rows"]} if script else {}
-        links = {link["transcript_id"]: link for link in self.state["links"]}
+        script_lines = {range_key(row): row["line"] for row in group_rows(self.state, "script")}
+        links = {range_key(link["transcript"]): link for link in self.state["links"]}
         for panel in ("script", "transcript"):
             source = self.state[panel]
             if source is None:
                 continue
             table = self._panels[panel]["table"]
-            for index, row in enumerate(source["rows"]):
-                status = script_status.get(row["id"], "missing") if panel == "script" else transcript_status[row["id"]]
+            for index, row in enumerate(group_rows(self.state, panel)):
+                key = range_key(row)
+                status = script_status.get(key, "missing") if panel == "script" else transcript_status[key]
                 color_status = status
                 text = status.title()
-                tooltip = "Best linked reading for this script sentence." if panel == "script" else text
+                tooltip = "Best linked reading for this script grouping." if panel == "script" else text
                 if panel == "transcript" and status == "linked":
-                    link = links[row["id"]]
+                    link = links[key]
                     color_status = link["classification"]
-                    text = f"{color_status.title()} → S{script_lines.get(link['script_id'], '?')}"
+                    text = f"{color_status.title()} → S{script_lines.get(range_key(link['script']), '?')}"
                     tooltip = "Classification of this individual reading."
                 cell = table.item(index, 2)
                 cell.setText(text)
@@ -505,16 +714,16 @@ class LineWidget(QWidget):
     def _refresh_readings(self, script_row: dict | None, transcript_row: dict | None) -> None:
         self.readings.clear()
         if script_row is None:
-            self.readings_label.setText("Readings — select a script sentence")
+            self.readings_label.setText("Readings — select a script grouping")
             return
-        self.readings_label.setText(f"Readings for script line {script_row['line']} — exact / partial / flub")
+        self.readings_label.setText(f"Readings for script group {script_row['line']} — exact / partial / flub")
         transcript = active_source(self.state, "transcript")
-        rows = {row["id"]: (index, row) for index, row in enumerate(transcript["rows"])} if transcript else {}
+        rows = {range_key(row): (index, row) for index, row in enumerate(group_rows(self.state, "transcript"))} if transcript else {}
         selected_item = None
-        for link in sorted(self.state["links"], key=lambda entry: rows.get(entry["transcript_id"], (-1, None))[0]):
-            if link["script_id"] != script_row["id"] or link["transcript_id"] not in rows:
+        for link in sorted(self.state["links"], key=lambda entry: rows.get(range_key(entry["transcript"]), (-1, None))[0]):
+            if link["script"] != word_range(script_row) or range_key(link["transcript"]) not in rows:
                 continue
-            index, row = rows[link["transcript_id"]]
+            index, row = rows[range_key(link["transcript"])]
             classification = link["classification"]
             item = QListWidgetItem(
                 _status_icon(classification),
@@ -526,7 +735,7 @@ class LineWidget(QWidget):
             if self.state["transcript"] is None:
                 item.setToolTip("Load this transcript again to jump to the reading.")
             self.readings.addItem(item)
-            if transcript_row and transcript_row["id"] == row["id"]:
+            if transcript_row and range_key(transcript_row) == range_key(row):
                 item.setSelected(True)
                 selected_item = item
         if self.readings.count() == 0:
@@ -545,7 +754,7 @@ class LineWidget(QWidget):
                 source = self.state[panel]
                 selected = self.state["selected"][panel]
                 loaded = source is not None
-                rows = source["rows"] if loaded else []
+                rows = group_rows(self.state, panel) if loaded else []
                 widgets["close"].setEnabled(loaded)
                 widgets["previous"].setEnabled(loaded and selected is not None and selected > 0)
                 widgets["next"].setEnabled(loaded and (selected is None or selected < len(rows) - 1))
@@ -553,8 +762,7 @@ class LineWidget(QWidget):
                 widgets["table"].setEnabled(loaded)
                 if loaded:
                     reference = source["source"]["path"]
-                    suffix = f" · {len(source.get('words', []))} words" if panel == "transcript" else ""
-                    widgets["source_label"].setText(f"{Path(reference).name} · {len(rows)} sentences{suffix}")
+                    widgets["source_label"].setText(f"{Path(reference).name} · {len(rows)} groups · {len(source['words'])} words")
                     widgets["source_label"].setToolTip(reference)
                 else:
                     retained = active_source(self.state, panel)
@@ -562,22 +770,26 @@ class LineWidget(QWidget):
                     widgets["source_label"].setText(text)
                     widgets["source_label"].setToolTip("")
                 if selected is not None and loaded:
-                    widgets["table"].setCurrentCell(selected, 1)
+                    if widgets["table"].currentRow() != selected:
+                        widgets["table"].clearSelection()
+                        widgets["table"].setCurrentCell(selected, 1)
                     widgets["table"].scrollToItem(widgets["table"].item(selected, 1))
                     row = rows[selected]
-                    detail = f"Selected: line {row['line']} of {len(rows)}"
+                    detail = f"Selected: group {row['line']} of {len(rows)} · words {row['word_start'] + 1}–{row['word_end'] + 1}"
                     if panel == "transcript":
-                        detail += f" · {_timestamp(row.get('start_ms'))}–{_timestamp(row.get('end_ms'))} · words {row['word_start'] + 1}–{row['word_end'] + 1}"
+                        detail += f" · {_timestamp(row.get('start_ms'))}–{_timestamp(row.get('end_ms'))}"
+                    if self._split_mode == (panel, selected):
+                        detail += " · Click a gap to split (←/→, Enter, Esc)"
                     widgets["detail"].setText(detail)
                 else:
                     widgets["table"].clearSelection()
-                    widgets["detail"].setText("Select a sentence." if loaded else "")
+                    widgets["detail"].setText("Select a word grouping." if loaded else "")
 
             script_status = coverage(self.state)
             transcript_status = review_status(self.state)
             review_key = (
-                tuple((link["script_id"], link["transcript_id"], link["classification"]) for link in self.state["links"]),
-                tuple(self.state["discarded"]),
+                tuple((range_key(link["script"]), range_key(link["transcript"]), link["classification"]) for link in self.state["links"]),
+                tuple(range_key(group) for group in self.state["discarded"]),
             )
             if sources_changed or review_key != self._review_key:
                 self._paint_statuses(script_status, transcript_status)
@@ -585,39 +797,39 @@ class LineWidget(QWidget):
 
             script_row = self._selected_row("script")
             transcript_row = self._selected_row("transcript")
-            transcript_link = next((
-                link for link in self.state["links"]
-                if transcript_row and link["transcript_id"] == transcript_row["id"]
-            ), None)
-            discarded = transcript_row is not None and transcript_row["id"] in self.state["discarded"]
+            transcript_link = linked_group(self.state, "transcript", transcript_row) if transcript_row else None
+            discarded = transcript_row is not None and is_discarded(self.state, transcript_row)
+            one_script = len(self._selected_indexes("script")) == 1
+            one_transcript = len(self._selected_indexes("transcript")) == 1
             can_link = (
                 script_row is not None and transcript_row is not None and not discarded
+                and one_script and one_transcript and self._split_mode is None
             )
             self.link_button.setText("Unlink" if transcript_link else "Link")
-            self.link_button.setEnabled(transcript_link is not None or can_link)
+            self.link_button.setEnabled((transcript_link is not None and one_transcript and self._split_mode is None) or can_link)
             link_key = self.keyboard_mappings["link"]
             self.link_button.setToolTip(
-                ("Remove this transcript sentence's existing link." if transcript_link
-                 else "Link with automatic quality, then advance the transcript.")
+                ("Remove this transcript group's existing link." if transcript_link
+                 else "Link with automatic quality, then advance both group selections.")
                 + (f" ({link_key})" if link_key else "")
             )
             self.discard_button.setText("Restore" if discarded else "Discard")
-            self.discard_button.setEnabled(transcript_row is not None)
+            self.discard_button.setEnabled(transcript_row is not None and one_transcript and self._split_mode is None)
             discard_key = self.keyboard_mappings["discard"]
             self.discard_button.setToolTip(
-                ("Return this transcript sentence to review." if discarded
-                 else "Discard this transcript sentence, then advance.")
+                ("Return this transcript group to review." if discarded
+                 else "Discard this transcript group, then advance.")
                 + (f" ({discard_key})" if discard_key else "")
             )
             self.pair_label.setText(
                 f"Selected pair: S{script_row['line']} → T{transcript_row['line']}"
-                if script_row and transcript_row else "Select one sentence in each panel."
+                if script_row and transcript_row and one_script and one_transcript else "Select one word grouping in each panel."
             )
             self._refresh_readings(script_row, transcript_row)
 
             mapping_path = self.state.get("mapping_path")
             self.mapping_label.setText(
-                (f"Mapping: {mapping_path}" if mapping_path else "New review · no saved mapping")
+                (f"Line project: {mapping_path}" if mapping_path else "New review · no saved Line project")
                 + (" · Unsaved changes" if self.has_unsaved_changes() else "")
             )
             self.save_button.setEnabled(bool(active_source(self.state, "script") and active_source(self.state, "transcript")))

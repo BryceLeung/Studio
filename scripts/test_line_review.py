@@ -2,14 +2,16 @@
 
 import json
 import os
+from copy import deepcopy
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QSettings, Qt
+from PySide6.QtCore import QItemSelectionModel, QSettings, Qt
 from PySide6.QtGui import QKeySequence
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
@@ -22,15 +24,20 @@ from studio.tools.line.ui import LineWidget
 
 def review_state():
     state = mapping.new_state()
-    state["script"] = {"source": {"path": "Script.docx"}, "rows": [
+    state["script"] = sources.script_words({"source": {"path": "Script.docx"}, "rows": [
         {"id": "s1", "line": 1, "text": "Hello world."},
         {"id": "s2", "line": 2, "text": "Second sentence."},
+    ]})
+    transcript_words = ["Hello", "world.", "Short.", "A", "longer", "different", "sentence."]
+    state["transcript"] = {"source": {"path": "Transcript.json"}, "words": [
+        {"index": i, "text": text, "start_ms": i * 1000, "end_ms": (i + 1) * 1000}
+        for i, text in enumerate(transcript_words)
+    ], "rows": [
+        {"id": f"t{i}", "line": i + 1, "text": text, "word_start": start, "word_end": end,
+         "start_ms": start * 1000, "end_ms": (end + 1) * 1000}
+        for i, (text, start, end) in enumerate((("Hello world.", 0, 1), ("Short.", 2, 2), ("A longer different sentence.", 3, 6)))
     ]}
-    state["transcript"] = {"source": {"path": "Transcript.json"}, "words": [], "rows": [
-        {"id": f"t{i}", "line": i + 1, "text": text, "word_start": i, "word_end": i,
-         "start_ms": i * 1000, "end_ms": (i + 1) * 1000}
-        for i, text in enumerate(("Hello world.", "Short.", "A longer different sentence."))
-    ]}
+    state["groupings"] = {panel: mapping.initial_groupings(state[panel]) for panel in mapping.PANELS}
     state["selected"] = {"script": 0, "transcript": 0}
     return state
 
@@ -54,9 +61,9 @@ class QualityTests(unittest.TestCase):
             state["selected"]["transcript"] = index
             actions.link(None, state)
             self.assertEqual(state["links"][-1]["classification"], quality)
-        self.assertEqual(mapping.coverage(state), {"s1": "exact", "s2": "missing"})
+        self.assertEqual(mapping.coverage(state), {(0, 1): "exact", (2, 3): "missing"})
 
-    def test_legacy_mapping_loads_as_partial_and_saves_new_quality(self):
+    def test_good_quality_loads_as_partial_and_saves_new_quality(self):
         with TemporaryDirectory() as directory:
             root = Path(directory).resolve()
             (root / "script.txt").write_text("Hello world.", encoding="utf-8")
@@ -67,6 +74,7 @@ class QualityTests(unittest.TestCase):
             state = mapping.new_state()
             state["script"] = sources.load_script(root, "script.txt")
             state["transcript"] = sources.load_transcript(root, "transcript.json")
+            state["groupings"] = {panel: mapping.initial_groupings(state[panel]) for panel in mapping.PANELS}
             state["selected"] = {"script": 0, "transcript": 0}
             actions.link(None, state)
             state["links"][0]["classification"] = "good"
@@ -76,6 +84,95 @@ class QualityTests(unittest.TestCase):
             new_path = mapping.save_version(root, loaded, "legacy")
             saved = json.loads((root / new_path).read_text())
             self.assertEqual(saved["links"][0]["classification"], "partial")
+
+
+class WordGroupingTests(unittest.TestCase):
+    def test_split_merge_link_and_save_reopen_without_changing_sources(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            script_path = root / "script.txt"
+            transcript_path = root / "transcript.json"
+            script_path.write_text("One two. Three four.", encoding="utf-8")
+            transcript_path.write_text(json.dumps({"words": [
+                {"text": text, "start_ms": i * 100, "end_ms": (i + 1) * 100}
+                for i, text in enumerate(("One", "two.", "Three", "four."))
+            ]}), encoding="utf-8")
+            original_script = script_path.read_bytes()
+            original_transcript = transcript_path.read_bytes()
+            state = mapping.new_state()
+            project = SimpleNamespace(root=root)
+            actions.load_script(project, state, "script.txt")
+            actions.load_transcript(project, state, "transcript.json")
+
+            actions.merge(None, state, "transcript", [0, 1])
+            self.assertEqual(state["groupings"]["transcript"], [{"word_start": 0, "word_end": 3}])
+            actions.merge(None, state, "script", [0, 1])
+            self.assertEqual(mapping.group_rows(state, "script")[0]["text"], "One two. Three four.")
+            actions.split(None, state, "transcript", 1)
+            actions.split(None, state, "script", 1)
+            state["selected"]["script"] = 1
+            actions.split(None, state, "script", 2)
+            state["selected"]["script"] = 0
+            self.assertEqual([row["text"] for row in mapping.group_rows(state, "transcript")],
+                             ["One", "two. Three four."])
+            actions.link(None, state)
+            state["selected"]["script"] = 1
+            state["selected"]["transcript"] = 1
+            actions.link(None, state)
+            self.assertEqual(state["links"], [
+                {"script": {"word_start": 0, "word_end": 0},
+                 "transcript": {"word_start": 0, "word_end": 0}, "classification": "exact"},
+                {"script": {"word_start": 1, "word_end": 1},
+                 "transcript": {"word_start": 1, "word_end": 3}, "classification": "partial"},
+            ])
+            with self.assertRaisesRegex(ValueError, "Unlink"):
+                actions.merge(None, state, "transcript", [0, 1])
+            with self.assertRaisesRegex(ValueError, "Unlink"):
+                actions.split(None, state, "script", 3)
+            self.assertEqual(mapping.coverage(state), {(0, 0): "exact", (1, 1): "partial", (2, 3): "missing"})
+            saved = mapping.save_version(root, state, "review")
+            reopened = mapping.read_mapping(root, saved)
+            self.assertEqual(reopened["groupings"], state["groupings"])
+            self.assertEqual(reopened["links"], state["links"])
+            self.assertEqual(script_path.read_bytes(), original_script)
+            self.assertEqual(transcript_path.read_bytes(), original_transcript)
+
+    def test_discarded_groups_regroup_without_losing_review_state(self):
+        state = review_state()
+        actions.discard(None, state)
+        actions.split(None, state, "transcript", 1)
+        self.assertEqual(state["discarded"], [
+            {"word_start": 0, "word_end": 0}, {"word_start": 1, "word_end": 1},
+        ])
+        actions.merge(None, state, "transcript", [0, 1])
+        self.assertEqual(state["discarded"], [{"word_start": 0, "word_end": 1}])
+        with self.assertRaisesRegex(ValueError, "Restore"):
+            actions.merge(None, state, "transcript", [0, 1])
+
+    def test_document_rejects_gap_and_non_group_link_range(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            (root / "script.txt").write_text("One two.", encoding="utf-8")
+            (root / "transcript.json").write_text(json.dumps({"words": [
+                {"text": "One", "start_ms": 0, "end_ms": 100},
+                {"text": "two.", "start_ms": 100, "end_ms": 200},
+            ]}), encoding="utf-8")
+            state = mapping.new_state()
+            state["script"] = sources.load_script(root, "script.txt")
+            state["transcript"] = sources.load_transcript(root, "transcript.json")
+            state["groupings"] = {panel: mapping.initial_groupings(state[panel]) for panel in mapping.PANELS}
+            state["selected"] = {"script": 0, "transcript": 0}
+            actions.link(None, state)
+            path = mapping.save_version(root, state, "review")
+            document = json.loads((root / path).read_text())
+            changed = deepcopy(document)
+            changed["groupings"]["transcript"] = [{"word_start": 1, "word_end": 1}]
+            with self.assertRaisesRegex(ValueError, "cover source words"):
+                mapping.validate_document(root, changed)
+            changed = deepcopy(document)
+            changed["links"][0]["transcript"]["word_end"] = 0
+            with self.assertRaisesRegex(ValueError, "match word groupings"):
+                mapping.validate_document(root, changed)
 
 
 class QtTests(unittest.TestCase):
@@ -133,10 +230,11 @@ class ReviewUiTests(QtTests):
         self.app.processEvents()
 
     def test_link_toggle_and_unlink_with_different_or_closed_script(self):
+        self.assertFalse(hasattr(self.widget, "advance_script_after_link"))
         self.widget.link_button.click()
         self.assertEqual(self.widget.state["links"][0]["classification"], "exact")
-        self.assertEqual(self.widget.state["selected"], {"script": 0, "transcript": 1})
-        self.assertEqual(self.logging.call_args.args[2], "Linked script sentence 1 to transcript sentence 1 as exact")
+        self.assertEqual(self.widget.state["selected"], {"script": 1, "transcript": 1})
+        self.assertEqual(self.logging.call_args.args[2], "Linked script group 1 to transcript group 1 as exact")
         self.widget.navigate("transcript", -1)
         self.widget.navigate("script", 1)
         self.assertEqual(self.widget.link_button.text(), "Unlink")
@@ -148,7 +246,7 @@ class ReviewUiTests(QtTests):
 
     def test_discard_restore_and_last_sentence(self):
         self.widget.discard_button.click()
-        self.assertEqual(self.widget.state["discarded"], ["t0"])
+        self.assertEqual(self.widget.state["discarded"], [{"word_start": 0, "word_end": 1}])
         self.assertEqual(self.widget.state["selected"]["transcript"], 1)
         self.widget.navigate("transcript", -1)
         self.assertEqual(self.widget.discard_button.text(), "Restore")
@@ -173,7 +271,7 @@ class ReviewUiTests(QtTests):
         self.assertEqual(len(self.widget.state["links"]), 1)
         self.assertEqual(self.widget.state["selected"]["transcript"], 1)
         self.key(Qt.Key.Key_Backspace)
-        self.assertEqual(self.widget.state["discarded"], ["t1"])
+        self.assertEqual(self.widget.state["discarded"], [{"word_start": 2, "word_end": 2}])
         self.assertEqual(self.widget.state["selected"]["transcript"], 2)
         self.key(Qt.Key.Key_K)
         self.key(Qt.Key.Key_Backspace)
@@ -220,6 +318,50 @@ class ReviewUiTests(QtTests):
             self.widget.link_selected()
             self.widget.discard_selected()
         self.assertEqual(self.widget.state["selected"]["transcript"], 0)
+
+    def test_split_picker_and_merge_context_menu(self):
+        table = self.widget._panels["transcript"]["table"]
+        with patch("studio.tools.line.ui.QMessageBox.warning", side_effect=RuntimeError("Unexpected dialog")):
+            self.widget._begin_split("transcript", 0)
+            picker = table.cellWidget(0, 1)
+            self.assertIsNotNone(picker)
+            self.assertIn("Hello world.", picker.toPlainText())
+            QTest.keyClick(picker, Qt.Key.Key_Return)
+            self.app.processEvents()
+            self.assertEqual(self.widget.state["groupings"]["transcript"][:2], [
+                {"word_start": 0, "word_end": 0}, {"word_start": 1, "word_end": 1},
+            ])
+            self.assertIsNone(self.widget._split_mode)
+            table.selectionModel().select(table.model().index(1, 0),
+                                          QItemSelectionModel.SelectionFlag.Select | QItemSelectionModel.SelectionFlag.Rows)
+            self.app.processEvents()
+            self.assertEqual(self.widget._selected_indexes("transcript"), [0, 1])
+            with patch("studio.tools.line.ui.QMenu") as menu_class:
+                menu_class.return_value.isEmpty.return_value = False
+                point = table.visualRect(table.model().index(0, 1)).center()
+                self.widget._group_menu("transcript", point)
+                menu_class.return_value.addAction.assert_called_once_with("Merge groups")
+                menu_class.return_value.addAction.return_value.setEnabled.assert_called_once_with(True)
+            self.widget._merge_groups("transcript", [0, 1])
+            self.assertEqual(self.widget.state["groupings"]["transcript"][0], {"word_start": 0, "word_end": 1})
+
+    def test_long_split_group_expands_to_show_wrapped_words(self):
+        words = ["many"] * 70
+        transcript = self.widget.state["transcript"]
+        transcript["words"] = [
+            {"index": i, "text": word, "start_ms": i * 100, "end_ms": (i + 1) * 100}
+            for i, word in enumerate(words)
+        ]
+        transcript["rows"] = [{"id": "t0", "line": 1, "text": " ".join(words),
+                               "word_start": 0, "word_end": len(words) - 1,
+                               "start_ms": 0, "end_ms": 7000}]
+        self.widget.state["groupings"]["transcript"] = mapping.initial_groupings(transcript)
+        self.widget._refresh()
+        self.widget._begin_split("transcript", 0)
+        self.app.processEvents()
+        self.app.processEvents()
+        table = self.widget._panels["transcript"]["table"]
+        self.assertGreater(table.rowHeight(0), 42)
 
 
 if __name__ == "__main__":

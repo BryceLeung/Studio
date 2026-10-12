@@ -2,7 +2,7 @@
 
 Studio's workflow definitions live under `.agents/skills/studio/`. The native
 Python dashboard provides a container for project tools; **Line!** is its first
-tool, for mapping transcript sentences to approved script sentences.
+tool, for mapping transcript word groupings to approved script word groupings.
 
 ## Start the dashboard
 
@@ -38,27 +38,33 @@ The GUI uses PySide6 and the operating system's desktop window system.
 ## Review with Line!
 
 1. Load an approved Word script. Only the content after **Spoken script** becomes
-   sentence rows; the title and filming instructions are excluded.
+   initial word groupings; the title and filming instructions are excluded.
 2. Load a word-timestamped transcript JSON from `3-Post Production/2-Transcribe/`.
    Existing WhisperX files are supported; source text and files remain intact.
-3. Select one script row and one transcript row. **Link** infers quality:
+3. Sentence boundaries supply the initial word groupings. To fix a boundary,
+   right-click one unlinked group and choose **Split group**, then click the gap
+   between words (or use Left/Right and Enter; Escape cancels). To combine groups,
+   Shift-click adjacent unlinked groups and right-click **Merge groups**. Unlink
+   first if a group is already linked.
+4. Select one script group and one transcript group. **Link** infers quality:
    identical text is **Exact** (green), shorter transcript text is **Flub** (red),
    and other text of equal or greater character length is **Partial** (yellow).
-   Comparisons preserve case, punctuation, and spacing. A script sentence can
-   have many readings; each transcript sentence links to at most one script sentence.
-4. The same button becomes **Unlink** when the transcript sentence has a link.
-   **Discard** excludes a transcript sentence and removes its link; the button
-   becomes **Restore** for discarded sentences. Link and Discard advance to the
-   next transcript sentence, stopping at the end. Unlink and Restore stay put.
-5. Save a mapping with a name. Every save creates a new numbered JSON version.
-   Load an existing mapping to continue reviewing it.
+   Comparisons preserve case, punctuation, and spacing. A script group can
+   have many readings; each transcript group links at most once.
+5. The same button becomes **Unlink** when the transcript group has a link.
+   **Discard** excludes a transcript group and removes its link; the button
+   becomes **Restore** for discarded groups. Link and Discard advance to the
+   next transcript group, stopping at the end. Link also advances the script
+   group. Unlink and Restore stay put.
+6. Save a Line project with a name. Every save creates a new numbered JSON
+   version containing groupings and mappings. Load it to resume reviewing.
 
 Closing an individual source unloads its panel while retaining the current
 mapping. Reopening the same source restores it. **New Review** explicitly
 clears both sources and the mapping; unsaved work prompts for save/discard/cancel.
 Changing projects or closing the window also offers to save unsaved work.
 
-Coverage uses the best established link for each script sentence:
+Coverage uses the best established link for each script group:
 exact → partial → flub → missing. Older saved `good` links load as `partial`.
 Missing means no link has been established.
 Transcript review states are linked, discarded, and unreviewed. Source offsets
@@ -97,13 +103,14 @@ All project files created by the dashboard are under the project's OneDrive
 
 The log records meaningful action names, UTC times, success/failure, and a short
 description supplied by each tool. Line descriptions include loaded filenames and
-sentence counts, one-based sentence numbers for edits, link classifications, and
+grouping counts, one-based group numbers for edits, link classifications, and
 the actual versioned path returned by saves. Full inputs and returned state are
 not written to the log. Actions without a formatter use a compact generic summary;
 each summary is limited to 600 characters. Frequent selection/navigation actions
 do not fill the log. Mapping files contain source
-paths and SHA-256 fingerprints, sentence IDs, words and offsets, links, and
-discarded IDs. Inputs are verified when loading or saving mappings so changed
+paths and SHA-256 fingerprints, initial sentence rows, words and offsets,
+groupings, word-range links, and discarded word ranges. Inputs are verified when
+loading or saving Line projects so changed
 source files cannot silently reuse an old review. See
 [the mapping contract](studio/tools/line/docs/line-mapping.md).
 
@@ -124,7 +131,7 @@ List projects and action signatures:
 .venv-dashboard/bin/python -m studio actions
 ```
 
-For example, create a versioned link from two selected rows:
+For example, create a versioned link from two selected groupings:
 
 ```sh
 .venv-dashboard/bin/python -m studio action line.link \
@@ -135,7 +142,7 @@ For example, create a versioned link from two selected rows:
   --save "Love Compounds Too"
 ```
 
-The line numbers in this example are illustrative; review the content before
+The group numbers in this example are illustrative; review the content before
 using the result as a benchmark. Pass `--mapping studio/line/<name>.v001.json`
 to start with an existing mapping. CLI state is temporary unless `--save` or
 `line.save` is requested. CLI actions also acquire the project lock; close its
@@ -170,7 +177,7 @@ studio/
 ├── actions.py        # Action registry and append-only logging
 └── tools/
     └── line/
-        ├── ui.py     # Native sentence panels and controls
+        ├── ui.py     # Native word-group panels and controls
         ├── actions.py
         ├── sources.py
         └── mapping.py

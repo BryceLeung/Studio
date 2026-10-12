@@ -143,14 +143,46 @@ def load_script(project_root: Any, path: Any) -> dict:
     title, paragraphs, format_name = _script_paragraphs(source_path, content)
     source = source_reference(root, source_path, "script", format_name, content=content)
     rows = []
+    row_separators = []
     for paragraph in paragraphs:
         for text in paragraph.splitlines():
+            previous_end = None
             for start, end in sentence_spans(text):
                 line = len(rows) + 1
+                row_separators.append(
+                    "" if not rows else text[previous_end:start] if previous_end is not None else "\n"
+                )
                 rows.append({"id": row_id(source, line), "line": line, "text": text[start:end]})
+                previous_end = end
     if not rows:
         raise ValueError(f"Script contains no spoken sentences: {source_path.name}")
-    return {"source": source, "title": title, "rows": rows}
+    return script_words({"source": source, "title": title, "rows": rows}, row_separators)
+
+
+def script_words(source_data: dict, row_separators: list[str] | None = None) -> dict:
+    """Add deterministic word ranges, preserving the script's literal spacing.
+
+    Also used to upgrade v1 reviews without changing their sentence segmentation.
+    The caller owns source_data; the original project file is never written.
+    """
+    words = []
+    for row_index, row in enumerate(source_data["rows"]):
+        first = len(words)
+        previous_end = 0
+        for token in re.finditer(r"\S+", row["text"]):
+            separator = (
+                (row_separators[row_index] if row_separators is not None else "\n" if words else "")
+                if previous_end == 0 else row["text"][previous_end:token.start()]
+            )
+            words.append({
+                "index": len(words), "text": token.group(),
+                "separator": separator,
+            })
+            previous_end = token.end()
+        row["word_start"] = first
+        row["word_end"] = len(words) - 1
+    source_data["words"] = words
+    return source_data
 
 
 def _time_ms(value: Any, scale: int, field: str) -> int | None:

@@ -136,15 +136,16 @@ class ActionInputTests(unittest.TestCase):
             self.assertIs(actions._registry["test.formatted"].describe, formatter)
             self.assertNotIn("describe", actions.available_actions()["test.formatted"])
 
-    def test_line_discard_logs_selected_sentence_without_state_dump(self):
+    def test_line_discard_logs_selected_group_without_state_dump(self):
         from studio.tools.line import actions as line_actions
 
-        state = {"transcript": {"rows": [{"id": str(index)} for index in range(1000)]},
+        state = {"transcript": {"words": [{"text": "word", "start_ms": None, "end_ms": None} for _ in range(1000)]},
+                 "groupings": {"script": [], "transcript": [{"word_start": i, "word_end": i} for i in range(1000)]},
                  "selected": {"transcript": 53}, "links": [], "discarded": [], "dirty": False}
         with patch.object(actions, "_log") as log:
             result = actions.invoke("line.discard", self.project, state)
-        self.assertEqual(result["discarded"], ["53"])
-        self.assertEqual(log.call_args.args[2], "Discarded transcript sentence 54")
+        self.assertEqual(result["discarded"], [{"word_start": 53, "word_end": 53}])
+        self.assertEqual(log.call_args.args[2], "Discarded transcript group 54")
 
     def test_line_formatter_descriptions(self):
         from studio.tools.line.actions import _describe_line
@@ -152,16 +153,16 @@ class ActionInputTests(unittest.TestCase):
         inputs = {"state": {"selected": {"script": 1, "transcript": 5}},
                   "classification": "exact", "path": "/project/review.v003.json"}
         cases = [
-            ("load_script", {"script": {"source": {"path": "Approved/Script.docx"}, "rows": [1] * 25}}, "Loaded script: Script.docx (25 sentences)"),
-            ("load_transcript", {"transcript": {"source": {"path": "Transcribe/Audio.json"}, "rows": [1] * 31}}, "Loaded transcript: Audio.json (31 sentences)"),
-            ("link", {"transcript": {"rows": [{"id": str(i)} for i in range(6)]}, "selected": {"transcript": 5}, "links": [{"transcript_id": "5", "classification": "exact"}]}, "Linked script sentence 2 to transcript sentence 6 as exact"),
-            ("unlink", {}, "Unlinked transcript sentence 6"),
-            ("restore", {}, "Restored transcript sentence 6"),
+            ("load_script", {"script": {"source": {"path": "Approved/Script.docx"}}, "groupings": {"script": [1] * 25}}, "Loaded script: Script.docx (25 word groupings)"),
+            ("load_transcript", {"transcript": {"source": {"path": "Transcribe/Audio.json"}}, "groupings": {"transcript": [1] * 31}}, "Loaded transcript: Audio.json (31 word groupings)"),
+            ("link", {"transcript": {"words": [{"text": "word", "start_ms": None, "end_ms": None}] * 6}, "groupings": {"script": [], "transcript": [{"word_start": i, "word_end": i} for i in range(6)]}, "selected": {"transcript": 5}, "links": [{"transcript": {"word_start": 5, "word_end": 5}, "classification": "exact"}]}, "Linked script group 2 to transcript group 6 as exact"),
+            ("unlink", {}, "Unlinked transcript group 6"),
+            ("restore", {}, "Restored transcript group 6"),
             ("save", "studio/line/review.v003.json", "Saved: studio/line/review.v003.json"),
-            ("load_mapping", {"links": [1], "discarded": [1, 2]}, "Loaded mapping: review.v003.json (links: 1, discarded: 2)"),
+            ("load_mapping", {"links": [1], "discarded": [1, 2]}, "Loaded Line project: review.v003.json (links: 1, discarded: 2)"),
             ("close_script", {}, "Closed script panel"),
             ("close_transcript", {}, "Closed transcript panel"),
-            ("reset", {}, "Reset sources and mapping"),
+            ("reset", {}, "Reset sources and Line project"),
         ]
         for operation, result, expected in cases:
             with self.subTest(operation=operation):
@@ -181,12 +182,13 @@ class ActionInputTests(unittest.TestCase):
         with TemporaryDirectory() as directory:
             project = object.__new__(Project)
             object.__setattr__(project, "root", Path(directory).resolve())
-            state = {"transcript": {"rows": [{"id": str(index)} for index in range(10000)]},
+            state = {"transcript": {"words": [{"text": "word", "start_ms": None, "end_ms": None} for _ in range(10000)]},
+                     "groupings": {"script": [], "transcript": [{"word_start": i, "word_end": i} for i in range(10000)]},
                      "selected": {"transcript": 53}, "links": [], "discarded": [], "dirty": False}
             actions.invoke("line.discard", project, state)
             text = project.log_path.read_text(encoding="utf-8")
         self.assertIn("line.discard — succeeded", text)
-        self.assertIn("Summary: Discarded transcript sentence 54", text)
+        self.assertIn("Summary: Discarded transcript group 54", text)
         self.assertNotIn("Inputs:", text)
         self.assertNotIn("Return value:", text)
         self.assertLess(len(text), 400)

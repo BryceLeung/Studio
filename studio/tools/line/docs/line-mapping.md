@@ -1,166 +1,122 @@
-# Line! mapping format
+# Line project format
 
-Line! stores dashboard files under each OneDrive project’s `studio/` directory.
-Mapping versions are `studio/line/<name>.v001.json`, `v002.json`, and so on. Saving
-creates a new file exclusively; an existing version is never overwritten.
-Pipeline scripts, transcripts, and audio remain in their original locations.
+Line! saves each review under its OneDrive project's `studio/line/` directory as
+`<name>.v001.json`, `v002.json`, and so on. Each save creates a new file. A Line
+project contains immutable source snapshots, editable word groupings, links,
+and discarded transcript groupings. Source files are never edited.
 
 ## Schema
 
-Manual review and matching algorithms use the same `studio.line.mapping` schema,
-currently version `1`. Each document maps one script to one transcript. Several
-transcript sentences may link to the same script sentence; each transcript
-sentence may link to only one script sentence.
+The current schema is `studio.line.mapping`, version `2`. Each file maps one
+script to one transcript. Every grouping, link, and discard uses an **inclusive,
+zero-based word range**. The same link format applies to ordinary sentence-sized
+readings and manually split or merged readings.
 
 ```json
 {
   "schema": "studio.line.mapping",
-  "schema_version": 1,
+  "schema_version": 2,
   "mapping_name": "freedom-c01",
   "version": 2,
-  "created_at": "2026-10-11T21:00:00+00:00",
+  "created_at": "2026-10-12T21:00:00+00:00",
   "parent": "studio/line/freedom-c01.v001.json",
   "sources": {
     "script": {
-      "source": {
-        "path": "1-Pre Production/1-Script Review/Approved/What Is Freedom For.docx",
-        "sha256": "<64 lowercase hexadecimal characters>",
-        "segmentation_version": "line-sentences-v1",
-        "kind": "script",
-        "format": "docx-spoken-script"
-      },
-      "title": "What Is Freedom For",
-      "rows": [
-        {"id": "<script sentence ID>", "line": 1, "text": "What is freedom for?"}
-      ]
+      "source": {"path": "Approved/Script.txt", "sha256": "<SHA-256>", "segmentation_version": "line-sentences-v1", "kind": "script", "format": "text"},
+      "title": "Script",
+      "words": [
+        {"index": 0, "text": "What", "separator": ""},
+        {"index": 1, "text": "is", "separator": " "},
+        {"index": 2, "text": "freedom?", "separator": " "}
+      ],
+      "rows": [{"id": "<script sentence ID>", "line": 1, "text": "What is freedom?", "word_start": 0, "word_end": 2}]
     },
     "transcript": {
-      "source": {
-        "path": "3-Post Production/2-Transcribe/What Is Freedom For__C01__lav.json",
-        "sha256": "<64 lowercase hexadecimal characters>",
-        "segmentation_version": "line-sentences-v1",
-        "kind": "transcript",
-        "format": "whisperx-json"
-      },
-      "title": "What Is Freedom For__C01__lav",
-      "audio": "2-Production/1-Footage Intake/What Is Freedom For__C01__lav.wav",
+      "source": {"path": "Transcript.json", "sha256": "<SHA-256>", "segmentation_version": "line-sentences-v1", "kind": "transcript", "format": "word-json"},
+      "title": "Transcript",
+      "audio": null,
       "words": [
         {"index": 0, "text": "What", "start_ms": 1000, "end_ms": 1100},
         {"index": 1, "text": "is", "start_ms": 1100, "end_ms": 1200},
-        {"index": 2, "text": "freedom", "start_ms": null, "end_ms": null},
-        {"index": 3, "text": "for?", "start_ms": 1500, "end_ms": 1800}
+        {"index": 2, "text": "freedom?", "start_ms": null, "end_ms": null}
       ],
-      "rows": [
-        {
-          "id": "<transcript sentence ID>",
-          "line": 1,
-          "text": "What is freedom for?",
-          "word_start": 0,
-          "word_end": 3,
-          "start_ms": 1000,
-          "end_ms": 1800
-        }
-      ]
+      "rows": [{"id": "<transcript sentence ID>", "line": 1, "text": "What is freedom?", "word_start": 0, "word_end": 2, "start_ms": 1000, "end_ms": null}]
     }
   },
-  "links": [
-    {
-      "script_id": "<script sentence ID>",
-      "transcript_id": "<transcript sentence ID>",
-      "classification": "exact"
-    }
-  ],
+  "groupings": {
+    "script": [{"word_start": 0, "word_end": 2}],
+    "transcript": [{"word_start": 0, "word_end": 2}]
+  },
+  "links": [{"script": {"word_start": 0, "word_end": 2}, "transcript": {"word_start": 0, "word_end": 2}, "classification": "exact"}],
   "discarded": []
 }
 ```
 
-The example uses placeholders for fingerprints and IDs. Actual IDs are
-`<kind>:<full SHA-256>:<segmentation version>:<one-based line number>`.
-The source fingerprint hashes the exact file bytes used by the input adapter.
-Paths use forward slashes and are relative to the project root. Reads and writes
-are confined to that project, including resolution of symlinks.
+The example uses placeholders for hashes and sentence IDs. Actual source row
+IDs are `<kind>:<full SHA-256>:<segmentation version>:<one-based line number>`.
+They identify the deterministic starting segmentation; links do not depend on
+them. Paths use forward slashes relative to the project root. Loading verifies
+source hashes, words, timings, and rows against the original files. Version 1
+review files are not supported; start a new review from their sources.
 
-The `sources` objects contain the immutable sentence segmentation and normalized
-transcript words used for review. Loading verifies the source files still exist,
-their fingerprints match, their sentence rows and word timings match the named
-segmentation version, and every link/discard reference is valid. Editing a source
-file makes its old mapping unavailable until the original source is restored;
-use a fresh review for changed inputs. Unsupported schema or segmentation
-versions produce an error.
+## Initial groupings and review
 
-## Inputs and sentence boundaries
+Initial groupings come from sentence segmentation. Word scripts include only
+paragraphs after the `Spoken script` heading. Script words retain whitespace
+before each word so a merged group can display original line breaks. Transcript
+groups start from ordered ASR words, independently of ASR segment boundaries.
+Terminal `.`, `!`, `?`, and `…` punctuation creates an initial boundary; common
+abbreviations and initials are retained. A final fragment is kept.
 
-Word scripts include only the paragraphs after the `Spoken script` heading.
-Titles and notes before that heading are excluded. Plain text scripts and JSON
-scripts containing `spoken_script` or `text` are also supported. Script sentence
-boundaries preserve paragraph and line breaks. Transcript sentences are formed
-from the ordered source words, independently of subtitle/ASR segment boundaries.
-Terminal `.`, `!`, `?`, and `…` punctuation creates a sentence boundary; common
-abbreviations and initials are retained. A final fragment remains a row. This is
-a deterministic initial segmentation rule, rather than a take detector.
+The WhisperX adapter reads per-segment `words` when available, retaining
+unaligned entries and text from segments without word alignment. Otherwise it
+reads `word_segments`. WhisperX seconds are rounded to integer milliseconds.
+Provider-independent JSON `words` use integer milliseconds via
+`start_ms`/`end_ms` or `start`/`end`; `timestamp_unit` or `time_unit` may specify
+seconds or milliseconds. Missing timing remains `null`. Group timing comes from
+its first and last source words. Times refer to the original audio without a
+sync offset.
 
-The WhisperX adapter reads per-segment `words` when available, retaining unaligned
-entries and text from segments without word alignment. Otherwise it reads
-`word_segments`. WhisperX seconds are rounded to integer milliseconds. The
-provider-independent JSON `words` contract uses integer milliseconds, either
-`start_ms`/`end_ms` or `start`/`end`; `timestamp_unit` or `time_unit` can explicitly
-specify `seconds` or `milliseconds`. Missing timing remains `null`; no timing is
-invented from an ASR segment. Alignment score and confidence diagnostics remain
-separately named fields when supplied.
+Groupings cover every source word once, in order, without gaps or overlap.
+Right-click one unlinked group to split it between words. Shift-click adjacent
+unlinked groups, then right-click to merge them. Linked groups must be unlinked
+before regrouping. Splitting a discarded group keeps both children discarded;
+merging discarded groups keeps the result discarded. Restore discarded groups
+before merging them with unreviewed groups.
 
-Word indexes start at zero and include unaligned words. Sentence `word_start`
-and `word_end` are **inclusive**. Sentence timing comes from the first and last
-source words; an unaligned boundary has a `null` time even if interior words
-align. Times refer to the original audio with no sync offset applied.
+Each link connects one script group to one transcript group. Many transcript
+groups may link to the same script group; a transcript group may link only once.
+Quality is inferred from group text: literal equality is `exact`, a shorter
+transcript text is `flub`, and other equal/longer text is `partial`. The former
+`good` quality value is accepted as `partial` in version 2. Coverage uses the
+best reading for each script group: `exact` outranks `partial`, which outranks
+`flub`; an unlinked group is `missing`. Transcript groups are `linked`,
+`discarded`, or `unreviewed`.
 
-An explicit `source_audio` string or `{ "path": "..." }` object is normalized
-to the project-relative `audio` path. If absent, Line! looks for the WAV with the
-transcript’s stem in `2-Production/1-Footage Intake/`. If no unique WAV exists,
-`audio` is `null`.
-
-## Review behavior
-
-Links contain only a script ID, transcript ID, and `exact`, `partial`, or `flub`
-classification. Legacy `good` values are accepted and load as `partial`.
-The link action infers quality using literal text equality (`exact`), a shorter
-transcript character count (`flub`), or any other equal/longer text (`partial`).
-There is no separate link schema or per-link provenance label
-for human and algorithm results. Algorithms can obtain the same canonical
-source objects through `sources.load_script()` and `sources.load_transcript()`,
-populate links/discarded, and save through `mapping.save_version()`.
-
-Coverage is calculated per script sentence from its best linked reading:
-`exact` outranks `partial`, which outranks `flub`; a sentence without a link is
-`missing`. Each transcript sentence is separately `linked`, `discarded`, or
-`unreviewed`. Loading or saving never marks unseen sentences reviewed.
-
-Discarding a transcript sentence removes its links. Restoring it makes it
-unreviewed; the old links are not restored. Closing a source panel retains its
-source and review state, and reopening the same file restores that state.
-Changing an existing source when there are changes or links requires an
-explicit Reset. Reset clears the entire current review; saved versions remain
-available to load. A dirty review must be saved or explicitly reset before
-loading another mapping.
+Closing a source panel retains its source, groupings, and review state.
+Reopening the same input restores them. A dirty review must be saved or reset
+before loading another Line project. Saving always creates a new version.
 
 ## Shared actions
 
-Registered actions accept `(project, state, ...)`, where `project.root` is the
-project directory and `state` comes from `mapping.new_state()`. They mutate and
-return that state, except `line.save`, which returns the new project-relative
-mapping path. `studio.actions.invoke()` supplies common logging and project-lock
-checking to the desktop interface, command line, and agent callers.
+Registered actions accept `(project, state, ...)`, with `state` from
+`mapping.new_state()`. The desktop and CLI use `studio.actions.invoke()` for
+common logging and project-lock checks.
 
 | Action | Additional arguments |
 | --- | --- |
 | `line.load_script`, `line.load_transcript`, `line.load_mapping` | `path` |
 | `line.close_script`, `line.close_transcript`, `line.reset` | None |
-| `line.select` | `panel`, zero-based `index` or `null` |
+| `line.select` | `panel`, zero-based grouping `index` or `null` |
 | `line.navigate` | `panel`, integer `delta` |
-| `line.jump` | `panel`, one-based `line` |
-| `line.link` | None; quality is inferred from selected sentence texts |
-| `line.unlink`, `line.discard`, `line.restore` | None; selected transcript sentence |
+| `line.jump` | `panel`, one-based grouping `line` |
+| `line.split` | `panel`, `boundary`: zero-based first word of new right group; acts on selected group |
+| `line.merge` | `panel`, contiguous zero-based `indexes` list |
+| `line.link` | None; quality is inferred from selected grouping texts |
+| `line.unlink`, `line.discard`, `line.restore` | None; selected transcript grouping |
 | `line.save` | `name` |
 
-`line.unlink` removes the selected transcript reading’s link, which also allows
-that reading to be reassigned to another script sentence. All review actions use
-the same state and persistence contract regardless of caller.
+Matching algorithms can load canonical sources through `sources.load_script()`
+and `sources.load_transcript()`, set initial groupings with
+`mapping.initial_groupings()`, populate word-range links and discards, and save
+through `mapping.save_version()`.

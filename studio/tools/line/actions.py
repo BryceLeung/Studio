@@ -16,29 +16,31 @@ def _describe_line(operation: str):
         state = inputs.get("state", {})
         selected = state.get("selected", {})
 
-        def sentence(panel: str) -> str:
+        def group_number(panel: str) -> str:
             index = selected.get(panel)
             return "unselected" if index is None else str(index + 1)
 
         if operation in ("load_script", "load_transcript"):
             panel = operation.removeprefix("load_")
             source = result[panel]
-            return f"Loaded {panel}: {Path(source['source']['path']).name} ({len(source['rows'])} sentences)"
+            return f"Loaded {panel}: {Path(source['source']['path']).name} ({len(result['groupings'][panel])} word groupings)"
         if operation in ("close_script", "close_transcript"):
             return f"Closed {operation.removeprefix('close_')} panel"
         if operation == "link":
             transcript = _selected_row(result, "transcript")
-            classification = next(link["classification"] for link in result["links"] if link["transcript_id"] == transcript["id"])
-            return f"Linked script sentence {sentence('script')} to transcript sentence {sentence('transcript')} as {classification}"
+            classification = mapping.linked_group(result, "transcript", transcript)["classification"]
+            return f"Linked script group {group_number('script')} to transcript group {group_number('transcript')} as {classification}"
         if operation in ("unlink", "discard", "restore"):
             verb = {"unlink": "Unlinked", "discard": "Discarded", "restore": "Restored"}[operation]
-            return f"{verb} transcript sentence {sentence('transcript')}"
+            return f"{verb} transcript group {group_number('transcript')}"
+        if operation in ("split", "merge"):
+            return f"{operation.title()} {inputs['panel']} word grouping"
         if operation == "load_mapping":
-            return f"Loaded mapping: {Path(inputs['path']).name} (links: {len(result['links'])}, discarded: {len(result['discarded'])})"
+            return f"Loaded Line project: {Path(inputs['path']).name} (links: {len(result['links'])}, discarded: {len(result['discarded'])})"
         if operation == "save":
             return f"Saved: {result}"
         if operation == "reset":
-            return "Reset sources and mapping"
+            return "Reset sources and Line project"
         raise ValueError(f"No Line description for {operation}")
 
     return describe
@@ -59,10 +61,10 @@ def _selected_row(state: dict, panel: str) -> dict:
     source = state.get(panel)
     index = state["selected"].get(panel)
     if not source or index is None:
-        raise ValueError(f"Select a {panel} sentence first.")
-    if isinstance(index, bool) or not isinstance(index, int) or not 0 <= index < len(source["rows"]):
-        raise ValueError(f"Selected {panel} sentence is invalid.")
-    return source["rows"][index]
+        raise ValueError(f"Select a {panel} word grouping first.")
+    if isinstance(index, bool) or not isinstance(index, int) or not 0 <= index < len(state["groupings"][panel]):
+        raise ValueError(f"Selected {panel} word grouping is invalid.")
+    return mapping.group_rows(state, panel)[index]
 
 
 def _load_source(project: Any, state: dict, panel: str, path: Any) -> dict:
@@ -74,12 +76,13 @@ def _load_source(project: Any, state: dict, panel: str, path: Any) -> dict:
         for key in ("path", "sha256", "segmentation_version")
     ))
     if previous and not same and (state["dirty"] or state["links"] or state["discarded"]):
-        raise ValueError("Save your mapping, then use Reset before choosing a different source.")
+        raise ValueError("Save your Line project, then use Reset before choosing a different source.")
     if same:
-        # Saved sentence ordering remains authoritative for the same input.
+        # The retained source and grouping layout remain authoritative for the same input.
         state[panel] = previous
     else:
         state[panel] = loaded
+        state["groupings"][panel] = mapping.initial_groupings(loaded)
         state["mapping_path"] = None
         state["mapping_name"] = None
         state["dirty"] = True
@@ -88,12 +91,12 @@ def _load_source(project: Any, state: dict, panel: str, path: Any) -> dict:
     return state
 
 
-@action("line.load_script", description="Load spoken script sentences from a project file.", describe=_describe_line("load_script"))
+@action("line.load_script", description="Load spoken script words and initial groupings from a project file.", describe=_describe_line("load_script"))
 def load_script(project: Any, state: dict, path: Any) -> dict:
     return _load_source(project, state, "script", path)
 
 
-@action("line.load_transcript", description="Load timestamped transcript sentences from a project file.", describe=_describe_line("load_transcript"))
+@action("line.load_transcript", description="Load timestamped transcript words and initial groupings from a project file.", describe=_describe_line("load_transcript"))
 def load_transcript(project: Any, state: dict, path: Any) -> dict:
     return _load_source(project, state, "transcript", path)
 
@@ -116,7 +119,7 @@ def close_transcript(project: Any, state: dict) -> dict:
     return _close(state, "transcript")
 
 
-@action("line.select", description="Select a sentence by zero-based row index.", meaningful=False)
+@action("line.select", description="Select a word grouping by zero-based row index.", meaningful=False)
 def select(project: Any, state: dict, panel: str, index: int | None) -> dict:
     panel = _panel(panel)
     source = state.get(panel)
@@ -125,13 +128,13 @@ def select(project: Any, state: dict, panel: str, index: int | None) -> dict:
         return state
     if not source:
         raise ValueError(f"Load the {panel} first.")
-    if isinstance(index, bool) or not isinstance(index, int) or not 0 <= index < len(source["rows"]):
-        raise ValueError(f"Select a {panel} index between 0 and {len(source['rows']) - 1}.")
+    if isinstance(index, bool) or not isinstance(index, int) or not 0 <= index < len(state["groupings"][panel]):
+        raise ValueError(f"Select a {panel} index between 0 and {len(state['groupings'][panel]) - 1}.")
     state["selected"][panel] = index
     return state
 
 
-@action("line.navigate", description="Move selection by a row delta, stopping at either end.", meaningful=False)
+@action("line.navigate", description="Move selection by a grouping delta, stopping at either end.", meaningful=False)
 def navigate(project: Any, state: dict, panel: str, delta: int) -> dict:
     panel = _panel(panel)
     source = state.get(panel)
@@ -141,14 +144,14 @@ def navigate(project: Any, state: dict, panel: str, delta: int) -> dict:
         raise ValueError("Navigation delta must be an integer.")
     index = state["selected"].get(panel)
     if index is None:
-        index = 0 if delta >= 0 else len(source["rows"]) - 1
+        index = 0 if delta >= 0 else len(state["groupings"][panel]) - 1
     else:
-        index = max(0, min(len(source["rows"]) - 1, index + delta))
+        index = max(0, min(len(state["groupings"][panel]) - 1, index + delta))
     state["selected"][panel] = index
     return state
 
 
-@action("line.jump", description="Select a sentence by its one-based line number.", meaningful=False)
+@action("line.jump", description="Select a word grouping by its one-based row number.", meaningful=False)
 def jump(project: Any, state: dict, panel: str, line: int) -> dict:
     if isinstance(line, bool) or not isinstance(line, int):
         raise ValueError("Line number must be an integer.")
@@ -161,23 +164,23 @@ def infer_classification(script_text: str, transcript_text: str) -> str:
     return "flub" if len(transcript_text) < len(script_text) else "partial"
 
 
-@action("line.link", description="Link selected sentences with automatically inferred quality.", describe=_describe_line("link"))
+@action("line.link", description="Link selected word groupings with automatically inferred quality.", describe=_describe_line("link"))
 def link(project: Any, state: dict) -> dict:
     script = _selected_row(state, "script")
     transcript = _selected_row(state, "transcript")
     classification = infer_classification(script["text"], transcript["text"])
-    if transcript["id"] in state["discarded"]:
-        raise ValueError("Restore this transcript sentence before linking it.")
-    previous = next((item for item in state["links"] if item["transcript_id"] == transcript["id"]), None)
-    if previous and previous["script_id"] != script["id"]:
-        raise ValueError("This reading is linked to another script sentence. Unlink it first.")
+    if mapping.is_discarded(state, transcript):
+        raise ValueError("Restore this transcript grouping before linking it.")
+    previous = mapping.linked_group(state, "transcript", transcript)
+    if previous and previous["script"] != mapping.word_range(script):
+        raise ValueError("This reading is linked to another script grouping. Unlink it first.")
     if previous:
         if previous["classification"] != classification:
             previous["classification"] = classification
             state["dirty"] = True
     else:
         state["links"].append({
-            "script_id": script["id"], "transcript_id": transcript["id"],
+            "script": mapping.word_range(script), "transcript": mapping.word_range(transcript),
             "classification": classification,
         })
         state["dirty"] = True
@@ -187,48 +190,108 @@ def link(project: Any, state: dict) -> dict:
 @action("line.unlink", description="Remove the selected transcript reading’s link.", describe=_describe_line("unlink"))
 def unlink(project: Any, state: dict) -> dict:
     transcript = _selected_row(state, "transcript")
-    links = [item for item in state["links"] if item["transcript_id"] != transcript["id"]]
+    links = [item for item in state["links"] if item["transcript"] != mapping.word_range(transcript)]
     if links != state["links"]:
         state["links"] = links
         state["dirty"] = True
     return state
 
 
-@action("line.discard", description="Discard the selected transcript sentence and remove its links.", describe=_describe_line("discard"))
+@action("line.discard", description="Discard the selected transcript word grouping and remove its links.", describe=_describe_line("discard"))
 def discard(project: Any, state: dict) -> dict:
     transcript = _selected_row(state, "transcript")
-    if transcript["id"] not in state["discarded"]:
-        state["links"] = [item for item in state["links"] if item["transcript_id"] != transcript["id"]]
-        state["discarded"].append(transcript["id"])
+    group = mapping.word_range(transcript)
+    if group not in state["discarded"]:
+        state["links"] = [item for item in state["links"] if item["transcript"] != group]
+        state["discarded"].append(group)
         state["dirty"] = True
     return state
 
 
-@action("line.restore", description="Restore the selected discarded sentence as unreviewed.", describe=_describe_line("restore"))
+@action("line.restore", description="Restore the selected discarded grouping as unreviewed.", describe=_describe_line("restore"))
 def restore(project: Any, state: dict) -> dict:
     transcript = _selected_row(state, "transcript")
-    if transcript["id"] in state["discarded"]:
-        state["discarded"].remove(transcript["id"])
+    group = mapping.word_range(transcript)
+    if group in state["discarded"]:
+        state["discarded"].remove(group)
         state["dirty"] = True
     return state
 
 
-@action("line.load_mapping", description="Load a mapping after validating source fingerprints.", describe=_describe_line("load_mapping"))
+def grouping_edit_error(state: dict, panel: str, indexes: list[int]) -> str | None:
+    panel = _panel(panel)
+    groups = state["groupings"][panel]
+    if not state.get(panel):
+        return f"Load the {panel} first."
+    if not indexes or any(type(index) is not int or not 0 <= index < len(groups) for index in indexes):
+        return "Select valid word groupings first."
+    if any(mapping.linked_group(state, panel, groups[index]) for index in indexes):
+        return "Unlink the selected word groupings before splitting or merging."
+    return None
+
+
+@action("line.split", description="Split an unlinked grouping at a word boundary.", describe=_describe_line("split"))
+def split(project: Any, state: dict, panel: str, boundary: int) -> dict:
+    panel = _panel(panel)
+    index = state["selected"].get(panel)
+    error = grouping_edit_error(state, panel, [index])
+    if error:
+        raise ValueError(error)
+    group = state["groupings"][panel][index]
+    if type(boundary) is not int or not group["word_start"] < boundary <= group["word_end"]:
+        raise ValueError("Choose a word boundary inside the selected grouping.")
+    first = {"word_start": group["word_start"], "word_end": boundary - 1}
+    second = {"word_start": boundary, "word_end": group["word_end"]}
+    if panel == "transcript" and group in state["discarded"]:
+        state["discarded"].remove(group)
+        state["discarded"].extend((first, second))
+    state["groupings"][panel][index:index + 1] = [first, second]
+    state["dirty"] = True
+    return state
+
+
+@action("line.merge", description="Merge adjacent unlinked word groupings.", describe=_describe_line("merge"))
+def merge(project: Any, state: dict, panel: str, indexes: list[int]) -> dict:
+    panel = _panel(panel)
+    if not isinstance(indexes, list) or len(indexes) < 2:
+        raise ValueError("Select at least two adjacent word groupings.")
+    indexes = sorted(indexes)
+    if indexes != list(range(indexes[0], indexes[-1] + 1)):
+        raise ValueError("Select adjacent word groupings without gaps.")
+    error = grouping_edit_error(state, panel, indexes)
+    if error:
+        raise ValueError(error)
+    groups = state["groupings"][panel]
+    originals = groups[indexes[0]:indexes[-1] + 1]
+    discarded = [group in state["discarded"] for group in originals] if panel == "transcript" else []
+    if discarded and any(value != discarded[0] for value in discarded):
+        raise ValueError("Restore discarded groupings before merging them with unreviewed groupings.")
+    merged = {"word_start": originals[0]["word_start"], "word_end": originals[-1]["word_end"]}
+    if discarded and discarded[0]:
+        state["discarded"] = [group for group in state["discarded"] if group not in originals]
+        state["discarded"].append(merged)
+    groups[indexes[0]:indexes[-1] + 1] = [merged]
+    state["selected"][panel] = indexes[0]
+    state["dirty"] = True
+    return state
+
+
+@action("line.load_mapping", description="Load a Line project after validating source fingerprints.", describe=_describe_line("load_mapping"))
 def load_mapping(project: Any, state: dict, path: Any) -> dict:
     if state["dirty"]:
-        raise ValueError("Save your changes, or use Reset, before loading another mapping.")
+        raise ValueError("Save your changes, or use Reset, before loading another Line project.")
     loaded = mapping.read_mapping(_root(project), path)
     state.clear()
     state.update(loaded)
     return state
 
 
-@action("line.save", description="Save the mapping as a new immutable version.", describe=_describe_line("save"))
+@action("line.save", description="Save the Line project as a new immutable version.", describe=_describe_line("save"))
 def save(project: Any, state: dict, name: str) -> str:
     return mapping.save_version(_root(project), state, name)
 
 
-@action("line.reset", description="Explicitly clear the current sources and unsaved mapping.", describe=_describe_line("reset"))
+@action("line.reset", description="Explicitly clear the current sources and unsaved Line project.", describe=_describe_line("reset"))
 def reset(project: Any, state: dict) -> dict:
     state.clear()
     state.update(mapping.new_state())
