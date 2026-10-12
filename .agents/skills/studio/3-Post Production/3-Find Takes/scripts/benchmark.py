@@ -42,14 +42,20 @@ def assignments(groups: list[dict], links: list[dict], discarded: list[dict], wo
 
 
 def reference_documents(project: Path, reference_path: Path) -> list[dict]:
-    """Read v2/v3 reviews; resolve copied source references within the flat case.
+    """Read approved Takes or Line reviews; resolve sources within the flat case.
 
     Source bytes and word snapshots are still verified below. Only paths in the
     in-memory copy are rebased; human reference files are never rewritten.
     """
     reference = json.loads(reference_path.read_text(encoding="utf-8-sig"))
+    if reference.get("schema") == find_takes.SCHEMA:
+        if type(reference.get("schema_version")) is not int or reference["schema_version"] != find_takes.VERSION:
+            raise ValueError("Unsupported benchmark reference schema version.")
+        # The manifest records human approval; retain the saved links and labels.
+        reference = {**reference, "schema": find_takes.mapping.SCHEMA,
+                     "schema_version": 3, "mapping_name": reference_path.stem, "version": 1}
     if reference.get("schema") != find_takes.mapping.SCHEMA:
-        raise ValueError("Benchmark references must be human Line reviews.")
+        raise ValueError("Benchmark references must be approved Takes files or Line reviews.")
     if reference.get("schema_version") == 2:
         documents = [reference]
     elif reference.get("schema_version") == 3:
@@ -156,7 +162,7 @@ def comparison_lines(report: dict) -> list[str]:
         f"- Take precision: {exact['precision']:.1%}; recall: {exact['recall']:.1%}; F1: {exact['f1']:.1%}.",
         f"- Word assignments (script grouping or discard): {words['correct']} / {words['total']} ({words['accuracy']:.1%}).",
         f"- Predicted quality: {counts['exact']} Exact (green), {counts['partial']} Partial (yellow), {counts['flub']} Flub (red).",
-        f"- Saved reference labels agree on {quality['correct']} / {quality['compared']} exact-range matches (the reference predates fuzzy thresholds).",
+        f"- Saved reference labels agree on {quality['correct']} / {quality['compared']} exact-range matches.",
         "", "### Missing or different reference takes", "",
     ]
     for link in report["missing_or_different"]:
@@ -228,7 +234,7 @@ def summary(report: dict) -> str:
         lines.extend(("Boundary previews are separate proposed outputs. Script groups and source words/times are unchanged. "
                       "At least five points of text improvement are required; pause, punctuation, and original cuts rank eligible paths. "
                       "Reference versions are scored independently and can disagree with each other.", ""))
-    lines.extend(("Scores are text similarity measures, not probabilities. Reference labels were saved under the previous classification rules; disagreement is not an independent quality-accuracy measurement. The first comparison report remains preserved under reports/initial/.", ""))
+    lines.extend(("Scores are text similarity measures, not probabilities. Agreement with an approved mapping is a regression check, not an independent quality-accuracy measurement. The first comparison report remains preserved under reports/initial/.", ""))
     return "\n".join(lines)
 
 
@@ -247,7 +253,7 @@ def load_cases(fixture: Path, name: str | None = None, *, all_versions: bool = F
                 or Path(case["name"]).name != case["name"] or "\\" in case["name"] or case["name"] in seen):
             raise ValueError("Each benchmark needs a unique script-named case directory.")
         seen.add(case["name"])
-        expected_takes = re.fullmatch(re.escape(case["name"]) + r"__Takes\.v[0-9]+\.json", case["takes"])
+        expected_takes = re.fullmatch(re.escape(case["name"]) + r"__Takes(?:\.v[0-9]+)?\.json", case["takes"])
         if case["script"] != f"{case['name']}.docx" or not expected_takes or not case["transcripts"]:
             raise ValueError("Benchmark filenames must match the case's script name.")
         for filename in case["transcripts"]:
@@ -263,7 +269,7 @@ def load_cases(fixture: Path, name: str | None = None, *, all_versions: bool = F
             versions = set()
             for review in case.get("reviews", [case]):
                 takes, reviewed = review["takes"], review["reviewed_transcripts"]
-                if (not re.fullmatch(re.escape(case["name"]) + r"__Takes\.v[0-9]+\.json", takes)
+                if (not re.fullmatch(re.escape(case["name"]) + r"__Takes(?:\.v[0-9]+)?\.json", takes)
                         or takes in versions or not reviewed or len(set(reviewed)) != len(reviewed)
                         or not set(reviewed) <= set(case["transcripts"])):
                     raise ValueError("Invalid human-reviewed version inventory.")

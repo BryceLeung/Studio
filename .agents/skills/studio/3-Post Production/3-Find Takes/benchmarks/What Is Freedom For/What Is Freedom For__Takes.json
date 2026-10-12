@@ -1,10 +1,61 @@
 {
-  "schema": "studio.line.mapping",
-  "schema_version": 3,
-  "mapping_name": "What Is Freedom For__Takes",
-  "version": 1,
-  "created_at": "2026-10-12T20:24:16+00:00",
-  "parent": "3-Post Production/3-Find Takes/What Is Freedom For__Takes.json",
+  "schema": "studio.find-takes",
+  "schema_version": 1,
+  "created_at": "2026-10-12T22:31:02+00:00",
+  "algorithm": {
+    "name": "cursor-word-alignment",
+    "version": 5,
+    "settings": {
+      "lookback": 3,
+      "lookahead": 3,
+      "min_similarity": 0.72,
+      "max_length_ratio": 1.4,
+      "extra_words": 4,
+      "cursor_distance_penalty": 0.012,
+      "min_partial_words": 3,
+      "recovery_similarity": 0.9
+    },
+    "quality": {
+      "method": "rapidfuzz.fuzz.ratio",
+      "rapidfuzz_version": "3.14.6",
+      "normalization": "NFKC, casefold, English number forms, hyphens as spaces, remove punctuation, collapse whitespace; preserve symbols",
+      "num2words_version": "0.5.14",
+      "number_language": "en",
+      "exact_rule": "normalized_text_equality",
+      "partial_threshold": 75.0,
+      "score_scale": [
+        0,
+        100
+      ]
+    },
+    "code_sha256": {
+      "find_takes.py": "1c21c92d5137436be268656f160e501751e103c7952075e736bcc02c824bca4e",
+      "studio/tools/line/sources.py": "8825aa3154a5aa757da4af71b8b83c634ed60fa2662fbb4672c699a26de45a78",
+      "studio/tools/line/mapping.py": "e009af603bde5b9e170e90685147254c0ab658de7a5323e3adedbfe7373a2997",
+      "studio/tools/line/actions.py": "c4815f32e89ec8fdcbe79c5ff8c7cdb4b0e06feb13f412d98466bd838fce3e1b",
+      "studio/tools/line/quality.py": "147dbd1188b72055c1ca06f39f4f82bade63ae8f0f96970661b8df0e82dc49ec",
+      "studio/tools/line/combined.py": "50f3479b99e8b7ba08b41a114616eb2590a90fe760f7534ec45b3c8f5d6de7a3"
+    },
+    "boundary_refinement": {
+      "name": "local-transcript-regrouping",
+      "version": 2,
+      "settings": {
+        "window_groups": 3,
+        "max_window_words": 80,
+        "max_readings": 4,
+        "beam_per_state": 3,
+        "min_similarity": 75.0,
+        "min_prefix_words": 3,
+        "script_lookback": 3,
+        "min_gain": 5.0,
+        "boundary_change_cost": 0.25,
+        "pause_bonus": 2.0,
+        "sentence_end_bonus": 1.0,
+        "original_boundary_bonus": 0.5
+      },
+      "code_sha256": "78c16ffa786ee086c7a6b417f43231c3b67c8f897adfdd9ce1a587c1067f085d"
+    }
+  },
   "script": {
     "source": {
       "path": "1-Pre Production/1-Script Review/Approved/What Is Freedom For.docx",
@@ -5483,6 +5534,14 @@
         },
         {
           "word_start": 8,
+          "word_end": 11
+        },
+        {
+          "word_start": 12,
+          "word_end": 14
+        },
+        {
+          "word_start": 15,
           "word_end": 34
         },
         {
@@ -5527,6 +5586,10 @@
         },
         {
           "word_start": 184,
+          "word_end": 186
+        },
+        {
+          "word_start": 187,
           "word_end": 197
         },
         {
@@ -5583,10 +5646,10 @@
         },
         {
           "word_start": 397,
-          "word_end": 407
+          "word_end": 408
         },
         {
-          "word_start": 408,
+          "word_start": 409,
           "word_end": 423
         },
         {
@@ -5601,10 +5664,10 @@
             "word_end": 19
           },
           "transcript": {
-            "word_start": 8,
+            "word_start": 15,
             "word_end": 34
           },
-          "classification": "partial"
+          "classification": "exact"
         },
         {
           "script": {
@@ -5615,7 +5678,7 @@
             "word_start": 35,
             "word_end": 55
           },
-          "classification": "flub"
+          "classification": "exact"
         },
         {
           "script": {
@@ -5637,7 +5700,7 @@
             "word_start": 72,
             "word_end": 81
           },
-          "classification": "partial"
+          "classification": "exact"
         },
         {
           "script": {
@@ -5670,7 +5733,7 @@
             "word_start": 113,
             "word_end": 120
           },
-          "classification": "partial"
+          "classification": "exact"
         },
         {
           "script": {
@@ -5703,7 +5766,7 @@
             "word_start": 159,
             "word_end": 174
           },
-          "classification": "flub"
+          "classification": "exact"
         },
         {
           "script": {
@@ -5723,9 +5786,20 @@
           },
           "transcript": {
             "word_start": 184,
+            "word_end": 186
+          },
+          "classification": "flub"
+        },
+        {
+          "script": {
+            "word_start": 167,
+            "word_end": 177
+          },
+          "transcript": {
+            "word_start": 187,
             "word_end": 197
           },
-          "classification": "partial"
+          "classification": "exact"
         },
         {
           "script": {
@@ -5747,7 +5821,7 @@
             "word_start": 212,
             "word_end": 222
           },
-          "classification": "partial"
+          "classification": "exact"
         },
         {
           "script": {
@@ -5758,7 +5832,7 @@
             "word_start": 223,
             "word_end": 236
           },
-          "classification": "partial"
+          "classification": "exact"
         },
         {
           "script": {
@@ -5780,7 +5854,7 @@
             "word_start": 245,
             "word_end": 260
           },
-          "classification": "flub"
+          "classification": "partial"
         },
         {
           "script": {
@@ -5791,7 +5865,7 @@
             "word_start": 261,
             "word_end": 271
           },
-          "classification": "partial"
+          "classification": "exact"
         },
         {
           "script": {
@@ -5824,7 +5898,7 @@
             "word_start": 300,
             "word_end": 324
           },
-          "classification": "partial"
+          "classification": "exact"
         },
         {
           "script": {
@@ -5846,7 +5920,7 @@
             "word_start": 350,
             "word_end": 359
           },
-          "classification": "partial"
+          "classification": "exact"
         },
         {
           "script": {
@@ -5857,7 +5931,7 @@
             "word_start": 360,
             "word_end": 372
           },
-          "classification": "partial"
+          "classification": "exact"
         },
         {
           "script": {
@@ -5868,7 +5942,7 @@
             "word_start": 373,
             "word_end": 396
           },
-          "classification": "partial"
+          "classification": "exact"
         },
         {
           "script": {
@@ -5877,9 +5951,9 @@
           },
           "transcript": {
             "word_start": 397,
-            "word_end": 407
+            "word_end": 408
           },
-          "classification": "flub"
+          "classification": "partial"
         },
         {
           "script": {
@@ -5887,10 +5961,10 @@
             "word_end": 379
           },
           "transcript": {
-            "word_start": 408,
+            "word_start": 409,
             "word_end": 423
           },
-          "classification": "partial"
+          "classification": "exact"
         }
       ],
       "discarded": [
@@ -5903,10 +5977,1339 @@
           "word_end": 7
         },
         {
+          "word_start": 8,
+          "word_end": 11
+        },
+        {
+          "word_start": 12,
+          "word_end": 14
+        },
+        {
           "word_start": 424,
           "word_end": 425
         }
-      ]
+      ],
+      "match_scores": [
+        {
+          "transcript": {
+            "word_start": 15,
+            "word_end": 34
+          },
+          "quality_score": 100.0,
+          "boundary_proposal": true
+        },
+        {
+          "transcript": {
+            "word_start": 35,
+            "word_end": 55
+          },
+          "similarity": 1.0,
+          "quality_score": 100.0,
+          "partial_prefix": false
+        },
+        {
+          "transcript": {
+            "word_start": 56,
+            "word_end": 71
+          },
+          "similarity": 1.0,
+          "quality_score": 100.0,
+          "partial_prefix": false
+        },
+        {
+          "transcript": {
+            "word_start": 72,
+            "word_end": 81
+          },
+          "similarity": 1.0,
+          "quality_score": 100.0,
+          "partial_prefix": false
+        },
+        {
+          "transcript": {
+            "word_start": 82,
+            "word_end": 94
+          },
+          "similarity": 1.0,
+          "quality_score": 100.0,
+          "partial_prefix": false
+        },
+        {
+          "transcript": {
+            "word_start": 95,
+            "word_end": 112
+          },
+          "similarity": 1.0,
+          "quality_score": 100.0,
+          "partial_prefix": false
+        },
+        {
+          "transcript": {
+            "word_start": 113,
+            "word_end": 120
+          },
+          "similarity": 1.0,
+          "quality_score": 100.0,
+          "partial_prefix": false
+        },
+        {
+          "transcript": {
+            "word_start": 121,
+            "word_end": 145
+          },
+          "similarity": 0.92,
+          "quality_score": 93.719807,
+          "partial_prefix": false
+        },
+        {
+          "transcript": {
+            "word_start": 146,
+            "word_end": 158
+          },
+          "similarity": 0.923077,
+          "quality_score": 97.674419,
+          "partial_prefix": false
+        },
+        {
+          "transcript": {
+            "word_start": 159,
+            "word_end": 174
+          },
+          "similarity": 1.0,
+          "quality_score": 100.0,
+          "partial_prefix": false
+        },
+        {
+          "transcript": {
+            "word_start": 175,
+            "word_end": 183
+          },
+          "similarity": 0.888889,
+          "quality_score": 95.833333,
+          "partial_prefix": false
+        },
+        {
+          "transcript": {
+            "word_start": 184,
+            "word_end": 186
+          },
+          "quality_score": 43.835616,
+          "boundary_proposal": true
+        },
+        {
+          "transcript": {
+            "word_start": 187,
+            "word_end": 197
+          },
+          "quality_score": 100.0,
+          "boundary_proposal": true
+        },
+        {
+          "transcript": {
+            "word_start": 198,
+            "word_end": 211
+          },
+          "similarity": 1.0,
+          "quality_score": 100.0,
+          "partial_prefix": false
+        },
+        {
+          "transcript": {
+            "word_start": 212,
+            "word_end": 222
+          },
+          "similarity": 1.0,
+          "quality_score": 100.0,
+          "partial_prefix": false
+        },
+        {
+          "transcript": {
+            "word_start": 223,
+            "word_end": 236
+          },
+          "similarity": 1.0,
+          "quality_score": 100.0,
+          "partial_prefix": false
+        },
+        {
+          "transcript": {
+            "word_start": 237,
+            "word_end": 244
+          },
+          "similarity": 1.0,
+          "quality_score": 100.0,
+          "partial_prefix": false
+        },
+        {
+          "transcript": {
+            "word_start": 245,
+            "word_end": 260
+          },
+          "similarity": 0.882353,
+          "quality_score": 97.109827,
+          "partial_prefix": false
+        },
+        {
+          "transcript": {
+            "word_start": 261,
+            "word_end": 271
+          },
+          "similarity": 1.0,
+          "quality_score": 100.0,
+          "partial_prefix": false
+        },
+        {
+          "transcript": {
+            "word_start": 272,
+            "word_end": 280
+          },
+          "similarity": 1.0,
+          "quality_score": 100.0,
+          "partial_prefix": false
+        },
+        {
+          "transcript": {
+            "word_start": 281,
+            "word_end": 299
+          },
+          "similarity": 1.0,
+          "quality_score": 100.0,
+          "partial_prefix": false
+        },
+        {
+          "transcript": {
+            "word_start": 300,
+            "word_end": 324
+          },
+          "similarity": 1.0,
+          "quality_score": 100.0,
+          "partial_prefix": false
+        },
+        {
+          "transcript": {
+            "word_start": 325,
+            "word_end": 349
+          },
+          "similarity": 1.0,
+          "quality_score": 100.0,
+          "partial_prefix": false
+        },
+        {
+          "transcript": {
+            "word_start": 350,
+            "word_end": 359
+          },
+          "similarity": 1.0,
+          "quality_score": 100.0,
+          "partial_prefix": false
+        },
+        {
+          "transcript": {
+            "word_start": 360,
+            "word_end": 372
+          },
+          "similarity": 1.0,
+          "quality_score": 100.0,
+          "partial_prefix": false
+        },
+        {
+          "transcript": {
+            "word_start": 373,
+            "word_end": 396
+          },
+          "similarity": 1.0,
+          "quality_score": 100.0,
+          "partial_prefix": false
+        },
+        {
+          "transcript": {
+            "word_start": 397,
+            "word_end": 408
+          },
+          "quality_score": 96.428571,
+          "boundary_proposal": true
+        },
+        {
+          "transcript": {
+            "word_start": 409,
+            "word_end": 423
+          },
+          "quality_score": 100.0,
+          "boundary_proposal": true
+        }
+      ],
+      "boundary_analysis": {
+        "settings": {
+          "window_groups": 3,
+          "max_window_words": 80,
+          "max_readings": 4,
+          "beam_per_state": 3,
+          "min_similarity": 75.0,
+          "min_prefix_words": 3,
+          "script_lookback": 3,
+          "min_gain": 5.0,
+          "boundary_change_cost": 0.25,
+          "pause_bonus": 2.0,
+          "sentence_end_bonus": 1.0,
+          "original_boundary_bonus": 0.5
+        },
+        "score": "script-capped normalized-word-weighted RapidFuzz; unmatched words score zero",
+        "candidates": [
+          {
+            "window": {
+              "word_start": 0,
+              "word_end": 34
+            },
+            "before": [
+              {
+                "script": {
+                  "word_start": 0,
+                  "word_end": 19
+                },
+                "transcript": {
+                  "word_start": 8,
+                  "word_end": 34
+                },
+                "classification": "partial",
+                "quality_score": 81.278539
+              }
+            ],
+            "after": [
+              {
+                "script": {
+                  "word_start": 0,
+                  "word_end": 19
+                },
+                "transcript": {
+                  "word_start": 15,
+                  "word_end": 34
+                },
+                "classification": "exact",
+                "quality_score": 100.0
+              }
+            ],
+            "before_score": 46.444879,
+            "after_score": 57.142857,
+            "adjusted_after_score": 56.642857,
+            "gain": 10.197978,
+            "runner_up_score": 51.359503,
+            "text_gain": 10.697978,
+            "runner_up_margin": 5.283354,
+            "changed_boundaries": 2,
+            "original_boundary_support": 2,
+            "boundary_evidence_gain": 0.0,
+            "pause_support_ms": 2040,
+            "selected": false
+          },
+          {
+            "window": {
+              "word_start": 2,
+              "word_end": 34
+            },
+            "before": [
+              {
+                "script": {
+                  "word_start": 0,
+                  "word_end": 19
+                },
+                "transcript": {
+                  "word_start": 8,
+                  "word_end": 34
+                },
+                "classification": "partial",
+                "quality_score": 81.278539
+              }
+            ],
+            "after": [
+              {
+                "script": {
+                  "word_start": 0,
+                  "word_end": 19
+                },
+                "transcript": {
+                  "word_start": 15,
+                  "word_end": 34
+                },
+                "classification": "exact",
+                "quality_score": 100.0
+              }
+            ],
+            "before_score": 49.25972,
+            "after_score": 60.606061,
+            "adjusted_after_score": 60.106061,
+            "gain": 10.84634,
+            "runner_up_score": 54.709776,
+            "text_gain": 11.34634,
+            "runner_up_margin": 5.396285,
+            "changed_boundaries": 2,
+            "original_boundary_support": 2,
+            "boundary_evidence_gain": 0.0,
+            "pause_support_ms": 2040,
+            "selected": false
+          },
+          {
+            "window": {
+              "word_start": 8,
+              "word_end": 34
+            },
+            "before": [
+              {
+                "script": {
+                  "word_start": 0,
+                  "word_end": 19
+                },
+                "transcript": {
+                  "word_start": 8,
+                  "word_end": 34
+                },
+                "classification": "partial",
+                "quality_score": 81.278539
+              }
+            ],
+            "after": [
+              {
+                "script": {
+                  "word_start": 0,
+                  "word_end": 19
+                },
+                "transcript": {
+                  "word_start": 15,
+                  "word_end": 34
+                },
+                "classification": "exact",
+                "quality_score": 100.0
+              }
+            ],
+            "before_score": 60.206325,
+            "after_score": 74.074074,
+            "adjusted_after_score": 73.824074,
+            "gain": 13.617749,
+            "runner_up_score": 67.988615,
+            "text_gain": 13.867749,
+            "runner_up_margin": 5.835459,
+            "changed_boundaries": 1,
+            "original_boundary_support": 2,
+            "boundary_evidence_gain": 0.0,
+            "pause_support_ms": 2040,
+            "selected": true
+          },
+          {
+            "window": {
+              "word_start": 2,
+              "word_end": 55
+            },
+            "before": [
+              {
+                "script": {
+                  "word_start": 0,
+                  "word_end": 19
+                },
+                "transcript": {
+                  "word_start": 8,
+                  "word_end": 34
+                },
+                "classification": "partial",
+                "quality_score": 81.278539
+              },
+              {
+                "script": {
+                  "word_start": 20,
+                  "word_end": 40
+                },
+                "transcript": {
+                  "word_start": 35,
+                  "word_end": 55
+                },
+                "classification": "exact",
+                "quality_score": 100.0
+              }
+            ],
+            "after": [
+              {
+                "script": {
+                  "word_start": 0,
+                  "word_end": 19
+                },
+                "transcript": {
+                  "word_start": 15,
+                  "word_end": 34
+                },
+                "classification": "exact",
+                "quality_score": 100.0
+              },
+              {
+                "script": {
+                  "word_start": 20,
+                  "word_end": 40
+                },
+                "transcript": {
+                  "word_start": 35,
+                  "word_end": 55
+                },
+                "classification": "exact",
+                "quality_score": 100.0
+              }
+            ],
+            "before_score": 68.992051,
+            "after_score": 75.925926,
+            "adjusted_after_score": 75.425926,
+            "gain": 6.433875,
+            "runner_up_score": 70.798196,
+            "text_gain": 6.933875,
+            "runner_up_margin": 4.627729,
+            "changed_boundaries": 2,
+            "original_boundary_support": 3,
+            "boundary_evidence_gain": 0.0,
+            "pause_support_ms": 3316,
+            "selected": false
+          },
+          {
+            "window": {
+              "word_start": 8,
+              "word_end": 55
+            },
+            "before": [
+              {
+                "script": {
+                  "word_start": 0,
+                  "word_end": 19
+                },
+                "transcript": {
+                  "word_start": 8,
+                  "word_end": 34
+                },
+                "classification": "partial",
+                "quality_score": 81.278539
+              },
+              {
+                "script": {
+                  "word_start": 20,
+                  "word_end": 40
+                },
+                "transcript": {
+                  "word_start": 35,
+                  "word_end": 55
+                },
+                "classification": "exact",
+                "quality_score": 100.0
+              }
+            ],
+            "after": [
+              {
+                "script": {
+                  "word_start": 0,
+                  "word_end": 19
+                },
+                "transcript": {
+                  "word_start": 15,
+                  "word_end": 34
+                },
+                "classification": "exact",
+                "quality_score": 100.0
+              },
+              {
+                "script": {
+                  "word_start": 20,
+                  "word_end": 40
+                },
+                "transcript": {
+                  "word_start": 35,
+                  "word_end": 55
+                },
+                "classification": "exact",
+                "quality_score": 100.0
+              }
+            ],
+            "before_score": 77.616058,
+            "after_score": 85.416667,
+            "adjusted_after_score": 85.166667,
+            "gain": 7.550609,
+            "runner_up_score": 80.387971,
+            "text_gain": 7.800609,
+            "runner_up_margin": 4.778696,
+            "changed_boundaries": 1,
+            "original_boundary_support": 3,
+            "boundary_evidence_gain": 0.0,
+            "pause_support_ms": 3316,
+            "selected": false
+          },
+          {
+            "window": {
+              "word_start": 8,
+              "word_end": 71
+            },
+            "before": [
+              {
+                "script": {
+                  "word_start": 0,
+                  "word_end": 19
+                },
+                "transcript": {
+                  "word_start": 8,
+                  "word_end": 34
+                },
+                "classification": "partial",
+                "quality_score": 81.278539
+              },
+              {
+                "script": {
+                  "word_start": 20,
+                  "word_end": 40
+                },
+                "transcript": {
+                  "word_start": 35,
+                  "word_end": 55
+                },
+                "classification": "exact",
+                "quality_score": 100.0
+              },
+              {
+                "script": {
+                  "word_start": 41,
+                  "word_end": 56
+                },
+                "transcript": {
+                  "word_start": 56,
+                  "word_end": 71
+                },
+                "classification": "exact",
+                "quality_score": 100.0
+              }
+            ],
+            "after": [
+              {
+                "script": {
+                  "word_start": 0,
+                  "word_end": 19
+                },
+                "transcript": {
+                  "word_start": 15,
+                  "word_end": 34
+                },
+                "classification": "exact",
+                "quality_score": 100.0
+              },
+              {
+                "script": {
+                  "word_start": 20,
+                  "word_end": 40
+                },
+                "transcript": {
+                  "word_start": 35,
+                  "word_end": 55
+                },
+                "classification": "exact",
+                "quality_score": 100.0
+              },
+              {
+                "script": {
+                  "word_start": 41,
+                  "word_end": 56
+                },
+                "transcript": {
+                  "word_start": 56,
+                  "word_end": 71
+                },
+                "classification": "exact",
+                "quality_score": 100.0
+              }
+            ],
+            "before_score": 83.47032,
+            "after_score": 89.230769,
+            "adjusted_after_score": 88.980769,
+            "gain": 5.51045,
+            "runner_up_score": 83.47032,
+            "text_gain": 5.76045,
+            "runner_up_margin": 5.51045,
+            "changed_boundaries": 1,
+            "original_boundary_support": 4,
+            "boundary_evidence_gain": 0.0,
+            "pause_support_ms": 4356,
+            "selected": false
+          },
+          {
+            "window": {
+              "word_start": 159,
+              "word_end": 197
+            },
+            "before": [
+              {
+                "script": {
+                  "word_start": 143,
+                  "word_end": 158
+                },
+                "transcript": {
+                  "word_start": 159,
+                  "word_end": 174
+                },
+                "classification": "exact",
+                "quality_score": 100.0
+              },
+              {
+                "script": {
+                  "word_start": 159,
+                  "word_end": 166
+                },
+                "transcript": {
+                  "word_start": 175,
+                  "word_end": 183
+                },
+                "classification": "partial",
+                "quality_score": 95.833333
+              },
+              {
+                "script": {
+                  "word_start": 167,
+                  "word_end": 177
+                },
+                "transcript": {
+                  "word_start": 184,
+                  "word_end": 197
+                },
+                "classification": "partial",
+                "quality_score": 87.022901
+              }
+            ],
+            "after": [
+              {
+                "script": {
+                  "word_start": 143,
+                  "word_end": 158
+                },
+                "transcript": {
+                  "word_start": 159,
+                  "word_end": 174
+                },
+                "classification": "exact",
+                "quality_score": 100.0
+              },
+              {
+                "script": {
+                  "word_start": 159,
+                  "word_end": 166
+                },
+                "transcript": {
+                  "word_start": 175,
+                  "word_end": 183
+                },
+                "classification": "partial",
+                "quality_score": 95.833333
+              },
+              {
+                "script": {
+                  "word_start": 167,
+                  "word_end": 177
+                },
+                "transcript": {
+                  "word_start": 184,
+                  "word_end": 186
+                },
+                "classification": "flub",
+                "quality_score": 43.835616
+              },
+              {
+                "script": {
+                  "word_start": 167,
+                  "word_end": 177
+                },
+                "transcript": {
+                  "word_start": 187,
+                  "word_end": 197
+                },
+                "classification": "exact",
+                "quality_score": 100.0
+              }
+            ],
+            "before_score": 85.228681,
+            "after_score": 92.260859,
+            "adjusted_after_score": 95.510859,
+            "gain": 10.282178,
+            "runner_up_score": 85.228681,
+            "text_gain": 7.032178,
+            "runner_up_margin": 10.282178,
+            "changed_boundaries": 1,
+            "original_boundary_support": 5,
+            "boundary_evidence_gain": 3.5,
+            "pause_support_ms": 5918,
+            "selected": true
+          },
+          {
+            "window": {
+              "word_start": 175,
+              "word_end": 197
+            },
+            "before": [
+              {
+                "script": {
+                  "word_start": 159,
+                  "word_end": 166
+                },
+                "transcript": {
+                  "word_start": 175,
+                  "word_end": 183
+                },
+                "classification": "partial",
+                "quality_score": 95.833333
+              },
+              {
+                "script": {
+                  "word_start": 167,
+                  "word_end": 177
+                },
+                "transcript": {
+                  "word_start": 184,
+                  "word_end": 197
+                },
+                "classification": "partial",
+                "quality_score": 87.022901
+              }
+            ],
+            "after": [
+              {
+                "script": {
+                  "word_start": 159,
+                  "word_end": 166
+                },
+                "transcript": {
+                  "word_start": 175,
+                  "word_end": 183
+                },
+                "classification": "partial",
+                "quality_score": 95.833333
+              },
+              {
+                "script": {
+                  "word_start": 167,
+                  "word_end": 177
+                },
+                "transcript": {
+                  "word_start": 184,
+                  "word_end": 186
+                },
+                "classification": "flub",
+                "quality_score": 43.835616
+              },
+              {
+                "script": {
+                  "word_start": 167,
+                  "word_end": 177
+                },
+                "transcript": {
+                  "word_start": 187,
+                  "word_end": 197
+                },
+                "classification": "exact",
+                "quality_score": 100.0
+              }
+            ],
+            "before_score": 74.952982,
+            "after_score": 86.877109,
+            "adjusted_after_score": 90.127109,
+            "gain": 15.174128,
+            "runner_up_score": 84.40942,
+            "text_gain": 11.924128,
+            "runner_up_margin": 5.717689,
+            "changed_boundaries": 1,
+            "original_boundary_support": 4,
+            "boundary_evidence_gain": 3.5,
+            "pause_support_ms": 5337,
+            "selected": false
+          },
+          {
+            "window": {
+              "word_start": 184,
+              "word_end": 197
+            },
+            "before": [
+              {
+                "script": {
+                  "word_start": 167,
+                  "word_end": 177
+                },
+                "transcript": {
+                  "word_start": 184,
+                  "word_end": 197
+                },
+                "classification": "partial",
+                "quality_score": 87.022901
+              }
+            ],
+            "after": [
+              {
+                "script": {
+                  "word_start": 167,
+                  "word_end": 177
+                },
+                "transcript": {
+                  "word_start": 184,
+                  "word_end": 186
+                },
+                "classification": "flub",
+                "quality_score": 43.835616
+              },
+              {
+                "script": {
+                  "word_start": 167,
+                  "word_end": 177
+                },
+                "transcript": {
+                  "word_start": 187,
+                  "word_end": 197
+                },
+                "classification": "exact",
+                "quality_score": 100.0
+              }
+            ],
+            "before_score": 68.375136,
+            "after_score": 87.964775,
+            "adjusted_after_score": 91.214775,
+            "gain": 22.839639,
+            "runner_up_score": 79.271021,
+            "text_gain": 19.589639,
+            "runner_up_margin": 11.943754,
+            "changed_boundaries": 1,
+            "original_boundary_support": 3,
+            "boundary_evidence_gain": 3.5,
+            "pause_support_ms": 4136,
+            "selected": false
+          },
+          {
+            "window": {
+              "word_start": 175,
+              "word_end": 211
+            },
+            "before": [
+              {
+                "script": {
+                  "word_start": 159,
+                  "word_end": 166
+                },
+                "transcript": {
+                  "word_start": 175,
+                  "word_end": 183
+                },
+                "classification": "partial",
+                "quality_score": 95.833333
+              },
+              {
+                "script": {
+                  "word_start": 167,
+                  "word_end": 177
+                },
+                "transcript": {
+                  "word_start": 184,
+                  "word_end": 197
+                },
+                "classification": "partial",
+                "quality_score": 87.022901
+              },
+              {
+                "script": {
+                  "word_start": 178,
+                  "word_end": 191
+                },
+                "transcript": {
+                  "word_start": 198,
+                  "word_end": 211
+                },
+                "classification": "exact",
+                "quality_score": 100.0
+              }
+            ],
+            "after": [
+              {
+                "script": {
+                  "word_start": 159,
+                  "word_end": 166
+                },
+                "transcript": {
+                  "word_start": 175,
+                  "word_end": 183
+                },
+                "classification": "partial",
+                "quality_score": 95.833333
+              },
+              {
+                "script": {
+                  "word_start": 167,
+                  "word_end": 177
+                },
+                "transcript": {
+                  "word_start": 184,
+                  "word_end": 186
+                },
+                "classification": "flub",
+                "quality_score": 43.835616
+              },
+              {
+                "script": {
+                  "word_start": 167,
+                  "word_end": 177
+                },
+                "transcript": {
+                  "word_start": 187,
+                  "word_end": 197
+                },
+                "classification": "exact",
+                "quality_score": 100.0
+              },
+              {
+                "script": {
+                  "word_start": 178,
+                  "word_end": 191
+                },
+                "transcript": {
+                  "word_start": 198,
+                  "word_end": 211
+                },
+                "classification": "exact",
+                "quality_score": 100.0
+              }
+            ],
+            "before_score": 84.430232,
+            "after_score": 91.842527,
+            "adjusted_after_score": 95.092527,
+            "gain": 10.662296,
+            "runner_up_score": 84.430232,
+            "text_gain": 7.412296,
+            "runner_up_margin": 10.662296,
+            "changed_boundaries": 1,
+            "original_boundary_support": 5,
+            "boundary_evidence_gain": 3.5,
+            "pause_support_ms": 6878,
+            "selected": false
+          },
+          {
+            "window": {
+              "word_start": 184,
+              "word_end": 211
+            },
+            "before": [
+              {
+                "script": {
+                  "word_start": 167,
+                  "word_end": 177
+                },
+                "transcript": {
+                  "word_start": 184,
+                  "word_end": 197
+                },
+                "classification": "partial",
+                "quality_score": 87.022901
+              },
+              {
+                "script": {
+                  "word_start": 178,
+                  "word_end": 191
+                },
+                "transcript": {
+                  "word_start": 198,
+                  "word_end": 211
+                },
+                "classification": "exact",
+                "quality_score": 100.0
+              }
+            ],
+            "after": [
+              {
+                "script": {
+                  "word_start": 167,
+                  "word_end": 177
+                },
+                "transcript": {
+                  "word_start": 184,
+                  "word_end": 186
+                },
+                "classification": "flub",
+                "quality_score": 43.835616
+              },
+              {
+                "script": {
+                  "word_start": 167,
+                  "word_end": 177
+                },
+                "transcript": {
+                  "word_start": 187,
+                  "word_end": 197
+                },
+                "classification": "exact",
+                "quality_score": 100.0
+              },
+              {
+                "script": {
+                  "word_start": 178,
+                  "word_end": 191
+                },
+                "transcript": {
+                  "word_start": 198,
+                  "word_end": 211
+                },
+                "classification": "exact",
+                "quality_score": 100.0
+              }
+            ],
+            "before_score": 84.187568,
+            "after_score": 93.982387,
+            "adjusted_after_score": 97.232387,
+            "gain": 13.044819,
+            "runner_up_score": 89.035714,
+            "text_gain": 9.794819,
+            "runner_up_margin": 8.196673,
+            "changed_boundaries": 1,
+            "original_boundary_support": 4,
+            "boundary_evidence_gain": 3.5,
+            "pause_support_ms": 5677,
+            "selected": false
+          },
+          {
+            "window": {
+              "word_start": 184,
+              "word_end": 222
+            },
+            "before": [
+              {
+                "script": {
+                  "word_start": 167,
+                  "word_end": 177
+                },
+                "transcript": {
+                  "word_start": 184,
+                  "word_end": 197
+                },
+                "classification": "partial",
+                "quality_score": 87.022901
+              },
+              {
+                "script": {
+                  "word_start": 178,
+                  "word_end": 191
+                },
+                "transcript": {
+                  "word_start": 198,
+                  "word_end": 211
+                },
+                "classification": "exact",
+                "quality_score": 100.0
+              },
+              {
+                "script": {
+                  "word_start": 167,
+                  "word_end": 177
+                },
+                "transcript": {
+                  "word_start": 212,
+                  "word_end": 222
+                },
+                "classification": "exact",
+                "quality_score": 100.0
+              }
+            ],
+            "after": [
+              {
+                "script": {
+                  "word_start": 167,
+                  "word_end": 177
+                },
+                "transcript": {
+                  "word_start": 184,
+                  "word_end": 186
+                },
+                "classification": "flub",
+                "quality_score": 43.835616
+              },
+              {
+                "script": {
+                  "word_start": 167,
+                  "word_end": 177
+                },
+                "transcript": {
+                  "word_start": 187,
+                  "word_end": 197
+                },
+                "classification": "exact",
+                "quality_score": 100.0
+              },
+              {
+                "script": {
+                  "word_start": 178,
+                  "word_end": 191
+                },
+                "transcript": {
+                  "word_start": 198,
+                  "word_end": 211
+                },
+                "classification": "exact",
+                "quality_score": 100.0
+              },
+              {
+                "script": {
+                  "word_start": 167,
+                  "word_end": 177
+                },
+                "transcript": {
+                  "word_start": 212,
+                  "word_end": 222
+                },
+                "classification": "exact",
+                "quality_score": 100.0
+              }
+            ],
+            "before_score": 88.647485,
+            "after_score": 95.679663,
+            "adjusted_after_score": 98.929663,
+            "gain": 10.282178,
+            "runner_up_score": 88.647485,
+            "text_gain": 7.032178,
+            "runner_up_margin": 10.282178,
+            "changed_boundaries": 1,
+            "original_boundary_support": 4,
+            "boundary_evidence_gain": 3.5,
+            "pause_support_ms": 6197,
+            "selected": false
+          },
+          {
+            "window": {
+              "word_start": 397,
+              "word_end": 423
+            },
+            "before": [
+              {
+                "script": {
+                  "word_start": 353,
+                  "word_end": 364
+                },
+                "transcript": {
+                  "word_start": 397,
+                  "word_end": 407
+                },
+                "classification": "partial",
+                "quality_score": 95.327103
+              },
+              {
+                "script": {
+                  "word_start": 365,
+                  "word_end": 379
+                },
+                "transcript": {
+                  "word_start": 408,
+                  "word_end": 423
+                },
+                "classification": "partial",
+                "quality_score": 96.688742
+              }
+            ],
+            "after": [
+              {
+                "script": {
+                  "word_start": 353,
+                  "word_end": 364
+                },
+                "transcript": {
+                  "word_start": 397,
+                  "word_end": 408
+                },
+                "classification": "partial",
+                "quality_score": 96.428571
+              },
+              {
+                "script": {
+                  "word_start": 365,
+                  "word_end": 379
+                },
+                "transcript": {
+                  "word_start": 409,
+                  "word_end": 423
+                },
+                "classification": "exact",
+                "quality_score": 100.0
+              }
+            ],
+            "before_score": 92.838163,
+            "after_score": 98.522167,
+            "adjusted_after_score": 100.802167,
+            "gain": 7.964004,
+            "runner_up_score": 92.838163,
+            "text_gain": 5.684004,
+            "runner_up_margin": 7.964004,
+            "changed_boundaries": 2,
+            "original_boundary_support": 3,
+            "boundary_evidence_gain": 2.78,
+            "pause_support_ms": 1720,
+            "selected": false
+          },
+          {
+            "window": {
+              "word_start": 397,
+              "word_end": 425
+            },
+            "before": [
+              {
+                "script": {
+                  "word_start": 353,
+                  "word_end": 364
+                },
+                "transcript": {
+                  "word_start": 397,
+                  "word_end": 407
+                },
+                "classification": "partial",
+                "quality_score": 95.327103
+              },
+              {
+                "script": {
+                  "word_start": 365,
+                  "word_end": 379
+                },
+                "transcript": {
+                  "word_start": 408,
+                  "word_end": 423
+                },
+                "classification": "partial",
+                "quality_score": 96.688742
+              }
+            ],
+            "after": [
+              {
+                "script": {
+                  "word_start": 353,
+                  "word_end": 364
+                },
+                "transcript": {
+                  "word_start": 397,
+                  "word_end": 408
+                },
+                "classification": "partial",
+                "quality_score": 96.428571
+              },
+              {
+                "script": {
+                  "word_start": 365,
+                  "word_end": 379
+                },
+                "transcript": {
+                  "word_start": 409,
+                  "word_end": 423
+                },
+                "classification": "exact",
+                "quality_score": 100.0
+              }
+            ],
+            "before_score": 86.848605,
+            "after_score": 92.165899,
+            "adjusted_after_score": 94.445899,
+            "gain": 7.597294,
+            "runner_up_score": 86.848605,
+            "text_gain": 5.317294,
+            "runner_up_margin": 7.597294,
+            "changed_boundaries": 2,
+            "original_boundary_support": 3,
+            "boundary_evidence_gain": 2.78,
+            "pause_support_ms": 1720,
+            "selected": true
+          }
+        ],
+        "selected_count": 3
+      }
     },
     {
       "transcript": {
@@ -9117,10 +10520,10 @@
         },
         {
           "word_start": 145,
-          "word_end": 157
+          "word_end": 158
         },
         {
-          "word_start": 158,
+          "word_start": 159,
           "word_end": 171
         },
         {
@@ -9198,7 +10601,7 @@
             "word_start": 0,
             "word_end": 18
           },
-          "classification": "flub"
+          "classification": "partial"
         },
         {
           "script": {
@@ -9209,7 +10612,7 @@
             "word_start": 19,
             "word_end": 39
           },
-          "classification": "flub"
+          "classification": "exact"
         },
         {
           "script": {
@@ -9231,6 +10634,28 @@
             "word_start": 57,
             "word_end": 66
           },
+          "classification": "exact"
+        },
+        {
+          "script": {
+            "word_start": 67,
+            "word_end": 79
+          },
+          "transcript": {
+            "word_start": 67,
+            "word_end": 78
+          },
+          "classification": "partial"
+        },
+        {
+          "script": {
+            "word_start": 80,
+            "word_end": 97
+          },
+          "transcript": {
+            "word_start": 79,
+            "word_end": 98
+          },
           "classification": "partial"
         },
         {
@@ -9242,7 +10667,7 @@
             "word_start": 99,
             "word_end": 106
           },
-          "classification": "partial"
+          "classification": "exact"
         },
         {
           "script": {
@@ -9273,9 +10698,9 @@
           },
           "transcript": {
             "word_start": 145,
-            "word_end": 157
+            "word_end": 158
           },
-          "classification": "flub"
+          "classification": "partial"
         },
         {
           "script": {
@@ -9283,7 +10708,7 @@
             "word_end": 142
           },
           "transcript": {
-            "word_start": 158,
+            "word_start": 159,
             "word_end": 171
           },
           "classification": "partial"
@@ -9297,7 +10722,7 @@
             "word_start": 172,
             "word_end": 187
           },
-          "classification": "flub"
+          "classification": "exact"
         },
         {
           "script": {
@@ -9396,7 +10821,7 @@
             "word_start": 287,
             "word_end": 311
           },
-          "classification": "partial"
+          "classification": "exact"
         },
         {
           "script": {
@@ -9440,7 +10865,7 @@
             "word_start": 360,
             "word_end": 383
           },
-          "classification": "partial"
+          "classification": "exact"
         },
         {
           "script": {
@@ -9463,31 +10888,678 @@
             "word_end": 411
           },
           "classification": "partial"
+        }
+      ],
+      "discarded": [],
+      "match_scores": [
+        {
+          "transcript": {
+            "word_start": 0,
+            "word_end": 18
+          },
+          "similarity": 0.95,
+          "quality_score": 97.109827,
+          "partial_prefix": false
         },
         {
-          "script": {
-            "word_start": 67,
-            "word_end": 79
+          "transcript": {
+            "word_start": 19,
+            "word_end": 39
           },
+          "similarity": 1.0,
+          "quality_score": 100.0,
+          "partial_prefix": false
+        },
+        {
+          "transcript": {
+            "word_start": 40,
+            "word_end": 56
+          },
+          "similarity": 0.941176,
+          "quality_score": 97.142857,
+          "partial_prefix": false
+        },
+        {
+          "transcript": {
+            "word_start": 57,
+            "word_end": 66
+          },
+          "similarity": 1.0,
+          "quality_score": 100.0,
+          "partial_prefix": false
+        },
+        {
           "transcript": {
             "word_start": 67,
             "word_end": 78
           },
-          "classification": "flub"
+          "quality_score": 85.217391,
+          "boundary_proposal": true
         },
         {
-          "script": {
-            "word_start": 80,
-            "word_end": 97
-          },
           "transcript": {
             "word_start": 79,
             "word_end": 98
           },
-          "classification": "partial"
+          "quality_score": 95.294118,
+          "boundary_proposal": true
+        },
+        {
+          "transcript": {
+            "word_start": 99,
+            "word_end": 106
+          },
+          "similarity": 1.0,
+          "quality_score": 100.0,
+          "partial_prefix": false
+        },
+        {
+          "transcript": {
+            "word_start": 107,
+            "word_end": 132
+          },
+          "similarity": 0.846154,
+          "quality_score": 91.509434,
+          "partial_prefix": false
+        },
+        {
+          "transcript": {
+            "word_start": 133,
+            "word_end": 144
+          },
+          "similarity": 0.846154,
+          "quality_score": 95.238095,
+          "partial_prefix": false
+        },
+        {
+          "transcript": {
+            "word_start": 145,
+            "word_end": 158
+          },
+          "quality_score": 88.888889,
+          "boundary_proposal": true
+        },
+        {
+          "transcript": {
+            "word_start": 159,
+            "word_end": 171
+          },
+          "quality_score": 97.674419,
+          "boundary_proposal": true
+        },
+        {
+          "transcript": {
+            "word_start": 172,
+            "word_end": 187
+          },
+          "similarity": 1.0,
+          "quality_score": 100.0,
+          "partial_prefix": false
+        },
+        {
+          "transcript": {
+            "word_start": 188,
+            "word_end": 195
+          },
+          "similarity": 1.0,
+          "quality_score": 100.0,
+          "partial_prefix": false
+        },
+        {
+          "transcript": {
+            "word_start": 196,
+            "word_end": 207
+          },
+          "similarity": 0.833333,
+          "quality_score": 95.798319,
+          "partial_prefix": false
+        },
+        {
+          "transcript": {
+            "word_start": 208,
+            "word_end": 221
+          },
+          "similarity": 1.0,
+          "quality_score": 100.0,
+          "partial_prefix": false
+        },
+        {
+          "transcript": {
+            "word_start": 222,
+            "word_end": 229
+          },
+          "similarity": 1.0,
+          "quality_score": 100.0,
+          "partial_prefix": false
+        },
+        {
+          "transcript": {
+            "word_start": 230,
+            "word_end": 247
+          },
+          "similarity": 0.944444,
+          "quality_score": 97.752809,
+          "partial_prefix": false
+        },
+        {
+          "transcript": {
+            "word_start": 248,
+            "word_end": 258
+          },
+          "similarity": 1.0,
+          "quality_score": 100.0,
+          "partial_prefix": false
+        },
+        {
+          "transcript": {
+            "word_start": 259,
+            "word_end": 267
+          },
+          "similarity": 1.0,
+          "quality_score": 100.0,
+          "partial_prefix": false
+        },
+        {
+          "transcript": {
+            "word_start": 268,
+            "word_end": 286
+          },
+          "similarity": 1.0,
+          "quality_score": 100.0,
+          "partial_prefix": false
+        },
+        {
+          "transcript": {
+            "word_start": 287,
+            "word_end": 311
+          },
+          "similarity": 1.0,
+          "quality_score": 100.0,
+          "partial_prefix": false
+        },
+        {
+          "transcript": {
+            "word_start": 312,
+            "word_end": 336
+          },
+          "similarity": 1.0,
+          "quality_score": 100.0,
+          "partial_prefix": false
+        },
+        {
+          "transcript": {
+            "word_start": 337,
+            "word_end": 346
+          },
+          "similarity": 1.0,
+          "quality_score": 100.0,
+          "partial_prefix": false
+        },
+        {
+          "transcript": {
+            "word_start": 347,
+            "word_end": 359
+          },
+          "similarity": 1.0,
+          "quality_score": 100.0,
+          "partial_prefix": false
+        },
+        {
+          "transcript": {
+            "word_start": 360,
+            "word_end": 383
+          },
+          "similarity": 1.0,
+          "quality_score": 100.0,
+          "partial_prefix": false
+        },
+        {
+          "transcript": {
+            "word_start": 384,
+            "word_end": 395
+          },
+          "similarity": 1.0,
+          "quality_score": 100.0,
+          "partial_prefix": false
+        },
+        {
+          "transcript": {
+            "word_start": 396,
+            "word_end": 411
+          },
+          "similarity": 0.9375,
+          "quality_score": 97.986577,
+          "partial_prefix": false
         }
       ],
-      "discarded": []
+      "boundary_analysis": {
+        "settings": {
+          "window_groups": 3,
+          "max_window_words": 80,
+          "max_readings": 4,
+          "beam_per_state": 3,
+          "min_similarity": 75.0,
+          "min_prefix_words": 3,
+          "script_lookback": 3,
+          "min_gain": 5.0,
+          "boundary_change_cost": 0.25,
+          "pause_bonus": 2.0,
+          "sentence_end_bonus": 1.0,
+          "original_boundary_bonus": 0.5
+        },
+        "score": "script-capped normalized-word-weighted RapidFuzz; unmatched words score zero",
+        "candidates": [
+          {
+            "window": {
+              "word_start": 57,
+              "word_end": 98
+            },
+            "before": [
+              {
+                "script": {
+                  "word_start": 57,
+                  "word_end": 66
+                },
+                "transcript": {
+                  "word_start": 57,
+                  "word_end": 66
+                },
+                "classification": "exact",
+                "quality_score": 100.0
+              },
+              {
+                "script": {
+                  "word_start": 80,
+                  "word_end": 97
+                },
+                "transcript": {
+                  "word_start": 74,
+                  "word_end": 98
+                },
+                "classification": "partial",
+                "quality_score": 84.816754
+              }
+            ],
+            "after": [
+              {
+                "script": {
+                  "word_start": 57,
+                  "word_end": 66
+                },
+                "transcript": {
+                  "word_start": 57,
+                  "word_end": 66
+                },
+                "classification": "exact",
+                "quality_score": 100.0
+              },
+              {
+                "script": {
+                  "word_start": 67,
+                  "word_end": 79
+                },
+                "transcript": {
+                  "word_start": 67,
+                  "word_end": 78
+                },
+                "classification": "partial",
+                "quality_score": 85.217391
+              },
+              {
+                "script": {
+                  "word_start": 80,
+                  "word_end": 97
+                },
+                "transcript": {
+                  "word_start": 79,
+                  "word_end": 98
+                },
+                "classification": "partial",
+                "quality_score": 95.294118
+              }
+            ],
+            "before_score": 60.159561,
+            "after_score": 88.997686,
+            "adjusted_after_score": 91.917686,
+            "gain": 31.758125,
+            "runner_up_score": 91.293472,
+            "text_gain": 28.838125,
+            "runner_up_margin": 0.624214,
+            "changed_boundaries": 2,
+            "original_boundary_support": 4,
+            "boundary_evidence_gain": 3.42,
+            "pause_support_ms": 4134,
+            "selected": false
+          },
+          {
+            "window": {
+              "word_start": 67,
+              "word_end": 98
+            },
+            "before": [
+              {
+                "script": {
+                  "word_start": 80,
+                  "word_end": 97
+                },
+                "transcript": {
+                  "word_start": 74,
+                  "word_end": 98
+                },
+                "classification": "partial",
+                "quality_score": 84.816754
+              }
+            ],
+            "after": [
+              {
+                "script": {
+                  "word_start": 67,
+                  "word_end": 79
+                },
+                "transcript": {
+                  "word_start": 67,
+                  "word_end": 78
+                },
+                "classification": "partial",
+                "quality_score": 85.217391
+              },
+              {
+                "script": {
+                  "word_start": 80,
+                  "word_end": 97
+                },
+                "transcript": {
+                  "word_start": 79,
+                  "word_end": 98
+                },
+                "classification": "partial",
+                "quality_score": 95.294118
+              }
+            ],
+            "before_score": 47.709424,
+            "after_score": 85.559463,
+            "adjusted_after_score": 91.139463,
+            "gain": 43.430039,
+            "runner_up_score": 90.348307,
+            "text_gain": 37.850039,
+            "runner_up_margin": 0.791155,
+            "changed_boundaries": 2,
+            "original_boundary_support": 3,
+            "boundary_evidence_gain": 6.08,
+            "pause_support_ms": 3140,
+            "selected": false
+          },
+          {
+            "window": {
+              "word_start": 74,
+              "word_end": 98
+            },
+            "before": [
+              {
+                "script": {
+                  "word_start": 80,
+                  "word_end": 97
+                },
+                "transcript": {
+                  "word_start": 74,
+                  "word_end": 98
+                },
+                "classification": "partial",
+                "quality_score": 84.816754
+              }
+            ],
+            "after": [
+              {
+                "script": {
+                  "word_start": 80,
+                  "word_end": 97
+                },
+                "transcript": {
+                  "word_start": 79,
+                  "word_end": 98
+                },
+                "classification": "partial",
+                "quality_score": 95.294118
+              }
+            ],
+            "before_score": 61.068063,
+            "after_score": 68.611765,
+            "adjusted_after_score": 71.781765,
+            "gain": 10.713702,
+            "runner_up_score": 67.544286,
+            "text_gain": 7.543702,
+            "runner_up_margin": 4.237479,
+            "changed_boundaries": 1,
+            "original_boundary_support": 2,
+            "boundary_evidence_gain": 3.42,
+            "pause_support_ms": 2560,
+            "selected": false
+          },
+          {
+            "window": {
+              "word_start": 67,
+              "word_end": 106
+            },
+            "before": [
+              {
+                "script": {
+                  "word_start": 80,
+                  "word_end": 97
+                },
+                "transcript": {
+                  "word_start": 74,
+                  "word_end": 98
+                },
+                "classification": "partial",
+                "quality_score": 84.816754
+              },
+              {
+                "script": {
+                  "word_start": 98,
+                  "word_end": 105
+                },
+                "transcript": {
+                  "word_start": 99,
+                  "word_end": 106
+                },
+                "classification": "exact",
+                "quality_score": 100.0
+              }
+            ],
+            "after": [
+              {
+                "script": {
+                  "word_start": 67,
+                  "word_end": 79
+                },
+                "transcript": {
+                  "word_start": 67,
+                  "word_end": 78
+                },
+                "classification": "partial",
+                "quality_score": 85.217391
+              },
+              {
+                "script": {
+                  "word_start": 80,
+                  "word_end": 97
+                },
+                "transcript": {
+                  "word_start": 79,
+                  "word_end": 98
+                },
+                "classification": "partial",
+                "quality_score": 95.294118
+              },
+              {
+                "script": {
+                  "word_start": 98,
+                  "word_end": 105
+                },
+                "transcript": {
+                  "word_start": 99,
+                  "word_end": 106
+                },
+                "classification": "exact",
+                "quality_score": 100.0
+              }
+            ],
+            "before_score": 60.159561,
+            "after_score": 88.997686,
+            "adjusted_after_score": 94.577686,
+            "gain": 34.418125,
+            "runner_up_score": 93.953472,
+            "text_gain": 28.838125,
+            "runner_up_margin": 0.624214,
+            "changed_boundaries": 2,
+            "original_boundary_support": 4,
+            "boundary_evidence_gain": 6.08,
+            "pause_support_ms": 3820,
+            "selected": true
+          },
+          {
+            "window": {
+              "word_start": 74,
+              "word_end": 106
+            },
+            "before": [
+              {
+                "script": {
+                  "word_start": 80,
+                  "word_end": 97
+                },
+                "transcript": {
+                  "word_start": 74,
+                  "word_end": 98
+                },
+                "classification": "partial",
+                "quality_score": 84.816754
+              },
+              {
+                "script": {
+                  "word_start": 98,
+                  "word_end": 105
+                },
+                "transcript": {
+                  "word_start": 99,
+                  "word_end": 106
+                },
+                "classification": "exact",
+                "quality_score": 100.0
+              }
+            ],
+            "after": [
+              {
+                "script": {
+                  "word_start": 80,
+                  "word_end": 97
+                },
+                "transcript": {
+                  "word_start": 79,
+                  "word_end": 98
+                },
+                "classification": "partial",
+                "quality_score": 95.294118
+              },
+              {
+                "script": {
+                  "word_start": 98,
+                  "word_end": 105
+                },
+                "transcript": {
+                  "word_start": 99,
+                  "word_end": 106
+                },
+                "classification": "exact",
+                "quality_score": 100.0
+              }
+            ],
+            "before_score": 72.191473,
+            "after_score": 77.579832,
+            "adjusted_after_score": 80.749832,
+            "gain": 8.558358,
+            "runner_up_score": 72.191473,
+            "text_gain": 5.388358,
+            "runner_up_margin": 8.558358,
+            "changed_boundaries": 1,
+            "original_boundary_support": 3,
+            "boundary_evidence_gain": 3.42,
+            "pause_support_ms": 3240,
+            "selected": false
+          },
+          {
+            "window": {
+              "word_start": 145,
+              "word_end": 171
+            },
+            "before": [
+              {
+                "script": {
+                  "word_start": 143,
+                  "word_end": 158
+                },
+                "transcript": {
+                  "word_start": 145,
+                  "word_end": 157
+                },
+                "classification": "partial",
+                "quality_score": 86.131387
+              },
+              {
+                "script": {
+                  "word_start": 130,
+                  "word_end": 142
+                },
+                "transcript": {
+                  "word_start": 158,
+                  "word_end": 171
+                },
+                "classification": "partial",
+                "quality_score": 92.647059
+              }
+            ],
+            "after": [
+              {
+                "script": {
+                  "word_start": 143,
+                  "word_end": 158
+                },
+                "transcript": {
+                  "word_start": 145,
+                  "word_end": 158
+                },
+                "classification": "partial",
+                "quality_score": 88.888889
+              },
+              {
+                "script": {
+                  "word_start": 130,
+                  "word_end": 142
+                },
+                "transcript": {
+                  "word_start": 159,
+                  "word_end": 171
+                },
+                "classification": "partial",
+                "quality_score": 97.674419
+              }
+            ],
+            "before_score": 86.078511,
+            "after_score": 93.118959,
+            "adjusted_after_score": 95.956959,
+            "gain": 9.878448,
+            "runner_up_score": 91.632664,
+            "text_gain": 7.040448,
+            "runner_up_margin": 4.324295,
+            "changed_boundaries": 2,
+            "original_boundary_support": 3,
+            "boundary_evidence_gain": 3.338,
+            "pause_support_ms": 3329,
+            "selected": true
+          }
+        ],
+        "selected_count": 2
+      }
     }
   ]
 }

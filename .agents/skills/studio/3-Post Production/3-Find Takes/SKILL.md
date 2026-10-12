@@ -85,16 +85,18 @@ the span matcher's token-distance scores or candidate thresholds.
 
 The `benchmarks/` directory has one flat subdirectory per script. Each case
 contains `<Script>.docx`, its `<Script>__C<nn>__lav.json` transcript files, and
-human-reviewed `<Script>__Takes.vNNN.json` files. Takes filenames follow Line's versioned naming
-convention, `<Script>__Takes.<version>.json`. Source references inside a case's
+human-reviewed `<Script>__Takes.json` or `<Script>__Takes.vNNN.json` files.
+Source references inside a case's
 Takes JSON can retain their original project-relative paths; the runner resolves
 adjacent filenames in memory and verifies source bytes and word snapshots.
 It never rewrites the human review. A case contains no audio.
 
 Only human-reviewed mappings and their corresponding script/transcript inputs
-belong in `benchmarks/`. The current case is What Is Freedom For, using the v002
-Line review of C01 and C02. The previous single-recording v001 review remains
-preserved. Both Line schema v2 and multi-recording schema v3 are supported.
+belong in `benchmarks/`. The current case is What Is Freedom For, using the
+user-approved `What Is Freedom For__Takes.json` for C01 and C02, including the
+local rewind correction after "having...". Find Takes schema v1 and Line review
+schemas v2/v3 are supported. A generated mapping becomes a reference only after
+the user explicitly approves it; generation alone does not establish approval.
 Love Compounds Too has no human-reviewed reference and is excluded. The manifest records fingerprints and the reviewed transcript
 inventory; the runner rejects unreviewed cases or extra unreviewed transcripts.
 The optional `reviews` inventory lists preserved versions and the transcripts
@@ -107,12 +109,12 @@ belongs in OneDrive.
 
 Run `scripts/benchmark.py --output-dir <new-temporary-directory> --report
 <new-report.json>`. Add `--case "<Script>"` to run one case. Predictions use the
-same flat case directories and versioned filenames under the output directory.
+same flat case directories and reference filenames under the output directory.
 It generates predictions first, then reads the references.
 It writes JSON and Markdown results with exact take-range precision/recall,
 word-assignment agreement, classification changes and scores, and individual
-mismatches for each recording. Reference labels predate fuzzy scoring, so label
-agreement is not an independent measurement of quality accuracy.
+mismatches for each recording. Agreement with an approved mapping is a regression
+check, not an independent measurement of quality accuracy.
 Machine predictions and comparison reports stay outside `benchmarks/`. The
 first comparison report is preserved at `reports/initial/What Is Freedom
 For.json` and `What Is Freedom For.md`. Preserve those measurements when tuning;
@@ -122,7 +124,7 @@ fixtures changes paths and fingerprints, not the initial accuracy measurements.
 ### Boundary proposal trial
 
 Add `--all-versions --boundary-proposals` to compare the initial matcher with
-separate regrouping previews against both checked-in review versions:
+separate regrouping previews against every inventoried review (currently one):
 
 ```text
 python "<workflow-root>/.agents/skills/studio/3-Post Production/3-Find Takes/scripts/benchmark.py" --all-versions --boundary-proposals --output-dir <new-directory>/predictions --report <new-directory>/report.json
