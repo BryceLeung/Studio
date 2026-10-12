@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import argparse
+from copy import deepcopy
 from datetime import datetime, timezone
+import hashlib
 import json
 from pathlib import Path
 import re
@@ -38,22 +40,54 @@ def assignments(groups: list[dict], links: list[dict], discarded: list[dict], wo
     return values
 
 
-def compare(project: Path, reference_path: Path, prediction_path: Path) -> dict:
-    reference = json.loads(reference_path.read_text(encoding="utf-8"))
-    find_takes.mapping.validate_document(project, reference, verify_inputs=False)
+def reference_documents(project: Path, reference_path: Path) -> list[dict]:
+    """Read v2/v3 reviews; resolve copied source references within the flat case.
+
+    Source bytes and word snapshots are still verified below. Only paths in the
+    in-memory copy are rebased; human reference files are never rewritten.
+    """
+    reference = json.loads(reference_path.read_text(encoding="utf-8-sig"))
+    if reference.get("schema") != find_takes.mapping.SCHEMA:
+        raise ValueError("Benchmark references must be human Line reviews.")
+    if reference.get("schema_version") == 2:
+        documents = [reference]
+    elif reference.get("schema_version") == 3:
+        documents = [{
+            "schema": find_takes.mapping.SCHEMA, "schema_version": 2,
+            "mapping_name": reference["mapping_name"], "version": reference["version"],
+            "sources": {"script": reference["script"], "transcript": recording["transcript"]},
+            "groupings": {"script": reference["script_groupings"], "transcript": recording["groupings"]},
+            "links": recording["links"], "discarded": recording["discarded"],
+        } for recording in reference["recordings"]]
+    else:
+        raise ValueError("Unsupported benchmark reference schema version.")
+    documents = deepcopy(documents)
+    seen = set()
+    for document in documents:
+        for panel in ("script", "transcript"):
+            source = document["sources"][panel]
+            source["source"]["path"] = Path(source["source"]["path"]).name
+        filename = document["sources"]["transcript"]["source"]["path"]
+        if filename in seen:
+            raise ValueError("Benchmark recordings must have unique transcript filenames.")
+        seen.add(filename)
+        find_takes.mapping.validate_document(project, document, verify_inputs=False)
+    return documents
+
+
+def compare_recording(project: Path, reference: dict, reference_path: Path, prediction: dict) -> dict:
     for panel in ("script", "transcript"):
         reference_source = reference["sources"][panel]
         path = find_takes.sources.project_path(project, reference_source["source"]["path"])
         if find_takes.sha256(path) != reference_source["source"]["sha256"]:
             raise ValueError(f"Benchmark {panel} bytes differ from the reviewed source.")
         actual = (find_takes.sources.load_script if panel == "script" else find_takes.sources.load_transcript)(project, path)
-        fields = ("index", "text") if panel == "script" else ("index", "text", "start_ms", "end_ms")
+        fields = ("index", "text", "separator") if panel == "script" else ("index", "text", "start_ms", "end_ms")
         if len(actual["words"]) != len(reference_source["words"]) or any(
                 any(word.get(field) != saved.get(field) for field in fields)
                 for word, saved in zip(actual["words"], reference_source["words"])):
             raise ValueError("Benchmark source word indexes, text, or timings differ from the review.")
     source = reference["sources"]["script"]
-    prediction = json.loads(prediction_path.read_text(encoding="utf-8"))
     transcript = reference["sources"]["transcript"]
     recording = next(r for r in prediction["recordings"]
                      if r["transcript"]["source"]["path"] == transcript["source"]["path"])
@@ -68,8 +102,11 @@ def compare(project: Path, reference_path: Path, prediction_path: Path) -> dict:
     predicted_discards = {i for i, value in enumerate(predicted_words) if value == "discarded"}
 
     def describe(link: dict) -> dict:
-        return {**link, "script_text": find_takes.mapping.range_text(source, link["script"]),
-                "transcript_text": find_takes.mapping.range_text(transcript, link["transcript"])}
+        script_text = find_takes.mapping.range_text(source, link["script"])
+        transcript_text = find_takes.mapping.range_text(transcript, link["transcript"])
+        return {**link, "script_text": script_text, "transcript_text": transcript_text,
+                "quality_score": round(find_takes.quality.similarity(script_text, transcript_text), 6),
+                "threshold_classification": find_takes.quality.classify(script_text, transcript_text)}
 
     return {
         "reference": f"{project.name}/{reference_path.name}",
@@ -80,6 +117,13 @@ def compare(project: Path, reference_path: Path, prediction_path: Path) -> dict:
         "classification_agreement_on_exact_ranges": {
             "correct": sum(expected[key]["classification"] == predicted[key]["classification"] for key in common),
             "compared": len(common)},
+        "classification_counts": {
+            name: sum(link["classification"] == name for link in predicted.values())
+            for name in find_takes.mapping.CLASSIFICATIONS},
+        "classification_changes": [
+            {**describe(predicted[key]), "reference_classification": expected[key]["classification"]}
+            for key in sorted(common) if expected[key]["classification"] != predicted[key]["classification"]
+        ],
         "word_assignments": {"correct": correct_words, "total": total_words, "accuracy": rate(correct_words, total_words)},
         "discarded_words": metrics(len(expected_discards & predicted_discards), len(predicted_discards), len(expected_discards)),
         "script_group_coverage": {
@@ -94,37 +138,57 @@ def compare(project: Path, reference_path: Path, prediction_path: Path) -> dict:
     }
 
 
+def compare(project: Path, reference_path: Path, prediction_path: Path) -> list[dict]:
+    prediction = json.loads(prediction_path.read_text(encoding="utf-8"))
+    return [compare_recording(project, reference, reference_path, prediction)
+            for reference in reference_documents(project, reference_path)]
+
+
 def comparison_lines(report: dict) -> list[str]:
     exact = report["exact_take_ranges"]
     words = report["word_assignments"]
     quality = report["classification_agreement_on_exact_ranges"]
+    counts = report["classification_counts"]
     lines = [
         f"Reference: `{report['reference']}`; recording: `{Path(report['transcript']['path']).name}`.", "",
         f"- Exact script/transcript word ranges: {exact['correct']} of {exact['expected']} reference takes; {exact['predicted']} predicted takes.",
         f"- Take precision: {exact['precision']:.1%}; recall: {exact['recall']:.1%}; F1: {exact['f1']:.1%}.",
         f"- Word assignments (script grouping or discard): {words['correct']} / {words['total']} ({words['accuracy']:.1%}).",
-        f"- Quality labels agree on {quality['correct']} / {quality['compared']} exact-range matches.",
+        f"- Predicted quality: {counts['exact']} Exact (green), {counts['partial']} Partial (yellow), {counts['flub']} Flub (red).",
+        f"- Saved reference labels agree on {quality['correct']} / {quality['compared']} exact-range matches (the reference predates fuzzy thresholds).",
         "", "### Missing or different reference takes", "",
     ]
     for link in report["missing_or_different"]:
-        lines.append(f"- Script words {link['script']['word_start']}–{link['script']['word_end']}, transcript words {link['transcript']['word_start']}–{link['transcript']['word_end']}: {link['transcript_text']}")
+        lines.append(f"- Script words {link['script']['word_start']}–{link['script']['word_end']}, transcript words {link['transcript']['word_start']}–{link['transcript']['word_end']}: {link['transcript_text']} (reference {link['classification']}; score {link['quality_score']:.2f}, threshold label {link['threshold_classification']}).")
     if not report["missing_or_different"]:
         lines.append("None.")
     lines.extend(("", "### Extra or different predictions", ""))
     for link in report["extra_or_different"]:
-        lines.append(f"- Script words {link['script']['word_start']}–{link['script']['word_end']}, transcript words {link['transcript']['word_start']}–{link['transcript']['word_end']}: {link['transcript_text']}")
+        lines.append(f"- Script words {link['script']['word_start']}–{link['script']['word_end']}, transcript words {link['transcript']['word_start']}–{link['transcript']['word_end']}: {link['transcript_text']} ({link['classification']}; score {link['quality_score']:.2f}).")
     if not report["extra_or_different"]:
+        lines.append("None.")
+    lines.extend(("", "### Classification changes on matching ranges", ""))
+    for item in report["classification_changes"]:
+        score = item["quality_score"]
+        lines.extend((
+            f"- **{item['reference_classification']} → {item['classification']} ({score:.2f}/100)**; script words {item['script']['word_start']}–{item['script']['word_end']}, transcript words {item['transcript']['word_start']}–{item['transcript']['word_end']}.  ",
+            f"  Script: {item['script_text']}  ",
+            f"  Read: {item['transcript_text']}",
+        ))
+    if not report["classification_changes"]:
         lines.append("None.")
     return lines
 
 
 def summary(report: dict) -> str:
     lines = ["# Find Takes benchmark", ""]
+    quality = report["cases"][0]["algorithm"]["quality"]
+    lines.extend((f"Exact requires identical normalized text. Other readings use full-sentence `{quality['method']}`: Partial ≥{quality['partial_threshold']:g}, Flub below Partial. Normalization: {quality['normalization']}.", ""))
     for case in report["cases"]:
-        lines.extend((f"## {case['case']}", ""))
+        lines.extend((f"## {case['case']} — {Path(case['transcript']['path']).name}", ""))
         lines.extend(comparison_lines(case))
         lines.append("")
-    lines.extend(("Scores are text similarity measures, not probabilities. The first comparison report remains preserved under reports/initial/.", ""))
+    lines.extend(("Scores are text similarity measures, not probabilities. Reference labels were saved under the previous classification rules; disagreement is not an independent quality-accuracy measurement. The first comparison report remains preserved under reports/initial/.", ""))
     return "\n".join(lines)
 
 
@@ -184,25 +248,33 @@ def run(fixture: Path, output_dir: Path, case_name: str | None = None) -> dict:
     # Generate every prediction before reading any expected mappings.
     generated = [generate_case(fixture, case, output_dir) for case in cases]
     results = []
-    fingerprints = {entry["path"]: entry["sha256"] for entry in manifest["files"]}
+    fingerprints = {entry["path"]: entry for entry in manifest["files"]}
     for case in cases:
         project = fixture / case["name"]
         for filename in (case["script"], *case["transcripts"], case["takes"]):
             relative = f"{case['name']}/{filename}"
-            if find_takes.sha256(fixture / relative) != fingerprints[relative]:
+            entry = fingerprints[relative]
+            content = (fixture / relative).read_bytes()
+            if entry.get("hash_mode") == "lf":
+                content = content.replace(b"\r\n", b"\n")
+            if hashlib.sha256(content).hexdigest() != entry["sha256"]:
                 raise ValueError(f"Frozen benchmark file changed: {relative}")
         reference_path = project / case["takes"]
-        reference = json.loads(reference_path.read_text(encoding="utf-8"))
-        reviewed = [reference["sources"]["transcript"]["source"]["path"]]
+        references = reference_documents(project, reference_path)
+        reviewed = [reference["sources"]["transcript"]["source"]["path"] for reference in references]
         if reviewed != case["reviewed_transcripts"]:
             raise ValueError("Reviewed transcript inventory differs from the benchmark manifest.")
-        result = compare(project, reference_path, output_dir / case["name"] / case["takes"])
-        results.append({"case": case["name"], "status": "compared", **result})
+        prediction = json.loads((output_dir / case["name"] / case["takes"]).read_text(encoding="utf-8"))
+        for reference in references:
+            result = compare_recording(project, reference, reference_path, prediction)
+            results.append({"case": case["name"], "status": "compared", **result})
     return {"generation": {"scripts": len(cases), "transcripts": sum(len(case["transcripts"]) for case in cases),
                            "outputs": generated}, "cases": results}
 
 
 def main() -> int:
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--fixture", type=Path, default=Path(__file__).resolve().parents[1] / "benchmarks")
     parser.add_argument("--case", help="Run only the named script's benchmark case.")

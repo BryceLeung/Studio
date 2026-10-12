@@ -7,7 +7,7 @@ name = "studio-dashboard"
 version = "0.1.0"
 description = "Native Studio dashboard and Line word-group review tool"
 requires-python = ">=3.9"
-dependencies = ["PySide6>=6.7,<7"]
+dependencies = ["PySide6>=6.7,<7", "RapidFuzz>=3,<4", "num2words>=0.5.14,<0.6"]
 
 [project.scripts]
 studio-dashboard = "studio.__main__:main"

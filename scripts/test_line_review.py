@@ -17,7 +17,7 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
 from studio.project import Project
-from studio.tools.line import actions, combined, mapping, sources
+from studio.tools.line import actions, combined, mapping, sources, quality
 from studio.tools.line.shortcuts import DEFAULT_MAPPINGS, KeyboardMappingsDialog, load_mappings, save_mappings, validate_mappings
 from studio.tools.line.ui import LineWidget
 
@@ -28,14 +28,14 @@ def review_state():
         {"id": "s1", "line": 1, "text": "Hello world."},
         {"id": "s2", "line": 2, "text": "Second sentence."},
     ]})
-    transcript_words = ["Hello", "world.", "Short.", "A", "longer", "different", "sentence."]
+    transcript_words = ["Hello", "world.", "Short.", "Hello", "world", "to", "you."]
     state["transcript"] = {"source": {"path": "Transcript.json"}, "words": [
         {"index": i, "text": text, "start_ms": i * 1000, "end_ms": (i + 1) * 1000}
         for i, text in enumerate(transcript_words)
     ], "rows": [
         {"id": f"t{i}", "line": i + 1, "text": text, "word_start": start, "word_end": end,
          "start_ms": start * 1000, "end_ms": (end + 1) * 1000}
-        for i, (text, start, end) in enumerate((("Hello world.", 0, 1), ("Short.", 2, 2), ("A longer different sentence.", 3, 6)))
+        for i, (text, start, end) in enumerate((("Hello world.", 0, 1), ("Short.", 2, 2), ("Hello world to you.", 3, 6)))
     ]}
     state["groupings"] = {panel: mapping.initial_groupings(state[panel]) for panel in mapping.PANELS}
     state["selected"] = {"script": 0, "transcript": 0}
@@ -43,17 +43,66 @@ def review_state():
 
 
 class QualityTests(unittest.TestCase):
-    def test_literal_comparison_and_character_length(self):
+    def test_normalized_full_sentence_similarity(self):
         for script, transcript, expected in (
             ("Hello world.", "Hello world.", "exact"),
             ("Hello world.", "Hello.", "flub"),
-            ("Hello world.", "HELLO WORLD.", "partial"),
-            ("Hello world.", "Hello world!", "partial"),
+            ("Hello world.", "HELLO WORLD.", "exact"),
+            ("Hello world.", "Hello world!", "exact"),
             ("Hello world.", "Hello world. Again.", "partial"),
             ("abcd", "a b", "flub"),
+            ("We bought a big house near the lake.", "We bought a house near the lake.", "partial"),
+            ("Hello world.", "A longer different sentence.", "flub"),
+            ("I knew what it would mean to have someone need me every day.",
+             "I knew that it meant having someone to need me every day.", "partial"),
         ):
             with self.subTest(transcript=transcript):
                 self.assertEqual(actions.infer_classification(script, transcript), expected)
+
+    def test_inclusive_thresholds_and_incomplete_readings(self):
+        self.assertEqual(quality.similarity("abcdefghijklmnopqrst", "abcdefghijklmnopqrsx"), 95)
+        self.assertEqual(quality.classify("abcdefghijklmnopqrst", "abcdefghijklmnopqrsx"), "partial")
+        self.assertEqual(quality.similarity("abcd", "abce"), 75)
+        self.assertEqual(quality.classify("abcd", "abce"), "partial")
+        self.assertEqual(quality.classify("I finally understood what freedom was really for.", "I finally understood"), "flub")
+        self.assertEqual(quality.classify("!!!", "???"), "flub")
+        self.assertEqual(quality.classify("Don't worry.", "DON’T   worry!"), "exact")
+        for threshold in (0, 101):
+            with self.subTest(threshold=threshold), self.assertRaises(ValueError):
+                quality.classify("abc", "abc", partial_threshold=threshold)
+
+    def test_high_similarity_with_missing_added_or_changed_words_is_not_exact(self):
+        script = "Money gave me the freedom to choose how to spend my time."
+        for transcript in (
+            "Money gave me the freedom to choose how to spend my",
+            "Money gave me the freedom to choose how to spend my own time.",
+            "Money gave me the freedom to choose how to spend my life.",
+        ):
+            with self.subTest(transcript=transcript):
+                self.assertGreaterEqual(quality.similarity(script, transcript), 95)
+                self.assertEqual(actions.infer_classification(script, transcript), "partial")
+
+    def test_equivalent_written_numbers_and_hyphenation_are_exact(self):
+        for script, transcript in (
+            ("When I retired at 31.", "WHEN I retired at thirty-one!"),
+            ("When I retired at 31.", "When I retired at thirty one."),
+            ("My father-in-law said it.", "My father in law said it."),
+            ("He is thirty–one.", "He is 31."),
+            ("We saved 1,000 dollars.", "We saved one thousand dollars."),
+            ("Her 31st birthday.", "Her thirty-first birthday."),
+            ("It was -31 degrees.", "It was minus thirty one degrees."),
+            ("It was 1.50.", "It was one point five zero."),
+        ):
+            with self.subTest(transcript=transcript):
+                self.assertEqual(actions.infer_classification(script, transcript), "exact")
+        for script, transcript in (
+            ("She is 31.", "She is thirty two."),
+            ("It was -31 degrees.", "It was thirty one degrees."),
+            ("We saved $100.", "We saved one hundred."),
+            ("It was 1.50.", "It was fifteen."),
+        ):
+            with self.subTest(transcript=transcript):
+                self.assertNotEqual(actions.infer_classification(script, transcript), "exact")
 
     def test_link_infers_quality_for_every_caller(self):
         state = review_state()
@@ -63,7 +112,29 @@ class QualityTests(unittest.TestCase):
             self.assertEqual(state["links"][-1]["classification"], quality)
         self.assertEqual(mapping.coverage(state), {(0, 1): "exact", (2, 3): "missing"})
 
-    def test_good_quality_loads_as_partial_and_saves_new_quality(self):
+    def test_refresh_quality_preserves_ranges_groupings_discards_and_selection(self):
+        state = review_state()
+        for index in (0, 2):
+            state["selected"]["transcript"] = index
+            actions.link(None, state)
+        state["links"][0]["classification"] = "flub"
+        state["links"][1]["classification"] = "exact"
+        state["selected"]["transcript"] = 1
+        actions.discard(None, state)
+        state["dirty"] = False
+        original = deepcopy(state)
+        self.assertEqual(mapping.refresh_quality(state), 2)
+        self.assertEqual([link["classification"] for link in state["links"]], ["exact", "partial"])
+        self.assertTrue(state["dirty"])
+        for panel in mapping.PANELS:
+            self.assertEqual([link[panel] for link in state["links"]], [link[panel] for link in original["links"]])
+        for key in ("script", "transcript", "groupings", "discarded", "selected", "mapping_path", "mapping_name"):
+            self.assertEqual(state[key], original[key], key)
+        state["dirty"] = False
+        self.assertEqual(mapping.refresh_quality(state), 0)
+        self.assertFalse(state["dirty"])
+
+    def test_good_quality_is_recalculated_on_load_and_saved_in_a_new_version(self):
         with TemporaryDirectory() as directory:
             root = Path(directory).resolve()
             (root / "script.txt").write_text("Hello world.", encoding="utf-8")
@@ -79,11 +150,53 @@ class QualityTests(unittest.TestCase):
             actions.link(None, state)
             state["links"][0]["classification"] = "good"
             path = mapping.save_version(root, state, "legacy")
+            document = json.loads((root / path).read_text())
+            document["links"][0]["classification"] = "good"
+            (root / path).write_text(json.dumps(document), encoding="utf-8")
+            original = (root / path).read_bytes()
             loaded = mapping.read_mapping(root, path)
-            self.assertEqual(loaded["links"][0]["classification"], "partial")
+            self.assertEqual(loaded["links"][0]["classification"], "exact")
+            self.assertEqual(loaded["_quality_updates"], 1)
+            self.assertTrue(loaded["dirty"])
             new_path = mapping.save_version(root, loaded, "legacy")
             saved = json.loads((root / new_path).read_text())
-            self.assertEqual(saved["links"][0]["classification"], "partial")
+            self.assertEqual(saved["links"][0]["classification"], "exact")
+            self.assertNotEqual(new_path, path)
+            self.assertEqual((root / path).read_bytes(), original)
+            self.assertEqual(loaded["_quality_updates"], 0)
+            reopened = mapping.read_mapping(root, new_path)
+            self.assertFalse(reopened["dirty"])
+            self.assertEqual(reopened["_quality_updates"], 0)
+
+    def test_opening_old_review_reclassifies_transcript_group_six(self):
+        script_text = "I had spent my childhood trying to meet other people’s expectations, and years working at a job I wanted to leave."
+        reading = "I had spent my childhood trying to meet other people's expectations and years working at a job I wanted to leave."
+        with TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            (root / "script.txt").write_text(script_text, encoding="utf-8")
+            transcript_text = "Testing one. Testing two. Testing three. Testing four. Testing five. " + reading
+            (root / "transcript.json").write_text(json.dumps({"words": [
+                {"text": text, "start_ms": index * 100, "end_ms": (index + 1) * 100}
+                for index, text in enumerate(transcript_text.split())
+            ]}), encoding="utf-8")
+            state = mapping.new_state()
+            state.update(script=sources.load_script(root, "script.txt"),
+                         transcript=sources.load_transcript(root, "transcript.json"))
+            state["groupings"] = {panel: mapping.initial_groupings(state[panel]) for panel in mapping.PANELS}
+            state["links"] = [{"script": state["groupings"]["script"][0],
+                               "transcript": state["groupings"]["transcript"][5], "classification": "flub"}]
+            state["discarded"] = deepcopy(state["groupings"]["transcript"][:5])
+            path = mapping.save_version(root, state, "review")
+            original = (root / path).read_bytes()
+            loaded = mapping.new_state()
+            actions.load_mapping(SimpleNamespace(root=root), loaded, path)
+            self.assertEqual(mapping.group_rows(loaded, "transcript")[5]["text"], reading)
+            self.assertEqual(loaded["links"][0]["classification"], "exact")
+            self.assertEqual(loaded["_quality_updates"], 1)
+            self.assertTrue(loaded["dirty"])
+            self.assertEqual(loaded["groupings"], state["groupings"])
+            self.assertEqual(loaded["discarded"], state["discarded"])
+            self.assertEqual((root / path).read_bytes(), original)
 
 
 class WordGroupingTests(unittest.TestCase):
@@ -123,13 +236,13 @@ class WordGroupingTests(unittest.TestCase):
                 {"script": {"word_start": 0, "word_end": 0},
                  "transcript": {"word_start": 0, "word_end": 0}, "classification": "exact"},
                 {"script": {"word_start": 1, "word_end": 1},
-                 "transcript": {"word_start": 1, "word_end": 3}, "classification": "partial"},
+                 "transcript": {"word_start": 1, "word_end": 3}, "classification": "flub"},
             ])
             with self.assertRaisesRegex(ValueError, "Unlink"):
                 actions.merge(None, state, "transcript", [0, 1])
             with self.assertRaisesRegex(ValueError, "Unlink"):
                 actions.split(None, state, "script", 3)
-            self.assertEqual(mapping.coverage(state), {(0, 0): "exact", (1, 1): "partial", (2, 3): "missing"})
+            self.assertEqual(mapping.coverage(state), {(0, 0): "exact", (1, 1): "flub", (2, 3): "missing"})
             saved = mapping.save_version(root, state, "review")
             reopened = mapping.read_mapping(root, saved)
             self.assertEqual(reopened["groupings"], state["groupings"])
@@ -228,6 +341,19 @@ class ReviewUiTests(QtTests):
     def key(self, key, modifiers=Qt.KeyboardModifier.NoModifier):
         QTest.keyClick(self.widget._panels["transcript"]["table"], key, modifiers)
         self.app.processEvents()
+
+    def test_opening_review_repaints_refreshed_quality_and_reports_unsaved_updates(self):
+        loaded = review_state()
+        actions.link(None, loaded)
+        loaded["links"][0]["classification"] = "flub"
+        loaded["_quality_updates"] = mapping.refresh_quality(loaded)
+        with patch("studio.tools.line.mapping.read_mapping", return_value=loaded):
+            self.widget._dispatch("line.load_mapping", path="review.v001.json")
+        self.assertEqual(self.widget.bands.links, [(0, 0, "exact")])
+        self.assertEqual(self.widget._panels["transcript"]["overview"].statuses[0], "exact")
+        self.assertIn("Quality labels updated: 1", self.widget.mapping_label.text())
+        self.assertIn("Unsaved changes", self.widget.mapping_label.text())
+        self.assertIn("quality labels recalculated: 1", self.logging.call_args.args[2])
 
     def test_visuals_preserve_repeated_take_quality_and_review_states(self):
         for index in range(3):
@@ -532,6 +658,20 @@ class MultiTranscriptFileTests(unittest.TestCase):
             (root / "Takes.json").write_text(json.dumps(takes), encoding="utf-8")
             imported = mapping.read_mapping(root, "Takes.json")
             self.assertEqual(imported["links"], state["links"])
+            for schema, version in ((mapping.SCHEMA, 3), ("studio.find-takes", 1)):
+                with self.subTest(schema=schema):
+                    stale = deepcopy(document)
+                    stale.update(schema=schema, schema_version=version)
+                    stale["recordings"][1]["links"][0]["classification"] = "flub"
+                    old_path = root / "Old.json"
+                    old_path.write_text(json.dumps(stale), encoding="utf-8")
+                    original = old_path.read_bytes()
+                    refreshed = mapping.read_mapping(root, old_path)
+                    self.assertEqual(refreshed["links"], state["links"])
+                    self.assertEqual(refreshed["groupings"], state["groupings"])
+                    self.assertEqual(refreshed["_quality_updates"], 1)
+                    self.assertTrue(refreshed["dirty"])
+                    self.assertEqual(old_path.read_bytes(), original)
             (root / "C02.json").write_text("{}", encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "input has changed"):
                 mapping.read_mapping(root, path)

@@ -56,8 +56,9 @@ another Python 3.9+ interpreter:
 python "<workflow-root>/.agents/skills/studio/3-Post Production/3-Find Takes/scripts/find_takes.py" "<project-root>"
 ```
 
-The script uses the standard library and the repository's shared Line source
-adapters. It does not require PySide6 or audio dependencies. `--output-dir`
+The script uses RapidFuzz (`RapidFuzz>=3,<4`), num2words (`num2words>=0.5.14,<0.6`),
+and the repository's shared Line
+source adapters and quality classifier. It does not require PySide6 or audio dependencies. `--output-dir`
 supports an isolated trial; such a run does not complete the OneDrive stage.
 The generator never reads benchmark mappings.
 
@@ -66,22 +67,32 @@ spans to script groupings near a script cursor. It can revisit recent script
 groups, search for a strong distant restart, and emit spans across or inside
 initial sentence boundaries. Unmatched passages are discarded by this first
 algorithm. These are estimates; benchmark mismatches identify needed tuning.
+Quality is classified separately after normalizing case, punctuation, and
+spacing. Exact requires identical normalized wording. Other readings use
+full-sentence `rapidfuzz.fuzz.ratio`: Partial ≥75, Flub <75.
+Normalization also accepts English digit/written-number forms and hyphen/space
+variants, preserving audible number signs, decimal digits, and symbols.
+These rules do not change
+the span matcher's token-distance scores or candidate thresholds.
 
 ## Benchmark
 
 The `benchmarks/` directory has one flat subdirectory per script. Each case
 contains `<Script>.docx`, its `<Script>__C<nn>__lav.json` transcript files, and
-`<Script>__Takes.v001.json`. Takes filenames follow Line's versioned naming
+human-reviewed `<Script>__Takes.vNNN.json` files. Takes filenames follow Line's versioned naming
 convention, `<Script>__Takes.<version>.json`. Source references inside a case's
-Takes JSON use the adjacent filenames. It contains no audio.
+Takes JSON can retain their original project-relative paths; the runner resolves
+adjacent filenames in memory and verifies source bytes and word snapshots.
+It never rewrites the human review. A case contains no audio.
 
 Only human-reviewed mappings and their corresponding script/transcript inputs
-belong in `benchmarks/`. The sole current case is What Is Freedom For C01. Its
-Takes JSON contains the human Line review, preserving its links, words, discards,
-and grouping boundaries, with source references rebased to the flat directory.
-Love Compounds Too and What Is Freedom For C02 have no human-reviewed references
-and are excluded. The manifest records fingerprints and the reviewed transcript
+belong in `benchmarks/`. The current case is What Is Freedom For, using the v002
+Line review of C01 and C02. The previous single-recording v001 review remains
+preserved. Both Line schema v2 and multi-recording schema v3 are supported.
+Love Compounds Too has no human-reviewed reference and is excluded. The manifest records fingerprints and the reviewed transcript
 inventory; the runner rejects unreviewed cases or extra unreviewed transcripts.
+Review JSON fingerprints normalize checkout line endings to LF; script and
+transcript source fingerprints continue to verify exact bytes.
 These project copies are explicitly requested fixtures; general project data
 belongs in OneDrive.
 
@@ -90,7 +101,9 @@ Run `scripts/benchmark.py --output-dir <new-temporary-directory> --report
 same flat case directories and versioned filenames under the output directory.
 It generates predictions first, then reads the references.
 It writes JSON and Markdown results with exact take-range precision/recall,
-word-assignment agreement, classification agreement, and individual mismatches.
+word-assignment agreement, classification changes and scores, and individual
+mismatches for each recording. Reference labels predate fuzzy scoring, so label
+agreement is not an independent measurement of quality accuracy.
 Machine predictions and comparison reports stay outside `benchmarks/`. The
 first comparison report is preserved at `reports/initial/What Is Freedom
 For.json` and `What Is Freedom For.md`. Preserve those measurements when tuning;

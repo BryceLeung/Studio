@@ -114,8 +114,16 @@ before merging them with unreviewed groups.
 
 Each link connects one script group to one transcript group. Many transcript
 groups may link to the same script group; a transcript group may link only once.
-Quality is inferred from group text: literal equality is `exact`, a shorter
-transcript text is `flub`, and other equal/longer text is `partial`. The former
+Quality is inferred after normalizing NFKC, case, punctuation, and whitespace.
+Identical normalized wording is `exact`. Other readings use full-sentence
+`rapidfuzz.fuzz.ratio`: scores ≥75 are `partial` and <75 are `flub`.
+English digit forms expand with `num2words` (for example, `31` → `thirty-one`),
+and hyphens normalize to spaces. Ordinals retain their ordinal reading;
+decimal digits and explicit leading zeros are read individually. Symbols such
+as currency signs are preserved. Empty content scores zero. Opening a saved
+Line or Find Takes file recalculates all linked labels with the shared classifier.
+Changed labels mark the review dirty and are reported in the interface; saving
+creates a new version containing those updates. The original file is preserved. The former
 `good` quality value is accepted as `partial` in version 2. Coverage uses the
 best reading for each script group: `exact` outranks `partial`, which outranks
 `flub`; an unlinked group is `missing`. Transcript groups are `linked`,

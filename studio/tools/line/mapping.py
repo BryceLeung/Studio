@@ -12,7 +12,7 @@ import re
 from typing import Any
 
 from .sources import SEGMENTATION_VERSION, load_script, load_transcript, project_path, row_id
-from . import combined
+from . import combined, quality
 
 
 SCHEMA = "studio.line.mapping"
@@ -26,6 +26,7 @@ def new_state() -> dict:
         "script": None, "transcript": None, "links": [], "discarded": [],
         "selected": {"script": None, "transcript": None}, "dirty": False,
         "mapping_path": None, "mapping_name": None,
+        "_quality_updates": 0,
         "_closed_sources": {"script": None, "transcript": None},
         "groupings": {"script": [], "transcript": []},
     }
@@ -99,6 +100,23 @@ def coverage(state: dict) -> dict[tuple[int, int], str]:
         if script_id in statuses and rank[classification] > rank[statuses[script_id]]:
             statuses[script_id] = classification
     return statuses
+
+
+def refresh_quality(state: dict) -> int:
+    """Rescore established links without changing their ranges or review decisions."""
+    script, transcript = (active_source(state, panel) for panel in PANELS)
+    if not script or not transcript:
+        raise ValueError("Load a script and transcript before recalculating quality.")
+    changed = 0
+    for link in state["links"]:
+        classification = quality.classify(range_text(script, link["script"]),
+                                          range_text(transcript, link["transcript"]))
+        if link["classification"] != classification:
+            link["classification"] = classification
+            changed += 1
+    if changed:
+        state["dirty"] = True
+    return changed
 
 
 def review_status(state: dict) -> dict[tuple[int, int], str]:
@@ -348,6 +366,7 @@ def save_version(project_root: Any, state: dict, name: str) -> str:
     state["mapping_path"] = relative
     state["mapping_name"] = name
     state["dirty"] = False
+    state["_quality_updates"] = 0
     return relative
 
 
@@ -364,18 +383,16 @@ def read_mapping(project_root: Any, path: Any) -> dict:
     if document["schema_version"] == 3:
         state = combined.unpack(document)
         state.update(mapping_path=source_path.relative_to(root).as_posix(), mapping_name=document["mapping_name"])
-        return state
-    state = new_state()
-    state.update({
-        "script": deepcopy(document["sources"]["script"]),
-        "transcript": deepcopy(document["sources"]["transcript"]),
-        "links": deepcopy(document["links"]), "discarded": deepcopy(document["discarded"]),
-        "groupings": deepcopy(document["groupings"]),
-        "mapping_path": source_path.relative_to(root).as_posix(),
-        "mapping_name": document["mapping_name"],
-        "selected": {"script": 0, "transcript": 0},
-    })
-    for link in state["links"]:
-        if link["classification"] == "good":
-            link["classification"] = "partial"
+    else:
+        state = new_state()
+        state.update({
+            "script": deepcopy(document["sources"]["script"]),
+            "transcript": deepcopy(document["sources"]["transcript"]),
+            "links": deepcopy(document["links"]), "discarded": deepcopy(document["discarded"]),
+            "groupings": deepcopy(document["groupings"]),
+            "mapping_path": source_path.relative_to(root).as_posix(),
+            "mapping_name": document["mapping_name"],
+            "selected": {"script": 0, "transcript": 0},
+        })
+    state["_quality_updates"] = refresh_quality(state)
     return state

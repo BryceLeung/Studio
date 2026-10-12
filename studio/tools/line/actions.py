@@ -9,6 +9,7 @@ from studio.actions import action
 
 from . import mapping, sources
 from . import combined
+from .quality import classify as infer_classification
 
 
 def _describe_line(operation: str):
@@ -39,7 +40,10 @@ def _describe_line(operation: str):
         if operation in ("split", "merge"):
             return f"{operation.title()} {inputs['panel']} word grouping"
         if operation == "load_mapping":
-            return f"Loaded Line project: {Path(inputs['path']).name} (links: {len(result['links'])}, discarded: {len(result['discarded'])})"
+            description = f"Loaded Line project: {Path(inputs['path']).name} (links: {len(result['links'])}, discarded: {len(result['discarded'])})"
+            if result.get("_quality_updates"):
+                description += f"; quality labels recalculated: {result['_quality_updates']}"
+            return description
         if operation == "save":
             return f"Saved: {result}"
         if operation == "reset":
@@ -187,12 +191,6 @@ def jump(project: Any, state: dict, panel: str, line: int) -> dict:
     if isinstance(line, bool) or not isinstance(line, int):
         raise ValueError("Line number must be an integer.")
     return select(project, state, panel, line - 1)
-
-
-def infer_classification(script_text: str, transcript_text: str) -> str:
-    if transcript_text == script_text:
-        return "exact"
-    return "flub" if len(transcript_text) < len(script_text) else "partial"
 
 
 @action("line.link", description="Link selected word groupings with automatically inferred quality.", describe=_describe_line("link"))

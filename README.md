@@ -49,9 +49,11 @@ The GUI uses PySide6 and the operating system's desktop window system.
    Shift-click adjacent unlinked groups and right-click **Merge groups**. Unlink
    first if a group is already linked.
 4. Select one script group and one transcript group. **Link** infers quality:
-   identical text is **Exact** (green), shorter transcript text is **Flub** (red),
-   and other text of equal or greater character length is **Partial** (yellow).
-   Comparisons preserve case, punctuation, and spacing. A script group can
+   identical wording after normalizing case, punctuation, and spacing is
+   **Exact** (green). Equivalent English number forms (`31` / `thirty-one`) and
+   hyphen/space variants (`father-in-law` / `father in law`) also match.
+   Other readings use full-sentence RapidFuzz scores: ≥75 is **Partial** (yellow),
+   and <75 is **Flub** (red). Source text is preserved. A script group can
    have many readings; each transcript group links at most once.
 5. The same button becomes **Unlink** when the transcript group has a link.
    **Discard** excludes a transcript group and removes its link; the button
@@ -60,6 +62,8 @@ The GUI uses PySide6 and the operating system's desktop window system.
    group. Unlink and Restore stay put.
 6. Save a Line project with a name. Every save creates a new numbered JSON
    version containing groupings and mappings. Load it to resume reviewing.
+   Opening a saved review recalculates linked quality with the current rules.
+   Changed labels appear as unsaved updates and can be saved in a new version.
 
 Closing an individual source unloads its panel while retaining the current
 mapping. Reopening the same source restores it. **New Review** explicitly

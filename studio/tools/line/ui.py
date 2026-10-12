@@ -988,6 +988,7 @@ class LineWidget(QWidget):
             mapping_path = self.state.get("mapping_path")
             self.mapping_label.setText(
                 (f"Line project: {mapping_path}" if mapping_path else "New review · no saved Line project")
+                + (f" · Quality labels updated: {self.state['_quality_updates']}" if self.state.get("_quality_updates") else "")
                 + (" · Unsaved changes" if self.has_unsaved_changes() else "")
             )
             self.save_button.setEnabled(bool(active_source(self.state, "script") and active_source(self.state, "transcript")))

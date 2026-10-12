@@ -18,8 +18,10 @@ Each `recordings` item contains:
   group may have multiple readings in each recording and across recordings.
 - `discarded`: unlinked transcript group ranges. Every group is linked or
   discarded by the initial algorithm.
-- `match_scores`: diagnostics keyed by transcript range. `similarity` is a
-  scoring measure, not a probability. `partial_prefix` identifies an abandoned
+- `match_scores`: diagnostics keyed by transcript range. `similarity` is the
+  span matcher's normalized token-distance score (0–1). `quality_score` is the
+  full-sentence RapidFuzz score (0–100) used for classification. Neither score
+  is a probability. `partial_prefix` identifies an abandoned
   literal prefix used to hold the script cursor.
 
 One ordinary link looks like:
@@ -29,11 +31,21 @@ One ordinary link looks like:
 ```
 
 There are no special merge or split link types. Source word times supply edit
-times; no synchronization offsets are applied. Classification uses Line's
-current literal-text rule: equal text is exact, shorter transcript text is flub,
-and other equal/longer text is partial. It is independent of matching confidence.
+times; no synchronization offsets are applied. Classification uses Line's shared
+NFKC normalization, casefolding, punctuation removal, and whitespace collapsing.
+Identical normalized wording is exact. Other readings use full-sentence
+`rapidfuzz.fuzz.ratio`: scores ≥75 are partial and <75 are flub.
+Digit forms expand to English with `num2words`; hyphens become spaces, so `31`
+and `thirty-one`, or `father-in-law` and `father in law`, compare identically.
+Ordinals use their ordinal reading. Decimals and explicit leading zeros keep
+their individual digits, and symbols such as currency signs are preserved.
+Empty or punctuation-only content scores zero.
+Source text and indexes remain intact. This quality score is independent of the
+span matcher's candidate score. Line recalculates labels when opening a review,
+marking changed labels as unsaved updates. Benchmark comparisons read the saved
+human reference labels directly and do not recalculate or rewrite them.
 
-## First algorithm, before tuning
+## Span matcher (unchanged by quality scoring)
 
 Two cursors track the next transcript word and expected script grouping. For
 each candidate script group within three groups behind or ahead, compute token
@@ -62,6 +74,8 @@ Unmatched groups become discarded. The first baseline's opening chatter,
 restart absorption, and final-word boundary drift remain visible for tuning.
 
 The top-level `algorithm` object fingerprints the generator and shared Line
-implementation and records every setting. Source changes, inventory changes,
+implementation and records every setting, including the Exact equality rule,
+the Partial threshold, the RapidFuzz method, and installed RapidFuzz/num2words
+versions. Source changes, inventory changes,
 or algorithm changes invalidate reuse. Generation completion and matching
 accuracy are separate: missing coverage and discarded passages need review.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate one word-range take file per approved script (Python 3.9+, stdlib)."""
+"""Generate one word-range take file per approved script (Python 3.9+, RapidFuzz)."""
 from __future__ import annotations
 
 import argparse
@@ -24,7 +24,7 @@ def workflow_root() -> Path:
 
 ROOT = workflow_root()
 sys.path.insert(0, str(ROOT))
-from studio.tools.line import mapping, sources  # noqa: E402
+from studio.tools.line import mapping, sources, quality  # noqa: E402
 from studio.tools.line.actions import infer_classification  # noqa: E402
 
 SCHEMA = "studio.find-takes"
@@ -46,12 +46,15 @@ def sha256(path: Path) -> str:
 
 def provenance() -> dict:
     return {
-        "name": "cursor-word-alignment", "version": 1, "settings": dict(SETTINGS),
+        "name": "cursor-word-alignment", "version": 3, "settings": dict(SETTINGS),
+        "quality": quality.provenance(),
         "code_sha256": {
             "find_takes.py": sha256(Path(__file__)),
             "studio/tools/line/sources.py": sha256(Path(sources.__file__)),
             "studio/tools/line/mapping.py": sha256(Path(mapping.__file__)),
             "studio/tools/line/actions.py": sha256(ROOT / "studio/tools/line/actions.py"),
+            "studio/tools/line/quality.py": sha256(Path(quality.__file__)),
+            "studio/tools/line/combined.py": sha256(ROOT / "studio/tools/line/combined.py"),
         },
     }
 
@@ -134,6 +137,8 @@ def match_recording(script: dict, transcript: dict, settings: dict | None = None
                                                                mapping.range_text(transcript, transcript_range))})
         scores.append({"transcript": dict(transcript_range),
                        "similarity": round(candidate["similarity"], 6),
+                       "quality_score": round(quality.similarity(mapping.range_text(script, script_range),
+                                                                  mapping.range_text(transcript, transcript_range)), 6),
                        "partial_prefix": candidate["partial_prefix"]})
         script_cursor = candidate["index"] + (0 if candidate["partial_prefix"] else 1)
         transcript_cursor = candidate["end"]
