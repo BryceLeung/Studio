@@ -71,6 +71,14 @@ Transcript review states are linked, discarded, and unreviewed. Source offsets
 remain available in mappings; audio playback and algorithm comparisons are
 later additions.
 
+Curved green/yellow/red bands connect script groups to their linked readings.
+Select a group to emphasize its connections; ticks at a viewport edge indicate
+an offscreen endpoint. The narrow overview strip beside each scrollbar maps the
+whole document using actual row heights. Click or drag it to select a group.
+Green means Exact, yellow Partial, and red Flub. Script markers show the best
+linked quality; grey marks missing/unreviewed groups, while pale inset markers
+identify discarded passages. The outline shows the visible area.
+
 Use **Line! → Keyboard mappings…** to edit shortcuts. Changes take effect
 immediately and persist across restarts. Clear a field to disable its shortcut,
 or choose **Restore defaults**. Defaults are:

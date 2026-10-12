@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QItemSelectionModel, QSettings, Qt
+from PySide6.QtCore import QItemSelectionModel, QPoint, QSettings, Qt
 from PySide6.QtGui import QKeySequence
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
@@ -228,6 +228,67 @@ class ReviewUiTests(QtTests):
     def key(self, key, modifiers=Qt.KeyboardModifier.NoModifier):
         QTest.keyClick(self.widget._panels["transcript"]["table"], key, modifiers)
         self.app.processEvents()
+
+    def test_visuals_preserve_repeated_take_quality_and_review_states(self):
+        for index in range(3):
+            self.widget.state["selected"]["transcript"] = index
+            actions.link(None, self.widget.state)
+        self.widget._refresh()
+        self.assertEqual(self.widget.bands.links, [(0, 0, "exact"), (0, 1, "flub"), (0, 2, "partial")])
+        self.assertEqual(self.widget._panels["script"]["overview"].statuses, ["exact", "missing"])
+        self.assertEqual(self.widget._panels["transcript"]["overview"].statuses, ["exact", "flub", "partial"])
+        actions.discard(None, self.widget.state)
+        self.widget._refresh()
+        self.assertEqual(len(self.widget.bands.links), 2)
+        self.assertEqual(self.widget._panels["transcript"]["overview"].statuses[-1], "discarded")
+        actions.restore(None, self.widget.state)
+        self.widget._refresh()
+        self.assertEqual(self.widget._panels["transcript"]["overview"].statuses[-1], "unreviewed")
+
+    def test_overview_navigation_uses_real_row_heights_and_shared_action(self):
+        table = self.widget._panels["transcript"]["table"]
+        strip = self.widget._panels["transcript"]["overview"]
+        table._resize_timer.stop()
+        for row, height in enumerate((45, 170, 80)):
+            table.setRowHeight(row, height)
+        track = strip.track()
+        y = track.top() + track.height() * 130 / 295
+        self.assertEqual(strip.row_at(y), 1)
+        QTest.mouseClick(strip, Qt.MouseButton.LeftButton, pos=QPoint(8, round(y)))
+        self.assertEqual(self.widget.state["selected"]["transcript"], 1)
+        self.assertEqual(table.currentRow(), 1)
+
+    def test_band_geometry_follows_scrolling_resizing_and_selection(self):
+        state = self.widget.state
+        state["selected"]["script"] = 1
+        actions.link(None, state)
+        state["selected"]["script"] = 0
+        state["selected"]["transcript"] = 2
+        actions.link(None, state)
+        self.widget._refresh()
+        bands = self.widget.bands
+        self.assertEqual(bands.links, [(1, 0, "flub"), (0, 2, "partial")])
+        bands.focus_panel = 0
+        self.assertFalse(bands.emphasized(bands.links[0]))
+        self.assertTrue(bands.emphasized(bands.links[1]))
+        table = self.widget._panels["transcript"]["table"]
+        table._resize_timer.stop()
+        table.setRowHeight(0, 80)
+        top, bottom, offscreen = bands.endpoint(1, 0)
+        self.assertEqual(bottom - top, 80)
+        self.assertEqual(bands.mapToGlobal(QPoint(0, round(top))).y(),
+                         table.viewport().mapToGlobal(QPoint(0, 0)).y())
+        strip = self.widget._panels["transcript"]["overview"]
+        self.assertEqual(strip.mapToGlobal(QPoint(0, round(strip.track().top()))).y(),
+                         table.viewport().mapToGlobal(QPoint(0, 0)).y())
+        table.setRowHeight(0, 1200)
+        self.app.processEvents()
+        table.verticalScrollBar().setValue(table.verticalScrollBar().maximum())
+        self.app.processEvents()
+        self.assertEqual(bands.endpoint(1, 2)[2], 0)
+        self.widget.resize(1000, 700)
+        QTest.qWait(150)
+        self.assertFalse(self.widget.grab().isNull())
 
     def test_link_toggle_and_unlink_with_different_or_closed_script(self):
         self.assertFalse(hasattr(self.widget, "advance_script_after_link"))

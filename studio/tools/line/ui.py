@@ -34,9 +34,10 @@ from studio.actions import ActionLogError, invoke
 from . import actions as _registered_actions  # noqa: F401
 from .mapping import active_source, coverage, default_mapping_name, group_rows, is_discarded, linked_group, new_state, range_key, range_text, review_status, word_range
 from .shortcuts import KeyboardMappingsDialog, load_mappings, save_mappings
+from .visuals import COLORS, ConnectionBands, OverviewStrip
 
 
-_COLORS = {"exact": "#c8ecd5", "partial": "#fff0b3", "flub": "#f7cece"}
+_COLORS = COLORS
 _INK = {"exact": "#21643a", "partial": "#715000", "flub": "#8b2525"}
 
 
@@ -68,6 +69,7 @@ class _GroupingTable(QTableWidget):
         self.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.setWordWrap(True)
+        self.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
         self.setAlternatingRowColors(True)
         self.setShowGrid(False)
         self.verticalHeader().hide()
@@ -82,6 +84,11 @@ class _GroupingTable(QTableWidget):
     def resizeEvent(self, event: Any) -> None:
         super().resizeEvent(event)
         if hasattr(self, "_resize_timer"):
+            self._resize_timer.start()
+
+    def changeEvent(self, event: Any) -> None:
+        super().changeEvent(event)
+        if event.type() in (QEvent.Type.FontChange, QEvent.Type.StyleChange) and hasattr(self, "_resize_timer"):
             self._resize_timer.start()
 
 
@@ -224,9 +231,13 @@ class LineWidget(QWidget):
         splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.addWidget(self._make_panel("script", "SCRIPT"))
         splitter.addWidget(self._make_panel("transcript", "TRANSCRIPT"))
+        self.bands = ConnectionBands(self._panels["script"]["table"], self._panels["transcript"]["table"])
+        splitter.insertWidget(1, self.bands)
+        splitter.splitterMoved.connect(lambda *_: self.bands.update())
         splitter.setChildrenCollapsible(False)
         splitter.setStretchFactor(0, 1)
-        splitter.setStretchFactor(1, 1)
+        splitter.setStretchFactor(1, 0)
+        splitter.setStretchFactor(2, 1)
         layout.addWidget(splitter, 1)
 
         controls = QHBoxLayout()
@@ -346,7 +357,14 @@ class LineWidget(QWidget):
             lambda row, column, old_row, old_column: self._table_selected(panel, row)
         )
         table.itemSelectionChanged.connect(lambda: self._selection_changed(panel))
-        layout.addWidget(table, 1)
+        overview = OverviewStrip(table, widget)
+        overview.activated.connect(lambda index: self._overview_selected(panel, index))
+        table_layout = QHBoxLayout()
+        table_layout.setContentsMargins(0, 0, 0, 0)
+        table_layout.setSpacing(2)
+        table_layout.addWidget(table, 1)
+        table_layout.addWidget(overview)
+        layout.addLayout(table_layout, 1)
         detail = QLabel()
         detail.setWordWrap(True)
         detail.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
@@ -354,7 +372,7 @@ class LineWidget(QWidget):
         self._panels[panel] = {
             "widget": widget, "source_label": source_label, "table": table,
             "close": close, "previous": previous, "next": next_button,
-            "jump": jump, "detail": detail,
+            "jump": jump, "detail": detail, "overview": overview,
         }
         return widget
 
@@ -363,6 +381,9 @@ class LineWidget(QWidget):
             for panel, widgets in self._panels.items():
                 if watched is widgets["table"]:
                     self._active_panel = panel
+                    if hasattr(self, "bands"):
+                        self.bands.focus_panel = 0 if panel == "script" else 1
+                        self.bands.update()
                     break
         return super().eventFilter(watched, event)
 
@@ -488,6 +509,10 @@ class LineWidget(QWidget):
             self._cancel_split(refresh=False)
         self._active_panel = panel
         self._dispatch("line.select", panel=panel, index=row)
+
+    def _overview_selected(self, panel: str, index: int) -> None:
+        self._active_panel = panel
+        self._dispatch("line.jump", panel=panel, line=index + 1)
 
     def _selected_row(self, panel: str) -> dict | None:
         source = self.state[panel]
@@ -712,6 +737,30 @@ class LineWidget(QWidget):
                 font.setStrikeOut(status == "discarded")
                 sentence.setFont(font)
                 sentence.setForeground(QBrush(QColor("#888888")) if status == "discarded" else QBrush())
+                sentence.setBackground(QBrush(QColor(_COLORS[color_status])) if color_status in _COLORS else QBrush())
+
+    def _refresh_visuals(self, script_status: dict, transcript_status: dict) -> None:
+        links = {range_key(link["transcript"]): link["classification"] for link in self.state["links"]}
+        indexes = {}
+        for panel in ("script", "transcript"):
+            rows = group_rows(self.state, panel) if self.state[panel] is not None else []
+            indexes[panel] = {range_key(row): index for index, row in enumerate(rows)}
+            statuses = []
+            for row in rows:
+                key = range_key(row)
+                statuses.append(script_status[key] if panel == "script" else links.get(key, transcript_status[key]))
+            overview = self._panels[panel]["overview"]
+            overview.statuses = statuses
+            overview.setEnabled(bool(rows))
+            overview.update()
+        self.bands.links = [
+            (indexes["script"][range_key(link["script"])],
+             indexes["transcript"][range_key(link["transcript"])], link["classification"])
+            for link in self.state["links"]
+            if range_key(link["script"]) in indexes["script"] and range_key(link["transcript"]) in indexes["transcript"]
+        ]
+        self.bands.focus_panel = 0 if self._active_panel == "script" else 1
+        self.bands.update()
 
     def _refresh_readings(self, script_row: dict | None, transcript_row: dict | None) -> None:
         self.readings.clear()
@@ -850,5 +899,6 @@ class LineWidget(QWidget):
             reviewed = linked + rejected
             self.review_progress.setValue(round(100 * reviewed / total) if total else 0)
             self.review_progress.setFormat(f"Transcript reviewed: {reviewed} / {total}")
+            self._refresh_visuals(script_status, transcript_status)
         finally:
             self._refreshing = False
