@@ -7,12 +7,14 @@
       "name": "What Is Freedom For",
       "script": "What Is Freedom For.docx",
       "transcripts": [
-        "What Is Freedom For__C01__lav.json"
+        "What Is Freedom For__C01__lav.json",
+        "What Is Freedom For__C02__lav.json"
       ],
-      "takes": "What Is Freedom For__Takes.v001.json",
+      "takes": "What Is Freedom For__Takes.v002.json",
       "takes_role": "human-reviewed",
       "reviewed_transcripts": [
-        "What Is Freedom For__C01__lav.json"
+        "What Is Freedom For__C01__lav.json",
+        "What Is Freedom For__C02__lav.json"
       ]
     }
   ],
@@ -29,8 +31,20 @@
     },
     {
       "path": "What Is Freedom For/What Is Freedom For__Takes.v001.json",
+      "hash_mode": "lf",
       "sha256": "b7acac28c456f748274bf684c4689b95993e73fab03566f38dd95126d2934998",
       "bytes": 136177
+    },
+    {
+      "path": "What Is Freedom For/What Is Freedom For__C02__lav.json",
+      "sha256": "bd89c1f1320176d20a5d1b2782e795e3a1fa65d0b77f58b3f7c2321e359e017e",
+      "bytes": 59720
+    },
+    {
+      "path": "What Is Freedom For/What Is Freedom For__Takes.v002.json",
+      "hash_mode": "lf",
+      "sha256": "ecd56e3603cf5e44ef8a8010fce2d0c4b2b7e84b9333b78acacf054fd62e001c",
+      "bytes": 232931
     }
   ],
   "original_human_review": {
