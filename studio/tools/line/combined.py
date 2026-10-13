@@ -73,6 +73,7 @@ def unpack(document):
     state = new_state()
     state["script"] = deepcopy(document["script"])
     state["groupings"]["script"] = deepcopy(document["script_groupings"])
+    state["script_discarded"] = deepcopy(document.get("script_discarded", []))
     state["transcript"] = combine([r["transcript"] for r in document["recordings"]])
     offset = 0
     for recording in document["recordings"]:
@@ -101,6 +102,7 @@ def validate(root, document, verify_inputs=True):
             "sources": {"script": document.get("script"), "transcript": item.get("transcript")},
             "groupings": {"script": document.get("script_groupings"), "transcript": item.get("groupings")},
             "links": item.get("links"), "discarded": item.get("discarded"),
+            "script_discarded": document.get("script_discarded", []),
         }, verify_inputs=verify_inputs)
         path = validated["sources"]["transcript"]["source"]["path"]
         if path in seen:

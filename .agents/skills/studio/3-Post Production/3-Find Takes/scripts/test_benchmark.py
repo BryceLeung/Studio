@@ -15,7 +15,7 @@ REFERENCE = FIXTURE / "What Is Freedom For" / TAKES
 
 
 class BenchmarkTests(unittest.TestCase):
-    def test_boundary_trial_matches_approved_reference_and_preserves_c02_rewind(self):
+    def test_all_versions_matches_approved_reference_and_preserves_c02_rewind(self):
         frozen = {path: path.read_bytes() for path in FIXTURE.rglob("*") if path.is_file()}
         initial = FIXTURE.parent / "reports/initial/What Is Freedom For.json"
         initial_bytes = initial.read_bytes()
@@ -25,44 +25,32 @@ class BenchmarkTests(unittest.TestCase):
             output = Path(directory)
 
             def references(project, path):
-                self.assertTrue((output / "baseline" / TAKES).is_file())
-                self.assertTrue((output / "preview" / TAKES).is_file())
+                self.assertTrue((output / TAKES).is_file())
                 generated_before_references.append(path.name)
                 return real_references(project, path)
 
             with patch.object(benchmark, "reference_documents", side_effect=references):
-                report = benchmark.run(FIXTURE, output, "What Is Freedom For", all_versions=True, boundary_proposals=True)
+                report = benchmark.run(FIXTURE, output, "What Is Freedom For", all_versions=True)
             self.assertEqual(report["generation"]["reference_versions"], 1)
             self.assertEqual(report["generation"]["transcripts"], 2)
             self.assertEqual(generated_before_references, [TAKES.name])
             self.assertEqual(report["reference_conflicts"], [])
             first, second = report["cases"]
-            self.assertEqual(first["exact_take_ranges"], benchmark.metrics(23, 27, 28))
-            self.assertEqual(first["boundary_preview"]["exact_take_ranges"], benchmark.metrics(28, 28, 28))
-            self.assertEqual(first["boundary_preview"]["word_assignments"]["correct"], 426)
-            self.assertEqual(second["exact_take_ranges"], benchmark.metrics(23, 26, 27))
-            self.assertEqual(second["word_assignments"]["correct"], 399)
-            self.assertEqual(second["boundary_preview"]["exact_take_ranges"], benchmark.metrics(27, 27, 27))
-            self.assertEqual(second["boundary_preview"]["word_assignments"]["correct"], 412)
-            self.assertEqual(len(second["boundary_proposals"]), 2)
-            proposal = second["boundary_proposals"][0]
-            self.assertEqual([link["transcript"] for link in proposal["after"][:2]], [
-                {"word_start": 67, "word_end": 78}, {"word_start": 79, "word_end": 98}])
-            rewind = second["boundary_proposals"][1]
-            self.assertEqual([link["transcript"] for link in rewind["after"]], [
+            self.assertEqual(first["exact_take_ranges"], benchmark.metrics(28, 28, 28))
+            self.assertEqual(first["word_assignments"]["correct"], 426)
+            self.assertEqual(second["exact_take_ranges"], benchmark.metrics(27, 27, 27))
+            self.assertEqual(second["word_assignments"]["correct"], 412)
+            self.assertEqual(second["word_errors"], [])
+            prediction = json.loads((output / TAKES).read_text(encoding="utf-8"))
+            recording = prediction["recordings"][1]
+            rewind = [link for link in recording["links"]
+                      if link["transcript"]["word_start"] in (145, 159)]
+            self.assertEqual([link["transcript"] for link in rewind], [
                 {"word_start": 145, "word_end": 158}, {"word_start": 159, "word_end": 171}])
-            self.assertEqual([link["script"] for link in rewind["after"]], [
+            self.assertEqual([link["script"] for link in rewind], [
                 {"word_start": 143, "word_end": 158}, {"word_start": 130, "word_end": 142}])
-            self.assertTrue(rewind["after"][0]["transcript_text"].endswith("having..."))
-            self.assertTrue(rewind["after"][1]["transcript_text"].startswith("He wanted"))
-            self.assertEqual(second["boundary_preview"]["word_errors"], [])
-            preview = json.loads((output / "preview" / TAKES).read_text(encoding="utf-8"))
-            baseline = json.loads((output / "baseline" / TAKES).read_text(encoding="utf-8"))
-            self.assertEqual(preview["script"], baseline["script"])
-            self.assertEqual(preview["script_groupings"], baseline["script_groupings"])
-            self.assertEqual([r["transcript"] for r in preview["recordings"]], [r["transcript"] for r in baseline["recordings"]])
-            self.assertNotIn("boundary_proposals", baseline["algorithm"])
-            self.assertIn("Boundary proposal preview", benchmark.summary(report))
+            self.assertTrue(benchmark.find_takes.mapping.range_text(recording["transcript"], rewind[0]["transcript"]).endswith("having..."))
+            self.assertTrue(benchmark.find_takes.mapping.range_text(recording["transcript"], rewind[1]["transcript"]).startswith("He wanted"))
         self.assertTrue(all(path.read_bytes() == content for path, content in frozen.items()))
         self.assertEqual(initial.read_bytes(), initial_bytes)
         self.assertEqual(json.loads(initial_bytes)["exact_take_ranges"]["correct"], 23)

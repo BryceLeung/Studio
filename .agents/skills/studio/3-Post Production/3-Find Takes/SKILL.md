@@ -29,13 +29,16 @@ approved script fail validation. Audio, SRT, and sync offsets are not inputs.
 Retain unknown word times as null; timestamps are relative to each original
 audio file.
 
-Write one file per approved script in the OneDrive project:
+If no numbered Takes version exists for an approved script, generate its initial
+mapping in the OneDrive project:
 
 ```text
-3-Post Production/3-Find Takes/<Script>__Takes.json
+3-Post Production/3-Find Takes/<Script>__Takes.v1.json
 ```
 
-For example, `Love Compounds Too__Takes.json`. The per-script file contains one
+For example, `Love Compounds Too__Takes.v1.json`. Line saves subsequent reviews
+as `<Script>__Takes.v2.json`, `.v3.json`, and so on in the same stage folder.
+The per-script file contains one
 recording block per transcript, with source fingerprints, editable word
 groupings, links, and discarded word ranges. Each link uses the same inclusive,
 zero-based script/transcript word ranges as Line schema v2. See
@@ -50,23 +53,35 @@ undefined. Validate the actual JSON inputs; do not invent or write a 3.2 DONE
 marker, and do not treat 3.3 completion as completion of 3.2.
 
 Resolve the real OneDrive project root, then run with the dashboard Python or
-another Python 3.9+ interpreter:
+another Python 3.9+ interpreter. This is the complete stage command; do not
+create a separate runner or wrapper script:
 
 ```text
 python "<workflow-root>/.agents/skills/studio/3-Post Production/3-Find Takes/scripts/find_takes.py" "<project-root>"
 ```
 
+The command initializes `LOG.md` when absent, validates the 1.1 approved-output
+inventory, fingerprints, and empty-candidate condition against its DONE,
+validates actual transcript inputs, generates only missing v1 files, checks
+latest versions, logs the result, and manages completion markers. Missing or
+changed approved outputs fail the prerequisite check before generation and
+invalidate 1.1 and dependent completion. This stage checks the declared approved
+outputs; it does not rerun the interactive Script Review workflow.
+
 The script uses RapidFuzz (`RapidFuzz>=3,<4`), num2words (`num2words>=0.5.14,<0.6`),
 and the repository's shared Line
 source adapters and quality classifier. It does not require PySide6 or audio dependencies. `--output-dir`
-supports an isolated trial; such a run does not complete the OneDrive stage.
+supports an isolated trial with its own log; such a run does not write DONE or
+invalidate completion markers in the OneDrive project. `--check-coverage` is a
+read-only diagnostic and does not manage logs or completion markers.
 The generator never reads benchmark mappings.
 
 The base algorithm applies the scored transcript regroupings described below
 after the initial alignment, keeps script groups fixed, and records the boundary
 settings, code fingerprint, and per-recording diagnostics in the take file.
-There is no boundary-refinement switch. Earlier alignment-only files are stale
-under reuse validation and are preserved unless explicitly replaced.
+There is no boundary-refinement switch. Generation provenance is retained for
+diagnostics; existing review versions are checked against current sources and
+the success condition rather than rejected for older generator metadata.
 
 The initial algorithm advances through transcript words, comparing variable
 spans to script groupings near a script cursor. It can revisit recent script
@@ -132,23 +147,7 @@ For.json` and `What Is Freedom For.md`. Preserve those measurements when tuning;
 use fresh external destinations for new predictions and reports. Moving the
 fixtures changes paths and fingerprints, not the initial accuracy measurements.
 
-### Boundary proposal trial
-
-Add `--all-versions --boundary-proposals` to compare the initial matcher with
-separate regrouping previews against every inventoried review (currently two,
-one per script):
-
-```text
-python "<workflow-root>/.agents/skills/studio/3-Post Production/3-Find Takes/scripts/benchmark.py" --all-versions --boundary-proposals --output-dir <new-directory>/predictions --report <new-directory>/report.json
-```
-
-The trial writes `baseline/` and `preview/` predictions plus `.proposals.json`
-diagnostics. It finishes all prediction and boundary searches before opening
-human reference mappings. This comparison retains the earlier alignment pass as
-its baseline; normal generation and ordinary benchmark runs use the complete
-algorithm, including boundary refinement.
-Previews use the normal Find Takes JSON structure; the Markdown report includes
-the proposed readings.
+### Boundary refinement
 
 `studio/tools/line/boundaries.py` searches one to three adjacent transcript
 groups (up to 80 words) at individual word gaps, keeping approved script groups
@@ -184,31 +183,87 @@ without changing frozen mappings to manufacture agreement.
 
 ## Reruns, logs, and completion
 
-Existing take files are reused only if their sources, algorithm settings/code,
-recording inventory, and range structure are current. Valid human mapping edits
-are preserved on reuse. Stale or malformed files are preserved and reported;
-inspect them before explicitly choosing `--overwrite`. Do not remove orphaned
-outputs automatically.
+For each approved script, find numbered `<Script>__Takes.v<N>.json` files and
+select the highest numeric version, not the newest timestamp or alphabetically
+last filename. If any version exists, skip generation entirely, even if v1 is
+absent or the latest version is incomplete, malformed, or has stale sources.
+Never regenerate, overwrite, or fall back to an older version to obtain success.
+Only scripts with no numbered version get a new v1; then check that v1.
 
-The agent creates the stage folder and initial `LOG.md` and appends every run,
-failure, result, and handoff with the root skill's `scripts/append-log.py` helper.
-Record input inventories/fingerprints, algorithm settings, output paths, take
-counts, reuse/replacement decisions, benchmark results when requested, and the
-next action. The generator writes take files; the agent manages logs and DONE.
+Search only the stage folder. Takes versions use positive, unpadded numbers
+(`.v1.json`, `.v2.json`, etc.). If multiple files
+share the highest number, fail with an ambiguity report. Preserve unversioned
+legacy mappings and all earlier versions; unversioned files do not count as a
+numbered version and are not silently migrated. An isolated `--output-dir` run
+searches only that output directory.
 
-**Success means every approved script has a valid current take file that includes
-all its matching transcript files.** Missing script coverage or imperfect
-matching accuracy does not prevent computational completion; report it for
-review. Do not require a benchmark accuracy threshold or human approval to
-declare generation complete. An empty approved set or any failed script is not
-success.
+Checking validates the selected mapping's schema, ranges, source fingerprints
+and snapshots, and complete matching-transcript inventory; it recalculates
+quality and checks the success condition below. Valid human grouping edits and
+script discards are accepted. Old generator metadata alone does not fail a
+review. Invalid latest files fail the check and remain preserved for inspection.
 
-After verifying that condition, write a JSON `DONE` containing the exact
+The command creates the stage folder and initial `LOG.md`, then uses the root
+skill's `scripts/append-log.py` helper's `append_entry` function for append-only
+run, input-validation, result, and invalidation entries. It records UTC times,
+input/output inventories and fingerprints, algorithm metadata, generation/skip
+decisions, selected versions, blocking lines, and the next action. On failure
+it deletes the failed step's DONE, dependent future DONE markers, and containing
+stage-level completion; it never archives markers or deletes work files.
+Invalidation follows declared project inputs/dependencies transitively,
+preserves demonstrably independent steps, and treats subsequent steps with
+unknown dependencies conservatively as dependent. Extra human handoffs and
+requested benchmark runs can use the existing logging helper directly.
+
+**Success means every word of every approved script has at least one non-flub
+reading across its matching transcripts, or has been explicitly discarded on
+the script side by the user.** Exact and Partial links count as non-flub
+coverage over their inclusive script word ranges; Flub links do not count.
+Coverage is combined across recordings, so each recording need not cover the
+whole script. Every approved script must have a valid latest numbered mapping
+containing all its matching transcripts. An empty approved set or any failed
+script is not success. Benchmark accuracy is a separate regression measure,
+not a completion threshold.
+
+If filming deliberately skipped a line, the user can open the mapping in Line,
+right-click the script line, choose **Discard script**, and save a new mapping
+version. This explicit script-side discard marks those words as OK without
+changing the approved script or deleting its words. **Restore script** removes
+the exception. Transcript-side discards never waive script coverage. Do not
+automatically discard missing or Flub-only script passages to achieve success.
+
+The normal stage command always checks the selected latest versions after any
+necessary v1 generation. It reports `complete`, the exact selected paths and
+version numbers, word coverage, and blocking script line numbers/text with
+Missing or Flub-only reasons. It exits unsuccessfully if any script fails.
+When reporting failure, show these blocking lines and give the user these steps:
+
+1. In Line, choose **Open Line project…** and open the reported latest mapping.
+2. For each blocking script line, find a usable reading and link the script and
+   transcript groups. Split or merge unlinked groups if needed. Exact or Partial
+   coverage clears the requirement. If the line was deliberately skipped at
+   filming, right-click that script line and choose **Discard script** instead.
+3. Save with the suggested `<Script>__Takes` name. Line writes the next numbered
+   version in the stage folder. Rerun 3.3; it skips generation and checks that
+   new highest version. If no usable reading exists and the line is still
+   required, a filming pickup is needed.
+
+For structural/source failures, report the validation error and selected path
+instead of inventing uncovered lines. `--check-coverage <mapping-path> [...]`
+remains available for explicit read-only diagnostics; normal stage completion
+must use the automatically selected highest version for every script.
+The command records those exact versions in the log and DONE output inventory
+and writes DONE only for `complete: true`. On `studio status` and reruns, discover
+the latest versions again: a newly added higher version invalidates an older
+DONE selection even if the older mapping's bytes have not changed.
+
+After verifying that condition, the command writes a JSON `DONE` containing the exact
 approved-script, matching-transcript, and required-output inventories; SHA-256
-fingerprints of those inputs/outputs; this skill, the generator, and the shared
+fingerprints of those inputs/outputs (including chosen saved review versions);
+this skill, the generator, the append-log helper, and the shared
 Line adapters/actions/mapping implementation; algorithm metadata; and the UTC
 completion time. Distinguish workflow-relative dependencies from project-relative
 ones. Exclude the Studio root skill, benchmark fixtures/reports, logs, audio,
 SRT, and DONE itself. Validate these inventories and fingerprints on rerun;
-invalidate changed completion markers according to the root skill before
-regeneration.
+the command invalidates changed completion markers and their dependents before
+writing a new successful marker. A failed run leaves no stage DONE.

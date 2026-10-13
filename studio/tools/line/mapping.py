@@ -19,11 +19,25 @@ SCHEMA = "studio.line.mapping"
 SCHEMA_VERSION = 2
 CLASSIFICATIONS = ("exact", "partial", "flub")
 PANELS = ("script", "transcript")
+TAKES_DIRECTORY = "3-Post Production/3-Find Takes"
+
+
+def takes_versions(root: Path, name: str, directory: Path | None = None) -> list[tuple[int, Path]]:
+    """Find Takes reviews with unpadded positive versions in the stage folder."""
+    directory = directory if directory is not None else root / TAKES_DIRECTORY
+    pattern = re.compile(re.escape(name) + r"\.v([1-9][0-9]*)\.json", re.IGNORECASE)
+    versions = []
+    if directory.is_dir():
+        for path in directory.iterdir():
+            match = pattern.fullmatch(path.name)
+            if path.is_file() and match:
+                versions.append((int(match[1]), path))
+    return sorted(versions, key=lambda item: (item[0], str(item[1])))
 
 
 def new_state() -> dict:
     return {
-        "script": None, "transcript": None, "links": [], "discarded": [],
+        "script": None, "transcript": None, "links": [], "discarded": [], "script_discarded": [],
         "selected": {"script": None, "transcript": None}, "dirty": False,
         "mapping_path": None, "mapping_name": None,
         "_quality_updates": 0,
@@ -99,7 +113,27 @@ def coverage(state: dict) -> dict[tuple[int, int], str]:
         classification = "partial" if link["classification"] == "good" else link["classification"]
         if script_id in statuses and rank[classification] > rank[statuses[script_id]]:
             statuses[script_id] = classification
+    for group in state.get("script_discarded", []):
+        statuses[range_key(group)] = "discarded"
     return statuses
+
+
+def script_completion(state: dict) -> dict:
+    """Count script words with a non-flub reading or an explicit human discard."""
+    script = active_source(state, "script")
+    count = len(script["words"]) if script else 0
+    covered, discarded = set(), set()
+    for link in state["links"]:
+        if link["classification"] in ("exact", "partial", "good"):
+            start, end = range_key(link["script"])
+            covered.update(range(start, end + 1))
+    for group in state.get("script_discarded", []):
+        start, end = range_key(group)
+        discarded.update(range(start, end + 1))
+    missing = sorted(set(range(count)) - covered - discarded)
+    return {"complete": bool(count) and not missing, "total_words": count,
+            "covered_words": len(covered - discarded), "discarded_words": len(discarded),
+            "uncovered_words": missing}
 
 
 def refresh_quality(state: dict) -> int:
@@ -266,6 +300,14 @@ def validate_document(project_root: Any, document: Any, *, verify_inputs: bool =
             raise ValueError("Word groupings must retain every source word.")
         group_keys[panel] = {range_key(group) for group in groups}
     links = document.get("links")
+    script_discarded = document.get("script_discarded", [])
+    if not isinstance(script_discarded, list):
+        raise ValueError("Script discards must be a list.")
+    script_discarded_keys = [_validate_range(group, len(sources["script"]["words"]))
+                             for group in script_discarded]
+    if (len(set(script_discarded_keys)) != len(script_discarded_keys)
+            or any(key not in group_keys["script"] for key in script_discarded_keys)):
+        raise ValueError("Script discards must be unique script groupings.")
     discarded = document.get("discarded")
     if not isinstance(links, list) or not isinstance(discarded, list):
         raise ValueError("Mapping links and discarded must be lists.")
@@ -315,6 +357,7 @@ def _document(state: dict, name: str, version: int) -> dict:
         "parent": state.get("mapping_path"),
         "sources": {"script": deepcopy(script), "transcript": deepcopy(transcript)},
         "links": deepcopy(state["links"]), "discarded": deepcopy(state["discarded"]),
+        "script_discarded": deepcopy(state.get("script_discarded", [])),
         "groupings": deepcopy(state["groupings"]),
     }
     if len(combined.recordings(transcript)) > 1:
@@ -335,16 +378,19 @@ def save_version(project_root: Any, state: dict, name: str) -> str:
     if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9 _.-]{0,119}", name) is None or name.endswith(".") or ".." in name:
         raise ValueError("Mapping names may use letters, numbers, spaces, underscores, hyphens, and dots.")
     root = Path(project_root).resolve(strict=True)
-    directory = project_path(root, "studio/line", must_exist=False)
+    takes_review = name == default_mapping_name(state)
+    directory = project_path(root, TAKES_DIRECTORY if takes_review else "studio/line", must_exist=False)
     # Validate before creating any output directory or file.
     document = _document(state, name, 1)
     document = validate_document(root, document)
     directory.mkdir(parents=True, exist_ok=True)
     pattern = re.compile(re.escape(name) + r"\.v(\d+)\.json$")
-    versions = [int(match.group(1)) for path in directory.iterdir() if (match := pattern.fullmatch(path.name))]
+    versions = ([number for number, _path in takes_versions(root, name)] if takes_review else
+                [int(match.group(1)) for path in directory.iterdir() if (match := pattern.fullmatch(path.name))])
     version = max(versions, default=0) + 1
     while True:
-        target = directory / f"{name}.v{version:03d}.json"
+        suffix = str(version) if takes_review else f"{version:03d}"
+        target = directory / f"{name}.v{suffix}.json"
         document["version"] = version
         encoded = (json.dumps(document, ensure_ascii=False, indent=2, allow_nan=False) + "\n").encode("utf-8")
         try:
@@ -378,7 +424,7 @@ def read_mapping(project_root: Any, path: Any) -> dict:
         if type(document.get("schema_version")) is not int or document["schema_version"] != 1:
             raise ValueError("Unsupported Find Takes schema version.")
         document = dict(document, schema=SCHEMA, schema_version=3,
-                        mapping_name=source_path.stem, version=1)
+                        mapping_name=re.sub(r"\.v\d+$", "", source_path.stem), version=1)
     document = validate_document(root, document)
     if document["schema_version"] == 3:
         state = combined.unpack(document)
@@ -389,6 +435,7 @@ def read_mapping(project_root: Any, path: Any) -> dict:
             "script": deepcopy(document["sources"]["script"]),
             "transcript": deepcopy(document["sources"]["transcript"]),
             "links": deepcopy(document["links"]), "discarded": deepcopy(document["discarded"]),
+            "script_discarded": deepcopy(document.get("script_discarded", [])),
             "groupings": deepcopy(document["groupings"]),
             "mapping_path": source_path.relative_to(root).as_posix(),
             "mapping_name": document["mapping_name"],

@@ -448,11 +448,21 @@ class LineWidget(QWidget):
         if row not in reverse:
             return
         if reverse[row] not in self._selected_indexes(panel):
-            table.selectRow(row)
+            table.clearSelection()
+            table.setCurrentCell(row, 1)
+            table.selectionModel().select(table.model().index(row, 1),
+                                          QItemSelectionModel.SelectionFlag.ClearAndSelect
+                                          | QItemSelectionModel.SelectionFlag.Rows)
         indexes = self._selected_indexes(panel)
         menu = QMenu(table)
         if len(indexes) == 1:
             group = self.state["groupings"][panel][indexes[0]]
+            if panel == "script":
+                discarded = word_range(group) in self.state.get("script_discarded", [])
+                action = menu.addAction("Restore script" if discarded else "Discard script")
+                action.setEnabled(self._split_mode is None)
+                action.triggered.connect(self.discard_script_selected)
+                menu.addSeparator()
             error = _registered_actions.grouping_edit_error(self.state, panel, indexes)
             if group["word_start"] == group["word_end"]:
                 error = "A grouping needs at least two words to split."
@@ -731,6 +741,15 @@ class LineWidget(QWidget):
                 self.navigate("script", 1)
                 self.navigate("transcript", 1)
 
+    def discard_script_selected(self) -> None:
+        script = self._selected_row("script")
+        if script is None or self._split_mode or len(self._selected_indexes("script")) != 1:
+            return
+        discarded = word_range(script) in self.state.get("script_discarded", [])
+        success, _result = self._dispatch("line.restore" if discarded else "line.discard", panel="script")
+        if success and not discarded:
+            self.navigate("script", 1)
+
     def discard_selected(self) -> None:
         transcript = self._selected_row("transcript")
         if transcript is None or self._split_mode or len(self._selected_indexes("transcript")) != 1:
@@ -948,6 +967,7 @@ class LineWidget(QWidget):
             review_key = (
                 tuple((range_key(link["script"]), range_key(link["transcript"]), link["classification"]) for link in self.state["links"]),
                 tuple(range_key(group) for group in self.state["discarded"]),
+                tuple(range_key(group) for group in self.state.get("script_discarded", [])),
             )
             if sources_changed or review_key != self._review_key:
                 self._paint_statuses(script_status, transcript_status)
@@ -1001,6 +1021,7 @@ class LineWidget(QWidget):
             unreviewed = sum(status == "unreviewed" for status in transcript_status.values())
             self.coverage_label.setText(
                 f"Script coverage (best reading): {exact} exact · {partial} partial · {flub} flub · {missing} missing"
+                f" · {sum(status == 'discarded' for status in script_status.values())} discarded"
                 f"\nTranscript review: {linked} linked · {rejected} discarded · {unreviewed} unreviewed"
             )
             total = len(transcript_status)

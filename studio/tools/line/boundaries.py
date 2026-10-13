@@ -1,5 +1,7 @@
 """Propose transcript regroupings without reading human benchmark mappings."""
 
+from __future__ import annotations
+
 from copy import deepcopy
 from functools import lru_cache
 import re

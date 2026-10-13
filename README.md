@@ -114,12 +114,24 @@ files. Run it from the repository:
 .venv-dashboard/bin/python ".agents/skills/studio/3-Post Production/3-Find Takes/scripts/find_takes.py" "/path/to/OneDrive/project"
 ```
 
-It writes `3-Post Production/3-Find Takes/<Script>__Takes.json` per approved
-script, combining multiple recordings and using Line's word-range link format.
-Generation completes when every approved script has a valid take file;
-matching accuracy is measured separately against the stage's frozen benchmark.
-Current outputs are reused, and stale outputs are preserved unless explicitly
-replaced with `--overwrite`. The Studio agent manages the stage log and `DONE`.
+It creates `3-Post Production/3-Find Takes/<Script>__Takes.v1.json` only when no
+numbered version exists for that script. Otherwise it skips generation and
+checks the highest numeric version (v10 follows v9). Line saves Takes reviews
+as v2, v3, and so on in that same folder. Only positive, unpadded version numbers
+in the stage folder are discovered. Existing versions are never overwritten or bypassed.
+Stage 3.3 succeeds when every script word has an Exact or Partial reading across
+the matching recordings, or an explicit script-side discard. For deliberately
+skipped filming lines, open the mapping in Line, right-click the script line, choose
+**Discard script**, and save a version. **Restore script** reinstates its coverage
+requirement. Transcript discards do not waive script coverage. Generated files
+with missing or Flub-only coverage remain available for review; they do not
+complete the stage. Rerun after saving; it checks the newest numbered versions
+and reports blocking line numbers/text with instructions for clearing them in Line.
+Matching accuracy is measured separately against the stage's frozen benchmark.
+Malformed or stale-source latest versions fail the check and remain preserved.
+The same command handles prerequisite checks, initializes/appends `LOG.md`,
+writes `DONE` on success, and deletes failed/dependent completion markers on
+failure. No wrapper script or separate logging command is needed.
 
 ## Project state
 

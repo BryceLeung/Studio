@@ -1,9 +1,19 @@
 # Takes JSON and baseline algorithm
 
-The schema is `studio.find-takes`, version 1. Every file covers one script and
+Initial generation writes `<Script>__Takes.v1.json`; later Line saves use
+`<Script>__Takes.v2.json`, `.v3.json`, etc., in the stage folder. A stage run
+generates v1 only when no numbered version exists, then checks the highest
+numeric version. Existing versions always skip generation. Saved reviews may
+use Line schema v2/v3; generator provenance need not match to check them.
+
+The generated schema is `studio.find-takes`, version 1. Every file covers one script and
 all its transcript files. `script` is the canonical Line source object including
 words, immutable starting sentence rows, a project-relative source path, and the
 SHA-256 of the original bytes. `script_groupings` starts from those rows.
+Optional top-level `script_discarded` contains unique script grouping ranges
+explicitly waived by the user for deliberately skipped lines; absent means
+none. It is shared across recordings and preserved in saved Line reviews.
+Transcript `discarded` ranges do not waive script coverage.
 
 Each `recordings` item contains:
 
@@ -28,7 +38,7 @@ Each `recordings` item contains:
   ranges have `boundary_proposal: true` in `match_scores`, with a recalculated
   `quality_score`; they do not inherit the old span's token-distance diagnostic.
   Top-level `algorithm.boundary_refinement` fingerprints this pass and records
-  its settings. See the skill's boundary trial section for the scoring rules.
+  its settings. See the skill's boundary refinement section for the scoring rules.
 
 One ordinary link looks like:
 
@@ -83,5 +93,9 @@ The top-level `algorithm` object fingerprints the generator and shared Line
 implementation and records every setting, including the Exact equality rule,
 the Partial threshold, the RapidFuzz method, and installed RapidFuzz/num2words
 versions. Source changes, inventory changes,
-or algorithm changes invalidate reuse. Generation completion and matching
-accuracy are separate: missing coverage and discarded passages need review.
+or algorithm changes are recorded in generation provenance. Source changes
+fail review validation; algorithm provenance changes alone do not require
+regeneration of an existing version. Stage completion requires every script
+word to belong to an Exact/Partial link in at least one recording or an explicit
+script-side discard. Missing and Flub-only coverage prevent completion;
+benchmark agreement remains a separate measure.

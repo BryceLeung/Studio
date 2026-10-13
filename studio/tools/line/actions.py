@@ -36,7 +36,8 @@ def _describe_line(operation: str):
             return f"Linked script group {group_number('script')} to transcript group {group_number('transcript')} as {classification}"
         if operation in ("unlink", "discard", "restore"):
             verb = {"unlink": "Unlinked", "discard": "Discarded", "restore": "Restored"}[operation]
-            return f"{verb} transcript group {group_number('transcript')}"
+            panel = inputs.get("panel", "transcript")
+            return f"{verb} {panel} group {group_number(panel)}"
         if operation in ("split", "merge"):
             return f"{operation.title()} {inputs['panel']} word grouping"
         if operation == "load_mapping":
@@ -82,7 +83,7 @@ def _load_source(project: Any, state: dict, panel: str, path: Any) -> dict:
         previous["source"].get(key) == loaded["source"].get(key)
         for key in ("path", "sha256", "segmentation_version")
     ))
-    if previous and not same and (state["dirty"] or state["links"] or state["discarded"]):
+    if previous and not same and (state["dirty"] or state["links"] or state["discarded"] or state.get("script_discarded")):
         raise ValueError("Save your Line project, then use Reset before choosing a different source.")
     if same:
         # The retained source and grouping layout remain authoritative for the same input.
@@ -226,23 +227,24 @@ def unlink(project: Any, state: dict) -> dict:
     return state
 
 
-@action("line.discard", description="Discard the selected transcript word grouping and remove its links.", describe=_describe_line("discard"))
-def discard(project: Any, state: dict) -> dict:
-    transcript = _selected_row(state, "transcript")
-    group = mapping.word_range(transcript)
-    if group not in state["discarded"]:
-        state["links"] = [item for item in state["links"] if item["transcript"] != group]
-        state["discarded"].append(group)
+@action("line.discard", description="Discard a selected script or transcript grouping.", describe=_describe_line("discard"))
+def discard(project: Any, state: dict, panel: str = "transcript") -> dict:
+    group = mapping.word_range(_selected_row(state, panel))
+    discarded = state.setdefault("script_discarded", []) if panel == "script" else state["discarded"]
+    if group not in discarded:
+        if panel == "transcript":
+            state["links"] = [item for item in state["links"] if item["transcript"] != group]
+        discarded.append(group)
         state["dirty"] = True
     return state
 
 
 @action("line.restore", description="Restore the selected discarded grouping as unreviewed.", describe=_describe_line("restore"))
-def restore(project: Any, state: dict) -> dict:
-    transcript = _selected_row(state, "transcript")
-    group = mapping.word_range(transcript)
-    if group in state["discarded"]:
-        state["discarded"].remove(group)
+def restore(project: Any, state: dict, panel: str = "transcript") -> dict:
+    group = mapping.word_range(_selected_row(state, panel))
+    discarded = state.setdefault("script_discarded", []) if panel == "script" else state["discarded"]
+    if group in discarded:
+        discarded.remove(group)
         state["dirty"] = True
     return state
 
@@ -275,9 +277,10 @@ def split(project: Any, state: dict, panel: str, boundary: int) -> dict:
         raise ValueError("Choose a word boundary inside the selected grouping.")
     first = {"word_start": group["word_start"], "word_end": boundary - 1}
     second = {"word_start": boundary, "word_end": group["word_end"]}
-    if panel == "transcript" and group in state["discarded"]:
-        state["discarded"].remove(group)
-        state["discarded"].extend((first, second))
+    discarded = state.setdefault("script_discarded", []) if panel == "script" else state["discarded"]
+    if group in discarded:
+        discarded.remove(group)
+        discarded.extend((first, second))
     state["groupings"][panel][index:index + 1] = [first, second]
     state["dirty"] = True
     return state
@@ -296,13 +299,14 @@ def merge(project: Any, state: dict, panel: str, indexes: list[int]) -> dict:
         raise ValueError(error)
     groups = state["groupings"][panel]
     originals = groups[indexes[0]:indexes[-1] + 1]
-    discarded = [group in state["discarded"] for group in originals] if panel == "transcript" else []
+    discard_key = "script_discarded" if panel == "script" else "discarded"
+    discarded = [group in state.get(discard_key, []) for group in originals]
     if discarded and any(value != discarded[0] for value in discarded):
         raise ValueError("Restore discarded groupings before merging them with unreviewed groupings.")
     merged = {"word_start": originals[0]["word_start"], "word_end": originals[-1]["word_end"]}
     if discarded and discarded[0]:
-        state["discarded"] = [group for group in state["discarded"] if group not in originals]
-        state["discarded"].append(merged)
+        state[discard_key] = [group for group in state[discard_key] if group not in originals]
+        state[discard_key].append(merged)
     groups[indexes[0]:indexes[-1] + 1] = [merged]
     state["selected"][panel] = indexes[0]
     state["dirty"] = True

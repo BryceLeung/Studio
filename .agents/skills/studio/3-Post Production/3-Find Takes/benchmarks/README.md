@@ -103,10 +103,10 @@ Predictions are written to `<output-dir>/<Script>/<reference-filename>`, without
 repeating the fixture's outer folder. JSON and Markdown reports stay outside
 `benchmarks/`, as do generated predictions. Use a fresh destination for each run.
 
-Add `--all-versions --boundary-proposals` to compare the initial alignment pass
-with the complete boundary refinement. This writes separate `baseline/` and
-`preview/` outputs and proposal diagnostics. There is currently one approved
-reference per script; optional `reviews` inventories can retain older versions.
+Add `--all-versions` to evaluate every inventoried human review version.
+There is currently one approved reference per script; optional `reviews`
+inventories can retain older versions. Predictions use the complete algorithm,
+including boundary refinement.
 
 Every prediction and boundary search finishes before any reference mapping is
 read. A generated mapping becomes a reference only after explicit user approval.

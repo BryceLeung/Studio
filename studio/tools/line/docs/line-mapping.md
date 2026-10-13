@@ -1,11 +1,25 @@
 # Line project format
 
-Line! saves each review under its OneDrive project's `studio/line/` directory as
-`<name>.v001.json`, `v002.json`, and so on. The save dialog suggests the loaded
+Line! saves general named reviews under its OneDrive project's `studio/line/`
+directory as `<name>.v001.json`, `v002.json`, and so on. The save dialog suggests the loaded
 script's file name suffixed with `__Takes` (for example `freedom-c01__Takes`),
-which produces `freedom-c01__Takes.v001.json`. Each save creates a new file. A
+which produces `freedom-c01__Takes.v1.json` in
+`3-Post Production/3-Find Takes/`. Takes reviews keep the canonical
+`<Script>__Takes` name and save the next unpadded version in that stage folder,
+counting only positive, unpadded versions in the stage folder.
+Other named Line reviews retain the `studio/line/<name>.v001.json`
+convention. Each save creates a new file. A
 Line project contains immutable source snapshots, editable word groupings, links,
 and discarded transcript groupings. Source files are never edited.
+Optional top-level `script_discarded` stores unique script grouping ranges
+explicitly waived by the user, in both v2 and v3 (absent means none). These
+exceptions are shared across recordings and persist through save/reopen.
+Right-click a script line and choose **Discard script** to mark a deliberately
+skipped line as OK for 3.3; **Restore script** in the same context menu reinstates
+its coverage requirement. Existing readings remain
+available. Script coverage displays waived groups as `discarded`. Transcript
+discards do not waive script coverage. Every script word must have an Exact or
+Partial link across recordings, or a script discard, to complete 3.3.
 
 ## Schema
 
@@ -85,7 +99,9 @@ sections. Collapse state is a temporary viewing preference.
 
 Line also opens `studio.find-takes` version 1 files directly, validating each
 recording's sources and mappings. Reviews are saved as new Line files under
-`studio/line/`; Find Takes input files are preserved.
+the stage folder with the next numbered `<Script>__Takes.v<N>.json` filename
+when keeping the suggested Takes name; earlier files are preserved. Stage 3.3
+automatically checks the highest numbered version on rerun.
 
 ### Grouping operations
 
@@ -150,7 +166,8 @@ common logging and project-lock checks.
 | `line.split` | `panel`, `boundary`: zero-based first word of new right group; acts on selected group |
 | `line.merge` | `panel`, contiguous zero-based `indexes` list |
 | `line.link` | None; quality is inferred from selected grouping texts |
-| `line.unlink`, `line.discard`, `line.restore` | None; selected transcript grouping |
+| `line.unlink` | None; selected transcript grouping |
+| `line.discard`, `line.restore` | Optional `panel` (`transcript` by default, or `script`); selected grouping |
 | `line.save` | `name` |
 
 Matching algorithms can load canonical sources through `sources.load_script()`

@@ -7,7 +7,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -200,6 +200,29 @@ class QualityTests(unittest.TestCase):
 
 
 class WordGroupingTests(unittest.TestCase):
+    def test_script_discard_survives_regrouping_and_single_recording_save(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            (root / "script.txt").write_text("One two. Three four.")
+            (root / "transcript.json").write_text(json.dumps({"words": [
+                {"text": "One", "start_ms": None, "end_ms": None}]}))
+            state = mapping.new_state()
+            project = SimpleNamespace(root=root)
+            actions.load_script(project, state, "script.txt")
+            actions.load_transcript(project, state, "transcript.json")
+            actions.discard(None, state, panel="script")
+            actions.split(None, state, "script", 1)
+            actions.merge(None, state, "script", [0, 1])
+            path = mapping.save_version(root, state, "review")
+            loaded = mapping.read_mapping(root, path)
+            self.assertEqual(loaded["script_discarded"], [{"word_start": 0, "word_end": 1}])
+            self.assertEqual(mapping.coverage(loaded)[(0, 1)], "discarded")
+            self.assertEqual(mapping.script_completion(loaded)["uncovered_words"], [2, 3])
+            document = json.loads((root / path).read_text())
+            document["script_discarded"] = [{"word_start": 0, "word_end": 99}]
+            with self.assertRaises(ValueError):
+                mapping.validate_document(root, document)
+
     def test_split_merge_link_and_save_reopen_without_changing_sources(self):
         with TemporaryDirectory() as directory:
             root = Path(directory).resolve()
@@ -430,6 +453,39 @@ class ReviewUiTests(QtTests):
         self.widget.link_button.click()
         self.assertEqual(self.widget.state["links"], [])
         self.assertEqual(self.widget.state["selected"]["transcript"], 0)
+
+    def test_script_context_menu_marks_clicked_line_and_restores(self):
+        self.assertFalse(hasattr(self.widget, "discard_script_button"))
+        table = self.widget._panels["script"]["table"]
+        point = table.visualRect(table.model().index(1, 1)).center()
+        labels = []
+
+        with patch("studio.tools.line.ui.QMenu") as menu_class:
+            menu = menu_class.return_value
+            menu.isEmpty.return_value = False
+            created = []
+
+            def add_action(label):
+                action = Mock()
+                created.append((label, action))
+                return action
+
+            def choose_action(*_args):
+                self.assertTrue(created, (point, table.rowAt(point.y()), self.widget.state["selected"], self.widget._selected_indexes("script")))
+                label, action = created[0]
+                labels.append(label)
+                action.triggered.connect.call_args.args[0]()
+                created.clear()
+
+            menu.addAction.side_effect = add_action
+            menu.exec.side_effect = choose_action
+            self.widget._group_menu("script", point)
+            self.assertEqual(self.widget.state["script_discarded"], [{"word_start": 2, "word_end": 3}])
+            self.assertEqual(mapping.coverage(self.widget.state)[(2, 3)], "discarded")
+            self.widget._group_menu("script", point)
+        self.assertEqual(labels, ["Discard script", "Restore script"])
+        self.assertEqual(self.widget.state["script_discarded"], [])
+        self.assertEqual(mapping.coverage(self.widget.state)[(2, 3)], "missing")
 
     def test_discard_restore_and_last_sentence(self):
         self.widget.discard_button.click()
