@@ -57,6 +57,7 @@ The stage skills below are shared workflow definitions in this repository. Read 
 - `3.2` — [Transcribe](3-Post%20Production/2-Transcribe/SKILL.md)
 - `3.3` — [Find Takes](3-Post%20Production/3-Find%20Takes/SKILL.md)
 - `3.4` — [Take Selection](3-Post%20Production/4-Take%20Selection/SKILL.md)
+- `3.5` — [First Cut](3-Post%20Production/5-First%20Cut/SKILL.md)
 
 Stage 3.2 currently has no completion condition, pending design of the WER benchmark workflow. Generate its outputs when requested, but do not write its `DONE`, claim completion, or continue automatically past it until the user defines that condition. An explicit request for 3.3 may use the available transcript JSON files after validating their actual inputs; completing Find Takes does not complete Transcribe.
 
