@@ -1,6 +1,6 @@
 ---
 name: studio-first-cut
-description: Run or resume Studio substage 3.5, creating one Final Cut Pro FCPXML project per approved script with multicam take compounds and sentence auditions.
+description: Run or resume Studio substage 3.5, creating Final Cut Pro projects for approved full scripts or extracts with multicam take compounds and sentence auditions.
 ---
 
 # 3.5 — First Cut
@@ -14,35 +14,29 @@ an available FFprobe executable:
 python "<workflow-root>/.agents/skills/studio/3-Post Production/5-First Cut/scripts/first_cut.py" --project-root "<real-project-root>" --scores "3-Post Production/4-Take Selection/<Script>__Scores.v1.json" [...other scripts' score files...] --padding-ms 50
 ```
 
-The script owns prerequisite validation, input discovery from score/source
-references, timing, camera selection, XML construction, logging, and verification.
-Inputs are 1.1, 1.3, 2.1, 3.1, 3.3, and 3.4; word timings come from the source
-snapshots in the mappings. Output is `3-Post Production/5-First Cut/<Script>.FCPXML`
-and `REVIEW.json` recording input/output fingerprints and selected take ranges.
-Extracts are retained as an input but no extract projects are created in v1.
+Approved extract projects:
 
-The agreed behavior is one multicam per recording, one independent compound per
-take, one audition per retained script group, and highest-scoring choice active.
-Start each project on camA, flip cameras only at nonadjacent selected takes, and
-retain lav audio. Consecutive non-flub readings share a frame-aligned midpoint
-boundary. Other edges use configurable 50 ms padding rounded outward to frames
-and constrained to shared camera/audio coverage. Never change reviewed mappings.
-Alternative choices inherit their sentence's initial camera; manual audition
-switches in Final Cut do not automatically recalculate cameras or neighboring trims.
+```text
+python "<workflow-root>/.agents/skills/studio/3-Post Production/5-First Cut/scripts/extracts.py" --project-root "<real-project-root>" --shortlist "1-Pre Production/3-Extracts/Short-Form Excerpt Shortlist.md" --scores "3-Post Production/4-Take Selection/<Script>__Scores.v1.json" [...other scripts' score files...] --generate --padding-ms 50
+```
 
-FCPXML 1.10 uses the same hierarchy as the user's 1.14 temporary examples, with
-portable relative media URLs pointing to stage 2.1. Missing timestamps, incomplete
-coverage, or out-of-range speech fail explicitly. Matching outputs are reused;
-differing existing outputs stop for inspection, preserving edits.
+Omit `--generate` for read-only sentence/take matching. Add `--omit-discarded`
+only with explicit authorization to omit included script-side discards; report
+unresolved matches instead of guessing. The user authorized omitting sentence
+109 from extract 6 in project `01-Love Compounds Too` on 2026-10-13.
 
-After generation, ask the user to import both files and review synchronization,
-audition switching, camera switching, and continuous boundaries in Final Cut.
-`DONE` remains absent until that import/playback review succeeds. This is the
-initial success condition for an unfamiliar interchange workflow, pending the
-user's review; XML generation alone must not be reported as stage completion.
+The Python scripts own input validation, timing, camera logic, XML construction,
+logging, and output verification. Full-script files and `REVIEW.json` are written
+under `3-Post Production/5-First Cut/`; extract FCPXML projects and
+`Extract Mappings.json` go in its `Extracts/` subdirectory. Differing existing
+outputs stop for inspection; preserve human edits. Neither operation changes
+the approved scripts, shortlist, source mappings, or scores.
+
+Deliver generated files for Final Cut import/playback review; do not claim stage
+completion or write `DONE` before that review succeeds.
 
 Tests:
 
 ```text
-python -m unittest discover -s ".agents/skills/studio/3-Post Production/5-First Cut/scripts" -p "test_first_cut.py" -v
+python -m unittest discover -s ".agents/skills/studio/3-Post Production/5-First Cut/scripts" -p "test_*.py" -v
 ```

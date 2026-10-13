@@ -123,13 +123,15 @@ def adjacent(left, right, positions):
             and left["classification"] != "flub" and right["classification"] != "flub")
 
 
-def plan_takes(document, scores, syncs, probes, frame, padding_ms):
+def plan_takes(document, scores, syncs, probes, frame, padding_ms, included_groups=None):
     """Return all take trims and sentence auditions, without altering source ranges."""
     positions = {find.mapping.range_key(g): i for i, g in enumerate(document["script_groupings"])}
     words = {r["transcript"]["source"]["path"]: r["transcript"]["words"] for r in document["recordings"]}
     grouped, by_recording, plan = defaultdict(list), defaultdict(list), []
     padding = seconds(padding_ms)
     for take in scores["takes"]:
+        if included_groups is not None and find.mapping.range_key(take["script"]) not in included_groups:
+            continue
         item = dict(take)
         number = take["recording_number"]
         sync = syncs[number]
@@ -171,7 +173,7 @@ def plan_takes(document, scores, syncs, probes, frame, padding_ms):
     auditions, previous, angle = [], None, "camA"
     for index, group in enumerate(document["script_groupings"]):
         key = find.mapping.range_key(group)
-        if key in discarded:
+        if key in discarded or included_groups is not None and key not in included_groups:
             continue
         candidates = sorted(grouped[key], key=lambda t: t["score"], reverse=True)
         if not candidates:
@@ -200,12 +202,13 @@ def element(parent, tag, **attributes):
     return ET.SubElement(parent, tag, {key: str(value) for key, value in attributes.items()})
 
 
-def build_xml(project, output, name, document, scores, syncs, probes, padding_ms):
+def build_xml(project, output, name, document, scores, syncs, probes, padding_ms, included_groups=None):
     first_video = probes[min(probes)]["camA"]["video"]
     frame = 1 / Fraction(first_video["r_frame_rate"])
     if frame <= 0:
         raise ValueError("Invalid project frame rate.")
-    takes, auditions = plan_takes(document, scores, syncs, probes, frame, padding_ms)
+    takes, auditions = plan_takes(document, scores, syncs, probes, frame, padding_ms, included_groups)
+    used_recordings = {take["recording_number"] for take in takes}
     root = ET.Element("fcpxml", version="1.10")
     resources = element(root, "resources")
     ids = iter(range(1, 100000))
@@ -221,6 +224,8 @@ def build_xml(project, output, name, document, scores, syncs, probes, padding_ms
     project_format = format_for(first_video, frame)
     multicams = {}
     for number, sync in sorted(syncs.items()):
+        if number not in used_recordings:
+            continue
         assets = {}
         for role in ROLES:
             media = probes[number][role]
@@ -297,7 +302,7 @@ def build_xml(project, output, name, document, scores, syncs, probes, padding_ms
         cursor += winner["cut_out"] - winner["cut_in"]
     ET.indent(root, space="    ")
     xml = b'<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE fcpxml>\n' + ET.tostring(root, encoding="utf-8") + b"\n"
-    report = {"script": name, "takes": len(takes), "auditions": len(auditions), "multicams": len(syncs),
+    report = {"script": name, "takes": len(takes), "auditions": len(auditions), "multicams": len(used_recordings),
               "duration_seconds": float(total), "frame_duration": time(frame), "padding_ms": padding_ms,
               "seamless_boundaries": sum(a["continuous"] for a in auditions),
               "camera_flips": sum(not a["continuous"] for a in auditions[1:]),
