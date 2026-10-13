@@ -6,7 +6,13 @@ tool, for mapping transcript word groupings to approved script word groupings.
 
 ## Start the dashboard
 
-The local environment is `.venv-dashboard`. From this repository on macOS:
+Open this repository folder or `Studio.code-workspace` in VS Code, then choose
+**Terminal → Run Task… → Run Studio Dashboard**. The checked-in
+`.vscode/tasks.json` uses `.venv-dashboard/bin/python` on macOS/Linux and
+`.venv-dashboard\Scripts\python.exe` on Windows. Create the environment below
+once on each machine before running the task.
+
+The local environment is `.venv-dashboard`. From this repository on macOS/Linux:
 
 ```sh
 .venv-dashboard/bin/python -m studio
@@ -74,8 +80,15 @@ Coverage uses the best established link for each script group:
 exact → partial → flub → missing. Older saved `good` links load as `partial`.
 Missing means no link has been established.
 Transcript review states are linked, discarded, and unreviewed. Source offsets
-remain available in mappings; audio playback and algorithm comparisons are
-later additions.
+remain available in mappings for playback and later algorithm comparisons.
+
+Select a transcript group and click **Play line** (or press **P**) to hear its
+associated audio from the first word’s start to the last word’s end. Click
+**Stop** or press **P** again to stop; selecting a different transcript group
+also stops playback. This works across recordings and with split/merged groups.
+Audio comes from the transcript’s `source_audio` reference or a matching WAV in
+`2-Production/1-Footage Intake/`. Missing audio or timestamps are explained
+beside the playback button. Playback does not change the review.
 
 Curved green/yellow/red bands connect script groups to their linked readings.
 Select a group to emphasize its connections; ticks at a viewport edge indicate
@@ -103,6 +116,7 @@ or choose **Restore defaults**. Defaults are:
 | Link / unlink | Space |
 | Up / down on transcript | K / M |
 | Discard / restore | Backspace |
+| Play / stop transcript line | P |
 
 ## Find Takes (3.3)
 

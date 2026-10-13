@@ -12,12 +12,13 @@ from PySide6.QtWidgets import (
 
 DEFAULT_MAPPINGS = {
     "script_up": "A", "script_down": "Z", "link": "Space",
-    "transcript_up": "K", "transcript_down": "M", "discard": "Backspace",
+    "transcript_up": "K", "transcript_down": "M", "discard": "Backspace", "play": "P",
 }
 MAPPING_LABELS = {
     "script_up": "Up on script", "script_down": "Down on script",
     "link": "Link / unlink", "transcript_up": "Up on transcript",
     "transcript_down": "Down on transcript", "discard": "Discard / restore",
+    "play": "Play / stop transcript line",
 }
 
 

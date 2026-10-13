@@ -37,6 +37,7 @@ from .mapping import active_source, coverage, default_mapping_name, group_rows, 
 from .shortcuts import KeyboardMappingsDialog, load_mappings, save_mappings
 from .visuals import COLORS, ConnectionBands, OverviewStrip
 from . import combined
+from .playback import LinePlayback, audio_clip
 
 
 _COLORS = COLORS
@@ -208,6 +209,8 @@ class LineWidget(QWidget):
         self._collapsed: set[str] = set()
         self._table_rows: dict[str, dict[int, int]] = {"script": {}, "transcript": {}}
         self._headers: dict[str, tuple[int, QPushButton]] = {}
+        self._playback = None
+        self._playing_selection = None
         self.keyboard_mappings = load_mappings()
 
         layout = QVBoxLayout(self)
@@ -254,6 +257,14 @@ class LineWidget(QWidget):
             controls.addWidget(button)
         layout.addLayout(controls)
 
+        playback_controls = QHBoxLayout()
+        self.play_button = self._button("Play line", self.play_selected)
+        self.audio_label = QLabel("Select a transcript line to hear its audio.")
+        self.audio_label.setWordWrap(True)
+        playback_controls.addWidget(self.play_button)
+        playback_controls.addWidget(self.audio_label, 1)
+        layout.addLayout(playback_controls)
+
         self.readings_label = QLabel("Readings for selected script grouping")
         layout.addWidget(self.readings_label)
         self.readings = QListWidget()
@@ -275,6 +286,49 @@ class LineWidget(QWidget):
         self._shortcut(QKeySequence("Ctrl+G"), lambda: self.jump(self._active_panel))
         self._apply_review_shortcuts()
         self._refresh()
+
+    def _audio_selection(self):
+        row = self._selected_row("transcript")
+        if row is None or len(self._selected_indexes("transcript")) != 1 or self._split_mode:
+            raise ValueError("Select one transcript line to hear its audio.")
+        return audio_clip(self.project.root, self.state["transcript"], row)
+
+    def play_selected(self) -> None:
+        if self._playback and self._playback.active:
+            self._playback.stop()
+            return
+        clip = self._audio_selection()
+        if self._playback is None:
+            self._playback = LinePlayback(self)
+            self._playback.changed.connect(self._playback_changed)
+            self._playback.failed.connect(lambda message: self.audio_label.setText(f"Audio: {message}"))
+        self._playing_selection = clip
+        path, start, end = clip
+        self.audio_label.setText(f"{path.name} · {_timestamp(start)}–{_timestamp(end)}")
+        self._playback.play(*clip)
+
+    def _playback_changed(self, active: bool) -> None:
+        self.play_button.setText("Stop" if active else "Play line")
+        if not active:
+            self._playing_selection = None
+
+    def hideEvent(self, event: Any) -> None:
+        if self._playback:
+            self._playback.stop()
+        super().hideEvent(event)
+
+    def _refresh_audio(self) -> None:
+        try:
+            clip = self._audio_selection()
+            reason = f"{clip[0].name} · {_timestamp(clip[1])}–{_timestamp(clip[2])}"
+        except (ValueError, OSError) as error:
+            clip, reason = None, str(error)
+        if self._playback and self._playback.active and clip != self._playing_selection:
+            self._playback.stop()
+        self.play_button.setEnabled(clip is not None)
+        key = self.keyboard_mappings["play"]
+        self.play_button.setToolTip("Play / stop the selected transcript line" + (f" ({key})" if key else ""))
+        self.audio_label.setText(reason)
 
     def _button(self, text: str, callback: Any) -> QPushButton:
         button = QPushButton(text)
@@ -307,6 +361,7 @@ class LineWidget(QWidget):
             "transcript_up": lambda: self.navigate("transcript", -1),
             "transcript_down": lambda: self.navigate("transcript", 1),
             "discard": self.discard_selected,
+            "play": self.play_selected,
         }
         for name, callback in callbacks.items():
             key = self.keyboard_mappings[name]
@@ -314,7 +369,7 @@ class LineWidget(QWidget):
                 continue
             shortcut = QShortcut(QKeySequence(key), self)
             shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
-            shortcut.setAutoRepeat(name not in ("link", "discard"))
+            shortcut.setAutoRepeat(name not in ("link", "discard", "play"))
             shortcut.activated.connect(lambda callback=callback: self._run_ui(callback))
             self._review_shortcuts[name] = shortcut
         for name, widgets in self._panels.items():
@@ -1003,6 +1058,7 @@ class LineWidget(QWidget):
                 f"Selected pair: S{script_row['line']} → T{transcript_row['line']}"
                 if script_row and transcript_row and one_script and one_transcript else "Select one word grouping in each panel."
             )
+            self._refresh_audio()
             self._refresh_readings(script_row, transcript_row)
 
             mapping_path = self.state.get("mapping_path")

@@ -1,0 +1,25 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Run Studio Dashboard",
+      "type": "process",
+      "command": "${workspaceFolder}/.venv-dashboard/bin/python",
+      "windows": {
+        "command": "${workspaceFolder}\\.venv-dashboard\\Scripts\\python.exe"
+      },
+      "args": [
+        "-m",
+        "studio"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
+    }
+  ]
+}
