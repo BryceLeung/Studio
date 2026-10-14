@@ -1,11 +1,11 @@
 ---
 name: studio-transcribe
-description: Run or resume Studio substage 3.2, producing a verbatim word-timestamped JSON transcript and a companion SRT for each intake audio file. Completion criteria are pending WER design.
+description: Run or resume Studio substage 3.2, producing a word-timestamped JSON transcript per intake lav WAV and reusing valid existing outputs.
 ---
 
 # 3.2 - Transcribe
 
-Read the Studio root skill at `.agents/skills/studio/SKILL.md` for project resolution, prerequisite validation, and logging. This stage transcribes the original audio files from 2.1 Footage Intake. Its completion condition is deliberately deferred while the WER benchmark workflow is being designed.
+Read the Studio root skill at `.agents/skills/studio/SKILL.md` for project resolution, prerequisite validation, and logging. This stage transcribes the original audio files from 2.1 Footage Intake. Completion is based on the JSON output inventory, not a WER threshold.
 
 ## Inputs
 
@@ -40,8 +40,24 @@ Preserve repetitions, restarts, fillers, flubs, partial sentences, and pauses. D
 
 Create the OneDrive stage folder and its `LOG.md` when executing the stage. Append each attempt, selected inputs, provider/settings, output filenames, failures, and next action using the root skill's append-log helper. Record source fingerprints and run provenance in the JSON or log so outputs can be associated with the audio and settings that produced them.
 
-Reuse an existing output pair only when its recorded source fingerprint and provider/settings match the requested run. Report missing, stale, or failed outputs by exact source filename. Preserve existing work and human corrections; clarify replacement before overwriting edited files. Keep corrections for the human benchmark reference separately from the original engine outputs so WER can compare the unchanged hypothesis with the verified reference.
+Before invoking WhisperX, run the completion check below. If it reports `reused` or `adopted`, do **not** retranscribe or overwrite the existing JSON. Existing JSON is adopted against the current intake WAV by matching stem, then the WAV and JSON SHA-256 hashes are recorded in `DONE`. This first adoption records current state; a filename alone cannot prove how a historical JSON was originally generated. After adoption, unchanged WAV/JSON hashes reuse the existing `DONE` unchanged. If an audio hash changes while its JSON hash does not, refuse to treat that JSON as a current transcription. Report missing or stale outputs by exact source filename. Preserve existing work and human corrections; clarify replacement before overwriting edited files. Keep corrections for the human benchmark reference separately from the original engine outputs so WER can compare the unchanged hypothesis with the verified reference.
 
-## Completion deferred
+## Completion and reruns
 
-No DONE condition is defined yet. Do not set WER scoring rules, acceptance thresholds, or a golden-reference procedure in this stage definition. Do not write `DONE`, claim the stage is complete, or continue automatically past 3.2. Report generated outputs and any failures, with WER design and the completion condition still pending.
+Run the completion check using Python 3.9+ after validating 2.1 and its `DONE`:
+
+```text
+python "<workflow-root>/.agents/skills/studio/3-Post Production/2-Transcribe/scripts/check_transcripts.py" --project-root "<real-project-root>"
+```
+
+**Done means each non-empty intake `<Script>__C<nn>__lav.wav` has a same-stem, non-empty, parseable `.json` file directly in `3-Post Production/2-Transcribe/`, with no unmatched transcript JSON.** The script never runs WhisperX. The companion `.srt` is still generated for new transcription runs, but its presence is not a completion gate. On success write `DONE` with exact full WAV/JSON SHA-256 fingerprints and this step's skill/script and intake-validator fingerprints; exclude `LOG.md`, `DONE`, SRT, and comparison artifacts. On an unchanged rerun, leave both outputs and `DONE` intact. When an input/output changes, invalidate the step and dependent completion markers and recheck; changed audio with unchanged JSON needs retranscription before a new `DONE`. Missing, invalid, or extra JSON fails without overwriting files. Record every attempt and invalidation in append-only logs.
+If changed audio invalidates `DONE` while its JSON is unchanged, keep a small `Stale Transcripts.json` guard with that JSON hash. The checker must not readopt that same JSON on a later run after `DONE` has been deleted. Remove the guard only when replacement JSON differs and the inventory passes; never use it to overwrite a transcript.
+
+WER benchmarking is separate from this inventory-based completion criterion. Do not invent a WER threshold or alter original WhisperX transcripts to satisfy one.
+An automatic `studio run` may continue to 3.3 once the 3.2 `DONE` is valid.
+
+Tests:
+
+```text
+python -m unittest discover -s ".agents/skills/studio/3-Post Production/2-Transcribe/scripts" -p "test_*.py" -v
+```

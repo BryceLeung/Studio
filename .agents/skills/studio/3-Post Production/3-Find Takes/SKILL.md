@@ -47,10 +47,10 @@ the data contract.
 
 ## Run
 
-Validate the 1.1 approved outputs against its manifest. An explicit request for
-3.3 may use available 3.2 JSON even while 3.2's WER completion condition remains
-undefined. Validate the actual JSON inputs; do not invent or write a 3.2 DONE
-marker, and do not treat 3.3 completion as completion of 3.2.
+Validate the 1.1 approved outputs and 3.2 transcription completion against their
+manifests. Run the 3.2 completion checker on existing JSON before 3.3 if its
+`DONE` is missing; do not retranscribe unchanged intake audio. Validate the
+actual JSON inputs rather than inventing a 3.2 marker in this step.
 
 Resolve the real OneDrive project root, then run with the dashboard Python or
 another Python 3.9+ interpreter. This is the complete stage command; do not

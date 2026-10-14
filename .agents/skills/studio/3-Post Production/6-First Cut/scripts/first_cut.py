@@ -15,15 +15,18 @@ import subprocess
 from urllib.parse import quote, unquote
 import xml.etree.ElementTree as ET
 
+import subtitles
+
 ROOT = next(p for p in Path(__file__).resolve().parents if (p / "studio/tools/line/mapping.py").is_file())
 SCORER = ROOT / ".agents/skills/studio/3-Post Production/4-Take Selection/scripts/score_takes.py"
 spec = importlib.util.spec_from_file_location("studio_scoring_for_first_cut", SCORER)
 scoring = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(scoring)
 find = scoring.find
-STAGE = Path("3-Post Production/5-First Cut")
+STAGE = Path("3-Post Production/6-First Cut")
 INTAKE = Path("2-Production/1-Footage Intake")
 SYNC = Path("3-Post Production/1-Sync")
+FACE = Path("3-Post Production/5-Face Tracking")
 EXTRACTS = Path("1-Pre Production/3-Extracts")
 ROLES = ("camA", "camB", "lav")
 
@@ -202,7 +205,8 @@ def element(parent, tag, **attributes):
     return ET.SubElement(parent, tag, {key: str(value) for key, value in attributes.items()})
 
 
-def build_xml(project, output, name, document, scores, syncs, probes, padding_ms, included_groups=None):
+def build_xml(project, output, name, document, scores, syncs, probes, padding_ms, included_groups=None,
+              with_subtitles=True):
     first_video = probes[min(probes)]["camA"]["video"]
     frame = 1 / Fraction(first_video["r_frame_rate"])
     if frame <= 0:
@@ -222,6 +226,12 @@ def build_xml(project, output, name, document, scores, syncs, probes, padding_ms
     if (first_video.get("color_primaries"), first_video.get("color_transfer")) != ("bt709", "bt709"):
         raise ValueError("Project color space needs explicit handling for non-Rec.709 footage.")
     project_format = format_for(first_video, frame)
+    title_effect = resource_id() if with_subtitles else None
+    if title_effect:
+        element(resources, "effect", id=title_effect, name="Basic Title", uid=subtitles.TITLE_UID)
+    transcript_words = {r["transcript"]["source"]["path"]: r["transcript"]["words"]
+                        for r in document["recordings"]}
+    subtitle_count = 0
     multicams = {}
     for number, sync in sorted(syncs.items()):
         if number not in used_recordings:
@@ -246,7 +256,7 @@ def build_xml(project, output, name, document, scores, syncs, probes, padding_ms
             asset = element(resources, "asset", **attributes)
             source = (project / sync["clips"][role]["path"]).resolve(strict=True)
             # Relative to the XML itself, not to a Windows or Mac home directory.
-            url = quote(Path(os.path.relpath(source, output.parent)).as_posix(), safe="/.")
+            url = quote(Path(os.path.relpath(source, output.parent.resolve())).as_posix(), safe="/.")
             element(asset, "media-rep", kind="original-media", src=url)
             assets[role] = identifier
         identifier = resource_id()
@@ -282,6 +292,9 @@ def build_xml(project, output, name, document, scores, syncs, probes, padding_ms
                        start=time(take["cut_in"]), duration=time(duration))
         element(clip, "mc-source", angleID=angles["lav"], srcEnable="audio")
         element(clip, "mc-source", angleID=angles[take["angle"]], srcEnable="video")
+        if with_subtitles:
+            subtitle_count += subtitles.add_titles(clip, take, transcript_words[take["transcript_source"]["path"]],
+                                                   frame, title_effect, subtitle_count)
         element(clip, "marker", start=time(take["cut_in"]), duration=time(frame), value=f"{label} IN")
         # OUT labels the final included frame, so the marker stays inside the trim.
         element(clip, "marker", start=time(take["cut_out"] - frame), duration=time(frame), value=f"{label} OUT")
@@ -301,8 +314,15 @@ def build_xml(project, output, name, document, scores, syncs, probes, padding_ms
         winner = audition["candidates"][0]
         cursor += winner["cut_out"] - winner["cut_in"]
     ET.indent(root, space="    ")
+    # ElementTree's indentation inserts whitespace into mixed-content title text.
+    for text_node in root.iter("text"):
+        if len(text_node):
+            text_node.text = None
+            for styled in text_node:
+                styled.tail = None
     xml = b'<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE fcpxml>\n' + ET.tostring(root, encoding="utf-8") + b"\n"
     report = {"script": name, "takes": len(takes), "auditions": len(auditions), "multicams": len(used_recordings),
+               "subtitle_titles": subtitle_count,
               "duration_seconds": float(total), "frame_duration": time(frame), "padding_ms": padding_ms,
               "seamless_boundaries": sum(a["continuous"] for a in auditions),
               "camera_flips": sum(not a["continuous"] for a in auditions[1:]),
@@ -317,11 +337,12 @@ def build_xml(project, output, name, document, scores, syncs, probes, padding_ms
 def validate_xml(xml, output, report):
     root = ET.fromstring(xml)
     resources = {r.attrib["id"]: r for r in root.find("resources")}
+    styles = {s.attrib["id"] for s in root.iter("text-style-def")}
     if len(resources) != len(root.find("resources")):
         raise ValueError("Duplicate XML resource IDs.")
     for node in root.iter():
         for attr in ("ref", "format"):
-            if attr in node.attrib and node.attrib[attr] not in resources:
+            if attr in node.attrib and node.attrib[attr] not in (styles if node.tag == "text-style" else resources):
                 raise ValueError("Unresolved XML resource reference.")
     for media in root.findall("resources/asset/media-rep"):
         if not (output.parent / unquote(media.attrib["src"])).resolve().is_file():
@@ -350,14 +371,15 @@ def run(project, score_paths, padding_ms=50, ffprobe="ffprobe"):
     project = project.resolve(strict=True)
     directory = project / STAGE
     find.append_log(directory, "First Cut started", [f"padding_ms={padding_ms}; start camA; flip at nonadjacent selections."])
-    failed = (3, 5)
+    failed = (3, 6)
     try:
         for step, folder in (((1, 1), find.APPROVED.parent), ((1, 3), EXTRACTS), ((2, 1), INTAKE),
-                             ((3, 1), SYNC), ((3, 3), find.OUTPUT), ((3, 4), scoring.STAGE)):
+                             ((3, 1), SYNC), ((3, 3), find.OUTPUT), ((3, 4), scoring.STAGE),
+                             ((3, 5), FACE)):
             failed = step
             validate_done(project, folder)
         find.validate_approved(project)
-        failed = (3, 5)
+        failed = (3, 6)
         inventory = find.discover(project)
         expected = [(project / scoring.STAGE / (s.stem + "__Scores.v1.json")).resolve() for s, _ in inventory]
         supplied = [(project / p).resolve(strict=True) if not p.is_absolute() else p.resolve(strict=True) for p in score_paths]
@@ -413,7 +435,7 @@ def run(project, score_paths, padding_ms=50, ffprobe="ffprobe"):
                 with output.open("xb") as stream:
                     stream.write(xml)
             validate_xml(output.read_bytes(), output, next(r for p, _, r in planned if p == output))
-        dependencies = [Path(__file__), Path(__file__).parents[1] / "SKILL.md", SCORER, scoring.FIND_SCRIPT,
+        dependencies = [Path(__file__), Path(subtitles.__file__), Path(__file__).parents[1] / "SKILL.md", SCORER, scoring.FIND_SCRIPT,
                         ROOT / "scripts/append-log.py"]
         dependencies.extend(ROOT / "studio/tools/line" / name for name in
                             ("mapping.py", "sources.py", "combined.py", "quality.py", "actions.py", "boundaries.py"))
@@ -432,14 +454,14 @@ def run(project, score_paths, padding_ms=50, ffprobe="ffprobe"):
         if not review_path.exists():
             find.write_json(review_path, report)
         if (directory / "DONE").exists():
-            find.invalidate(project, (3, 5), "First Cut regenerated; Final Cut import review required.")
+            find.invalidate(project, (3, 6), "First Cut regenerated; Final Cut import review required.")
         find.append_log(directory, "First Cut ready for import review", [
             json.dumps({"projects": [{k: v for k, v in r.items() if k != "selected"} for _, _, r in planned]}),
             "No DONE: Final Cut import/playback review pending. See REVIEW.json for fingerprints and selected source ranges."])
         return report
     except (OSError, ValueError, TypeError, KeyError, subprocess.SubprocessError) as error:
         # Implementation/shape errors must never invalidate otherwise valid upstream work.
-        actual_failed = (3, 5) if isinstance(error, (TypeError, KeyError)) else failed
+        actual_failed = (3, 6) if isinstance(error, (TypeError, KeyError)) else failed
         find.invalidate(project, actual_failed, f"First Cut failed: {error}")
         find.append_log(directory, "First Cut failed", [str(error), "Preserved existing work files."])
         raise

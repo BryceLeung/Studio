@@ -549,7 +549,7 @@ def run_stage(project: Path, output_dir: Path | None = None) -> dict:
             write_json(marker, manifest, overwrite=True)
             entries.append("Wrote DONE with exact input/output fingerprints and latest version selections.")
         entries.append("Invalidated markers: " + json.dumps(result["invalidated_markers"]))
-        entries.append("No 3.2 completion is implied; its WER condition remains undefined.")
+        entries.append("Find Takes does not replace the independent 3.2 transcript inventory completion check.")
         append_log(directory, "Find Takes passed" if result["complete"] else "Find Takes failed", entries)
         result["done_written"] = result["complete"] and not isolated
         result["log"] = str(directory / "LOG.md")

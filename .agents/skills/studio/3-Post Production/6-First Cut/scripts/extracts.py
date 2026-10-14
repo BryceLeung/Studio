@@ -130,7 +130,8 @@ def generate(project, shortlist, score_paths, padding_ms, omit_discarded):
         f"Shortlist: {shortlist}; padding_ms={padding_ms}; omit_discarded={omit_discarded}."])
     try:
         # Read-only validation: an extract run must not alter upstream completion.
-        for folder in (cut.find.APPROVED.parent, cut.EXTRACTS, cut.INTAKE, cut.SYNC, cut.find.OUTPUT, cut.scoring.STAGE):
+        for folder in (cut.find.APPROVED.parent, cut.EXTRACTS, cut.INTAKE, cut.SYNC, cut.find.OUTPUT,
+                       cut.scoring.STAGE, cut.FACE):
             cut.validate_done(project, folder)
         cut.find.validate_approved(project)
         mappings = map_all(project, shortlist, score_paths)

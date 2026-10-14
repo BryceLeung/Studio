@@ -4,6 +4,7 @@ from fractions import Fraction
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
+from unittest.mock import patch
 import xml.etree.ElementTree as ET
 import json
 
@@ -41,6 +42,16 @@ def fixture(root):
 
 
 class FirstCutTests(unittest.TestCase):
+    def test_stage_path_and_failure_invalidation_use_3_6(self):
+        self.assertEqual(cut.STAGE, Path("3-Post Production/6-First Cut"))
+        with TemporaryDirectory() as directory:
+            project = Path(directory).resolve()
+            with patch.object(cut.find, "append_log"), patch.object(cut, "validate_done", side_effect=TypeError("invalid input")):
+                with patch.object(cut.find, "invalidate") as invalidate:
+                    with self.assertRaisesRegex(TypeError, "invalid input"):
+                        cut.run(project, [])
+                    self.assertEqual(invalidate.call_args.args[:2], (project, (3, 6)))
+
     def test_legacy_nested_manifest_fingerprints_are_validated(self):
         with TemporaryDirectory() as directory:
             project = Path(directory).resolve()
@@ -86,6 +97,8 @@ class FirstCutTests(unittest.TestCase):
             self.assertEqual([len(a) for a in auditions], [2, 1, 1])
             self.assertEqual(len(tree.findall("resources/media/sequence")), 4)
             self.assertEqual(report["camera_flips"], 1)
+            self.assertEqual(report["subtitle_titles"], 4)
+            self.assertEqual(tree.find("resources/effect").attrib["uid"], cut.subtitles.TITLE_UID)
             resources = {r.attrib["id"]: r for r in tree.find("resources")}
             first_compound = resources[auditions[0][0].attrib["ref"]]
             self.assertIn("score=40", first_compound.attrib["name"])
@@ -95,6 +108,12 @@ class FirstCutTests(unittest.TestCase):
                 self.assertEqual(sources[0].attrib["srcEnable"], "audio")
                 self.assertTrue(sources[0].attrib["angleID"].endswith("-lav"))
                 self.assertEqual(len(clip.findall("marker")), 2)
+                title = clip.find("title")
+                self.assertIsNotNone(title)
+                self.assertGreater(cut.parse_time(title.attrib["offset"]), cut.parse_time(clip.attrib["start"]))
+                self.assertEqual(title.attrib["lane"], "1")
+            ids = [node.attrib["id"] for node in tree.iter() if "id" in node.attrib]
+            self.assertEqual(len(ids), len(set(ids)))
             self.assertTrue(all(m.attrib["src"].startswith("../../2-Production/")
                                 for m in tree.findall("resources/asset/media-rep")))
 
@@ -132,6 +151,34 @@ class FirstCutTests(unittest.TestCase):
             probes[1]["camB"]["duration"] = Fraction(2)
             with self.assertRaisesRegex(ValueError, "coverage"):
                 cut.plan_takes(doc, scores, syncs, probes, Fraction(1, 30), 50)
+
+    def test_word_highlighting_uses_each_alternative_and_lav_sync(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            doc, scores, syncs, probes = fixture(root)
+            doc["recordings"][0]["transcript"]["words"][0]["text"] = "hello"
+            doc["recordings"][0]["transcript"]["words"][1]["text"] = "world"
+            scores["takes"][0]["transcript"]["word_end"] = 1
+            scores["takes"][1]["transcript"]["word_start"] = 1
+            # Test two words in the first take independently of take-planning adjacency.
+            scores["takes"] = scores["takes"][:1]
+            doc["script_groupings"] = doc["script_groupings"][:1]
+            scores["takes"][0]["script"] = span(0)
+            syncs[1]["clips"]["lav"]["offset_ms"] = 200
+            xml, report = cut.build_xml(root, root / cut.STAGE / "Extracts/Preview.FCPXML", "Preview",
+                                        doc, scores, syncs, probes, 50)
+            tree = ET.fromstring(xml)
+            titles = tree.findall("resources/media/sequence/spine/mc-clip/title")
+            self.assertEqual(report["subtitle_titles"], 2)
+            self.assertEqual([t.attrib["name"] for t in titles], ["hello world", "hello world"])
+            self.assertEqual([t.attrib["offset"] for t in titles], ["6/5s", "19/10s"])
+            self.assertEqual([t.find("text/text-style").attrib["ref"].endswith("h") for t in titles], [True, False])
+            self.assertEqual("".join(titles[0].find("text").itertext()), "hello world")
+            self.assertEqual([s.text for s in titles[0].find("text")], ["hello ", "world"])
+            self.assertEqual([s.attrib["fontColor"] for s in titles[0].find("text")],
+                             ["1 0.82 0.12 1", "1 1 1 1"])
+            self.assertFalse(titles[0].findall("param"))
+            self.assertFalse(titles[0].findall(".//text-style[@strokeWidth]"))
 
     def test_explicit_script_discard_omits_sentence_but_retains_take_compound(self):
         with TemporaryDirectory() as directory:
