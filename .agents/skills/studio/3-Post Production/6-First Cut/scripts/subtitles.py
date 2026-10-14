@@ -5,6 +5,9 @@ import xml.etree.ElementTree as ET
 
 
 TITLE_UID = ".../Titles.localized/Bumper:Opener.localized/Basic Title.localized/Basic Title.moti"
+HIGHLIGHT_COLOR = "1 0.827451 0.301961 1"  # #ffd34d in the approved style mockup.
+LINE_LENGTH = 15
+FONT_SIZE = 140
 
 
 def frame_at(value, frame):
@@ -47,6 +50,7 @@ def add_titles(clip, take, words, frame, effect_id, id_start=0):
     if phrase:
         groups.append(phrase)
     for group in groups:
+        font_size = min(FONT_SIZE, FONT_SIZE * LINE_LENGTH // max(len(word) for word, _, _ in group))
         for index, (_, start, end) in enumerate(group):
             next_start = group[index + 1][1] if index + 1 < len(group) else end
             finish = min(take["cut_out"], max(end, next_start)) if index + 1 == len(group) else next_start
@@ -55,15 +59,29 @@ def add_titles(clip, take, words, frame, effect_id, id_start=0):
             title = ET.SubElement(clip, "title", {"ref": effect_id, "lane": "1", "offset": time(start),
                                                   "name": " ".join(e[0] for e in group),
                                                   "start": "3600s", "duration": time(finish - start)})
+            # Basic Title is point text by default. Request paragraph layout and
+            # keep explicit word-boundary breaks for Final Cut versions that ignore it.
+            for name, key, value in (("Layout Method", "314", "1 (Paragraph)"),
+                                     ("Left Margin", "323", "-1500"),
+                                     ("Right Margin", "324", "1500")):
+                ET.SubElement(title, "param", {"name": name,
+                                               "key": f"9999/999166631/999166633/2/{key}", "value": value})
             text = ET.SubElement(title, "text")
             plain, highlight = f"ts{id_start + count}p", f"ts{id_start + count}h"
+            line_length = 0
             for n, (label, _, _) in enumerate(group):
-                color = "1 0.82 0.12 1" if n == index else "1 1 1 1"
+                color = HIGHLIGHT_COLOR if n == index else "1 1 1 1"
+                if n:
+                    separator = "\n" if line_length + 1 + len(label) > LINE_LENGTH else " "
+                    text[-1].text += separator
+                    line_length = len(label) if separator == "\n" else line_length + 1 + len(label)
+                else:
+                    line_length = len(label)
                 ET.SubElement(text, "text-style", {"ref": highlight if n == index else plain,
-                                                    "fontColor": color}).text = label + (" " if n < len(group) - 1 else "")
-            for style_id, color in ((plain, "1 1 1 1"), (highlight, "1 0.82 0.12 1")):
+                                                    "fontColor": color}).text = label
+            for style_id, color in ((plain, "1 1 1 1"), (highlight, HIGHLIGHT_COLOR)):
                 definition = ET.SubElement(title, "text-style-def", {"id": style_id})
-                ET.SubElement(definition, "text-style", {"font": "Helvetica Neue", "fontSize": "196",
-                                                          "fontColor": color, "bold": "1", "alignment": "center"})
+                ET.SubElement(definition, "text-style", {"font": "Arial Black", "fontSize": str(font_size),
+                                                          "fontColor": color, "alignment": "center"})
             count += 1
     return count

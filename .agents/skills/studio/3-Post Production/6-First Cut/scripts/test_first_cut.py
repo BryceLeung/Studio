@@ -176,9 +176,34 @@ class FirstCutTests(unittest.TestCase):
             self.assertEqual("".join(titles[0].find("text").itertext()), "hello world")
             self.assertEqual([s.text for s in titles[0].find("text")], ["hello ", "world"])
             self.assertEqual([s.attrib["fontColor"] for s in titles[0].find("text")],
-                             ["1 0.82 0.12 1", "1 1 1 1"])
-            self.assertFalse(titles[0].findall("param"))
+                             [cut.subtitles.HIGHLIGHT_COLOR, "1 1 1 1"])
+            self.assertEqual([style.attrib["font"] for style in titles[0].findall("text-style-def/text-style")],
+                             ["Arial Black", "Arial Black"])
+            self.assertEqual([style.attrib["fontSize"] for style in titles[0].findall("text-style-def/text-style")],
+                             ["140", "140"])
+            self.assertEqual({p.attrib["name"]: p.attrib["value"] for p in titles[0].findall("param")},
+                             {"Layout Method": "1 (Paragraph)", "Left Margin": "-1500", "Right Margin": "1500"})
             self.assertFalse(titles[0].findall(".//text-style[@strokeWidth]"))
+
+    def test_long_phrase_wraps_at_word_boundary_without_losing_highlight(self):
+        clip = ET.Element("mc-clip")
+        take = {"take_key": "example", "transcript": {"word_start": 0, "word_end": 2},
+                "origins": {"lav": Fraction(0)}, "cut_in": Fraction(0), "cut_out": Fraction(3)}
+        words = [{"text": word, "start_ms": i * 1000, "end_ms": (i + 1) * 1000}
+                 for i, word in enumerate(("Wonderful", "birthday", "party"))]
+        self.assertEqual(cut.subtitles.add_titles(clip, take, words, Fraction(1, 30), "r1"), 3)
+        for index, title in enumerate(clip.findall("title")):
+            styles = title.findall("text/text-style")
+            self.assertEqual("".join(style.text for style in styles),
+                             "Wonderful\nbirthday party")
+            self.assertEqual([style.attrib["fontColor"] == cut.subtitles.HIGHLIGHT_COLOR for style in styles],
+                             [i == index for i in range(3)])
+        clip = ET.Element("mc-clip")
+        take["transcript"]["word_end"] = 0
+        cut.subtitles.add_titles(clip, take, [{"text": "Uncharacteristically", "start_ms": 0,
+                                               "end_ms": 1000}], Fraction(1, 30), "r1")
+        self.assertLess(int(clip.find("title/text-style-def/text-style").attrib["fontSize"]),
+                        cut.subtitles.FONT_SIZE)
 
     def test_explicit_script_discard_omits_sentence_but_retains_take_compound(self):
         with TemporaryDirectory() as directory:

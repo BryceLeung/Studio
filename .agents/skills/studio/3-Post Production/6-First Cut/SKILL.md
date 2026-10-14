@@ -33,9 +33,12 @@ under `3-Post Production/6-First Cut/`; extract FCPXML projects and
 outputs stop for inspection; preserve human edits. Neither operation changes
 the approved scripts, shortlist, source mappings, or scores.
 
-The generator includes draft, editable Text titles inside every take compound,
-using its mapped transcript word times and a yellow active-word highlight. These
-titles are not the final editorial subtitle review. Import into Final Cut to
+The generator includes draft, editable static Basic Titles inside every take
+compound, using its mapped transcript word times, heavy Arial Black lettering,
+and the mockup's warm-yellow active-word highlight. Long phrases use a bounded
+paragraph layout and explicit word-boundary line breaks, with oversized single
+words scaled down. These titles are not the final editorial subtitle review.
+Import into Final Cut to
 check title rendering, frame timing, legibility, and audition switching.
 
 For an isolated preview before 3.5 has completed, use
