@@ -111,7 +111,8 @@ def map_all(project, shortlist, score_paths):
     for source, path in supplied.items():
         scores = cut.read_json(path)
         document = cut.scoring.load_mapping(project, project / scores["source_mapping"]["path"])
-        expected = cut.scoring.score_document(document, cut.scoring.fingerprint(project / scores["source_mapping"]["path"], project, "project"))
+        reference = cut.scoring.checked_reference(project, project / scores["source_mapping"]["path"], scores["source_mapping"])
+        expected = cut.scoring.score_document(document, reference)
         if expected != scores:
             raise ValueError(f"Stale scoring output: {path}")
         contexts[source] = (document, scores)
@@ -192,7 +193,8 @@ def generate(project, shortlist, score_paths, padding_ms, omit_discarded):
         mappings["projects"] = reports
         mappings["inputs"] = inputs
         mappings["dependencies"] = [cut.scoring.fingerprint(p, cut.ROOT, "workflow") for p in
-                                    (Path(__file__), Path(cut.__file__), Path(__file__).parents[1] / "SKILL.md")]
+                                    (Path(__file__), Path(cut.__file__), Path(__file__).parents[1] / "SKILL.md",
+                                     cut.ROOT / "studio/fingerprints.py")]
         mappings["review_required"] = "Import and review all six extract projects in Final Cut."
         mapping_path = directory / "Extract Mappings.json"
         mapping_bytes = (json.dumps(mappings, ensure_ascii=False, indent=2, allow_nan=False) + "\n").encode("utf-8")

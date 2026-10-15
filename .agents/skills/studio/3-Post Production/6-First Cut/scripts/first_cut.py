@@ -88,7 +88,7 @@ def validate_done(project, folder):
             if not (path.is_relative_to(project) or path.is_relative_to(ROOT)):
                 raise ValueError(f"Manifest path outside workflow/project: {path}")
             stat = path.stat()
-            if "sha256" in entry and find.sha256(path).lower() != entry["sha256"].lower():
+            if "sha256" in entry and not find.fingerprints.matches(path, entry["sha256"]):
                 raise ValueError(f"Stale upstream fingerprint: {path}")
             size = entry.get("bytes", entry.get("size_bytes"))
             if size is not None and stat.st_size != size:
@@ -393,7 +393,8 @@ def run(project, score_paths, padding_ms=50, ffprobe="ffprobe"):
             if not versions or source_path.resolve() != versions[-1][1].resolve():
                 raise ValueError("Scores must reference the latest mapping version.")
             document = scoring.load_mapping(project, source_path)
-            calculated = scoring.score_document(document, scoring.fingerprint(source_path, project, "project"))
+            reference = scoring.checked_reference(project, source_path, scores["source_mapping"])
+            calculated = scoring.score_document(document, reference)
             if calculated != scores:
                 raise ValueError(f"Stale or changed scoring output: {score_path}")
             check = find.check_mapping(project, source_path, find.sources.load_script(project, script),
@@ -436,7 +437,7 @@ def run(project, score_paths, padding_ms=50, ffprobe="ffprobe"):
                     stream.write(xml)
             validate_xml(output.read_bytes(), output, next(r for p, _, r in planned if p == output))
         dependencies = [Path(__file__), Path(subtitles.__file__), Path(__file__).parents[1] / "SKILL.md", SCORER, scoring.FIND_SCRIPT,
-                        ROOT / "scripts/append-log.py"]
+                         ROOT / "scripts/append-log.py", ROOT / "studio/fingerprints.py"]
         dependencies.extend(ROOT / "studio/tools/line" / name for name in
                             ("mapping.py", "sources.py", "combined.py", "quality.py", "actions.py", "boundaries.py"))
         # Extracts remain a declared input; no extract projects are emitted yet.

@@ -1,12 +1,17 @@
 """Build editable Studio cue cards on Windows, macOS, or Linux."""
 
 from argparse import ArgumentParser
-from hashlib import sha256
 from pathlib import Path
 import json
 import math
 import os
 import re
+import sys
+
+ROOT = next(p for p in Path(__file__).resolve().parents if (p / "studio/fingerprints.py").is_file())
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+from studio.fingerprints import matches
 
 from PIL import ImageFont
 from pptx import Presentation
@@ -180,7 +185,7 @@ def main() -> None:
     for plan_file in plans:
         source = approved / f"{plan_file.stem}.docx"
         plan = json.loads(plan_file.read_text(encoding="utf-8"))
-        if sha256(source.read_bytes()).hexdigest().upper() != plan["source_sha256"]:
+        if not matches(source, plan["source_sha256"]):
             raise ValueError(f"Approved script changed after planning: {source}")
         output = destination / f"{plan_file.stem}.pptx"
         if output.exists() and not args.overwrite:

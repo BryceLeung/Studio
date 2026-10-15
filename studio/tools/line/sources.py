@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 from io import BytesIO
 import json
 import math
@@ -11,6 +10,8 @@ import re
 from typing import Any
 from xml.etree import ElementTree
 from zipfile import BadZipFile, ZipFile
+
+from studio.fingerprints import sha256
 
 
 SEGMENTATION_VERSION = "line-sentences-v1"
@@ -39,7 +40,7 @@ def project_path(project_root: Any, path: Any, *, must_exist: bool = True) -> Pa
 def source_reference(root: Any, path: Path, kind: str, format_name: str, *, content: bytes | None = None) -> dict:
     return {
         "path": path.relative_to(Path(root).resolve()).as_posix(),
-        "sha256": hashlib.sha256(path.read_bytes() if content is None else content).hexdigest(),
+        "sha256": sha256(path, content=content),
         "segmentation_version": SEGMENTATION_VERSION,
         "kind": kind,
         "format": format_name,

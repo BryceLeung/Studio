@@ -4,27 +4,21 @@ from __future__ import annotations
 
 import argparse
 from datetime import datetime, timezone
-import hashlib
 import importlib.util
 import json
 from pathlib import Path
 import re
+import sys
 
 
 ROOT = next(p for p in Path(__file__).resolve().parents if (p / "studio/tools/line/mapping.py").is_file())
+sys.path.insert(0, str(ROOT))
+from studio.fingerprints import matches, sha256  # noqa: E402
 STAGE = Path("3-Post Production/2-Transcribe")
 INTAKE = Path("2-Production/1-Footage Intake")
 WAV = re.compile(r"^.+__C\d{2}__lav\.wav$", re.I)
 LOG_HELPER = ROOT / "scripts/append-log.py"
 FOOTAGE_VALIDATOR = ROOT / ".agents/skills/studio/2-Production/1-Footage Intake/scripts/validate-footage.py"
-
-
-def sha256(path):
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for block in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(block)
-    return digest.hexdigest()
 
 
 def fingerprint(path, root, scope):
@@ -99,7 +93,8 @@ def inventory(project):
 
 
 def manifest(project, wavs, outputs):
-    dependencies = [Path(__file__), Path(__file__).parents[1] / "SKILL.md", FOOTAGE_VALIDATOR, LOG_HELPER]
+    dependencies = [Path(__file__), Path(__file__).parents[1] / "SKILL.md", FOOTAGE_VALIDATOR, LOG_HELPER,
+                    ROOT / "studio/fingerprints.py"]
     return {"step": "3.2", "schema": "studio.transcribe.done", "schema_version": 1,
             "dependencies": [fingerprint(p, ROOT, "workflow") for p in dependencies],
             "inputs": [fingerprint(p, project, "project") for p in wavs],
@@ -120,10 +115,18 @@ def run(project):
         previous = json.loads(marker.read_text(encoding="utf-8-sig")) if marker.exists() else None
         stale = json.loads(stale_path.read_text(encoding="utf-8-sig")) if stale_path.exists() else {}
         still_stale = [path for path, digest in stale.items()
-                       if any(item["path"] == path and item["sha256"] == digest for item in current["outputs"])]
+                       if any(item["path"] == path and matches(project / path, digest) for item in current["outputs"])]
         if still_stale:
             raise ValueError(f"Audio changed; regenerate unchanged transcript JSON before adoption: {still_stale}")
-        if previous == current:
+        comparable = dict(previous) if previous is not None else None
+        if comparable is not None:
+            for section in ("dependencies", "inputs", "outputs"):
+                comparable[section] = [dict(item, sha256=sha256(
+                    (ROOT if item.get("scope") == "workflow" else project) / item["path"]))
+                    if ((ROOT if item.get("scope") == "workflow" else project) / item["path"]).is_file()
+                    and matches((ROOT if item.get("scope") == "workflow" else project) / item["path"], item["sha256"])
+                    else item for item in previous.get(section, [])]
+        if comparable == current:
             append_log(directory, "Transcribe completion reused", [
                 f"{len(outputs)} current JSON transcripts; audio and output fingerprints match DONE."])
             return {"status": "reused", "manifest": current}
@@ -135,7 +138,7 @@ def run(project):
             for audio, output in zip(wavs, outputs):
                 source = audio.relative_to(project).as_posix()
                 dest = output.relative_to(project).as_posix()
-                if old_audio.get(source) != sha256(audio) and old_json.get(dest) == sha256(output):
+                if (source not in old_audio or not matches(audio, old_audio[source])) and dest in old_json and matches(output, old_json[dest]):
                     unchanged_stale[dest] = sha256(output)
             if unchanged_stale:
                 stale_path.write_text(json.dumps(unchanged_stale, indent=2) + "\n", encoding="utf-8")

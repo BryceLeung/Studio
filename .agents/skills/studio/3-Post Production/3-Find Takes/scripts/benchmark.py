@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 from copy import deepcopy
 from datetime import datetime, timezone
-import hashlib
 import json
 from pathlib import Path
 import re
@@ -85,7 +84,7 @@ def compare_recording(project: Path, reference: dict, reference_path: Path, pred
     for panel in ("script", "transcript"):
         reference_source = reference["sources"][panel]
         path = find_takes.sources.project_path(project, reference_source["source"]["path"])
-        if find_takes.sha256(path) != reference_source["source"]["sha256"]:
+        if not find_takes.fingerprints.matches(path, reference_source["source"]["sha256"]):
             raise ValueError(f"Benchmark {panel} bytes differ from the reviewed source.")
         actual = (find_takes.sources.load_script if panel == "script" else find_takes.sources.load_transcript)(project, path)
         fields = ("index", "text", "separator") if panel == "script" else ("index", "text", "start_ms", "end_ms")
@@ -287,10 +286,7 @@ def run(fixture: Path, output_dir: Path, case_name: str | None = None, *,
         for filename in (case["script"], *case["transcripts"], case["takes"]):
             relative = (project.relative_to(fixture) / filename).as_posix()
             entry = fingerprints[relative]
-            content = (fixture / relative).read_bytes()
-            if entry.get("hash_mode") == "lf":
-                content = content.replace(b"\r\n", b"\n")
-            if hashlib.sha256(content).hexdigest() != entry["sha256"]:
+            if not find_takes.fingerprints.matches(fixture / relative, entry["sha256"]):
                 raise ValueError(f"Frozen benchmark file changed: {relative}")
         reference_path = project / case["takes"]
         references = reference_documents(project, reference_path)

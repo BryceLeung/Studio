@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from studio.actions import action
+from studio.fingerprints import matches
 
 from . import mapping, sources
 from . import combined
@@ -81,8 +82,10 @@ def _load_source(project: Any, state: dict, panel: str, path: Any) -> dict:
     previous = mapping.active_source(state, panel)
     same = bool(previous and all(
         previous["source"].get(key) == loaded["source"].get(key)
-        for key in ("path", "sha256", "segmentation_version")
-    ))
+        for key in ("path", "segmentation_version")
+    ) and (previous["source"]["sha256"] == loaded["source"]["sha256"]
+           or matches(sources.project_path(_root(project), loaded["source"]["path"]),
+                      previous["source"]["sha256"])))
     if previous and not same and (state["dirty"] or state["links"] or state["discarded"] or state.get("script_discarded")):
         raise ValueError("Save your Line project, then use Reset before choosing a different source.")
     if same:
@@ -120,7 +123,11 @@ def add_transcripts(project: Any, state: dict, paths: list[str]) -> dict:
     for source in loaded:
         previous = next((item for item in items if item["source"]["path"] == source["source"]["path"]), None)
         if previous:
-            if previous["source"] != source["source"]:
+            if (any(previous["source"].get(key) != value for key, value in source["source"].items()
+                    if key != "sha256")
+                    or (previous["source"]["sha256"] != source["source"]["sha256"]
+                        and not matches(sources.project_path(_root(project), source["source"]["path"]),
+                                        previous["source"]["sha256"]))):
                 raise ValueError(f"Transcript source has changed: {source['source']['path']}")
             continue
         offset = sum(len(item["words"]) for item in items)

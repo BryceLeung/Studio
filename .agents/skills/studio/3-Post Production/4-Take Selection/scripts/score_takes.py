@@ -26,6 +26,15 @@ def fingerprint(path: Path, root: Path, scope: str) -> dict:
             "sha256": find.sha256(path)}
 
 
+def checked_reference(project: Path, path: Path, reference: dict) -> dict:
+    """Retain a valid persisted digest because it participates in take identities."""
+    current = fingerprint(path, project, "project")
+    if (dict(reference, sha256=current["sha256"]) != current
+            or not find.fingerprints.matches(path, reference["sha256"])):
+        raise ValueError(f"Stale mapping fingerprint: {path}")
+    return reference
+
+
 def provenance() -> dict:
     return {"name": "continuity-then-recency", "version": 1,
             "code_sha256": find.sha256(Path(__file__)),
@@ -139,7 +148,7 @@ def validate_manifest(project: Path, path: Path) -> None:
             if item["path"].replace("\\", "/") == ".agents/skills/studio/SKILL.md":
                 continue
             target = (root / item["path"]).resolve()
-            if not target.is_relative_to(root) or find.sha256(target) != item["sha256"]:
+            if not target.is_relative_to(root) or not find.fingerprints.matches(target, item["sha256"]):
                 raise ValueError(f"Stale completion dependency: {target}")
 
 
@@ -188,8 +197,11 @@ def run_stage(project: Path, inputs: list[Path], output_dir: Path | None = None)
             failed = (3, 4)
             document = load_mapping(project, path)
             reference = fingerprint(path, project, "project")
-            result = score_document(document, reference)
             target = directory / (script_path.stem + "__Scores.v1.json")
+            if target.exists():
+                previous = json.loads(target.read_text(encoding="utf-8-sig"))
+                reference = checked_reference(project, path, previous["source_mapping"])
+            result = score_document(document, reference)
             planned.append((target, result))
         failed = (3, 4)
         # Check all existing results before writing any. Preserve edits/stale results.
@@ -197,7 +209,7 @@ def run_stage(project: Path, inputs: list[Path], output_dir: Path | None = None)
             if target.exists() and json.loads(target.read_text(encoding="utf-8-sig")) != result:
                 raise ValueError(f"Existing scores differ; inspect before replacing: {target}")
         dependencies = [Path(__file__), Path(__file__).parents[1] / "SKILL.md", FIND_SCRIPT,
-                        ROOT / "scripts/append-log.py"]
+                         ROOT / "scripts/append-log.py", ROOT / "studio/fingerprints.py"]
         dependencies.extend(ROOT / "studio/tools/line" / name for name in
                             ("mapping.py", "sources.py", "combined.py", "quality.py", "actions.py", "boundaries.py"))
         manifest = {"project": project.name, "step": "3.4", "algorithm": provenance(),

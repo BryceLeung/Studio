@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 from datetime import datetime, timezone
-import hashlib
 import importlib.util
 import json
 import math
@@ -25,6 +24,7 @@ def workflow_root() -> Path:
 
 ROOT = workflow_root()
 sys.path.insert(0, str(ROOT))
+from studio import fingerprints  # noqa: E402
 from studio.tools.line import boundaries, combined, mapping, sources, quality  # noqa: E402
 from studio.tools.line.actions import infer_classification  # noqa: E402
 
@@ -42,7 +42,7 @@ SETTINGS = {
 
 
 def sha256(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    return fingerprints.sha256(path)
 
 
 def boundary_provenance() -> dict:
@@ -55,6 +55,7 @@ def alignment_provenance() -> dict:
         "name": "cursor-word-alignment", "version": 3, "settings": dict(SETTINGS),
         "quality": quality.provenance(),
         "code_sha256": {
+            "studio/fingerprints.py": sha256(ROOT / "studio/fingerprints.py"),
             "find_takes.py": sha256(Path(__file__)),
             "studio/tools/line/sources.py": sha256(Path(sources.__file__)),
             "studio/tools/line/mapping.py": sha256(Path(mapping.__file__)),
@@ -298,7 +299,19 @@ def check_mapping(project: Path, path: Path, script: dict, transcripts: list[dic
                     key=lambda source: source["source"]["path"])
     expected = sorted((without_audio(source) for source in transcripts),
                       key=lambda source: source["source"]["path"])
-    if document["script"] != script or actual != expected:
+    def same_source(saved: dict, fresh: dict) -> bool:
+        fresh = dict(fresh, source=dict(fresh["source"]), rows=[dict(row) for row in fresh["rows"]])
+        reference = saved["source"]
+        path = sources.project_path(project, reference["path"])
+        if not fingerprints.matches(path, reference["sha256"]):
+            return False
+        # Keep persisted legacy digests and their row identities authoritative.
+        fresh["source"]["sha256"] = reference["sha256"]
+        for row in fresh["rows"]:
+            row["id"] = sources.row_id(fresh["source"], row["line"])
+        return saved == fresh
+    if (not same_source(document["script"], script) or len(actual) != len(expected)
+            or not all(same_source(saved, fresh) for saved, fresh in zip(actual, expected))):
         raise ValueError("Mapping must contain the current script and every matching transcript; sources or inventory have changed.")
     state = combined.unpack(document)
     mapping.refresh_quality(state)
@@ -461,7 +474,7 @@ def validate_approved(project: Path) -> None:
     for entry in manifest["outputs"]:
         name = entry["path"].replace("\\", "/").rsplit("/", 1)[-1]
         path = project / APPROVED / name
-        if name in seen or name not in approved_names or sha256(path) != entry["sha256"].lower():
+        if name in seen or name not in approved_names or not fingerprints.matches(path, entry["sha256"]):
             raise ValueError(f"Approved script fingerprint differs from 1.1 DONE: {name}")
         seen.add(name)
     if seen != set(approved_names):
@@ -472,7 +485,7 @@ def completion_manifest(project: Path, result: dict) -> dict:
     inventory = discover(project)
     dependencies = [Path(__file__).relative_to(ROOT),
                     Path(__file__).parents[1].relative_to(ROOT) / "SKILL.md",
-                    Path("scripts/append-log.py")]
+                    Path("scripts/append-log.py"), Path("studio/fingerprints.py")]
     dependencies.extend(Path("studio/tools/line") / name for name in
                         ("sources.py", "mapping.py", "actions.py", "quality.py", "combined.py", "boundaries.py"))
     def fingerprint(path: Path, root: Path, scope: str) -> dict:

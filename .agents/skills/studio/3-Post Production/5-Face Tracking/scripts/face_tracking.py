@@ -6,7 +6,6 @@ import argparse
 from collections import defaultdict
 from datetime import datetime
 from fractions import Fraction
-import hashlib
 import importlib.util
 import json
 import math
@@ -80,7 +79,7 @@ def validate_done(project, folder):
                 raise ValueError(f"Manifest path outside project/workflow: {path}")
             path = path.resolve(strict=True)
             stat = path.stat()
-            if "sha256" in entry and find.sha256(path).lower() != entry["sha256"].lower():
+            if "sha256" in entry and not find.fingerprints.matches(path, entry["sha256"]):
                 raise ValueError(f"Stale upstream fingerprint: {path}")
             if stat.st_size != entry.get("bytes", entry.get("size_bytes", stat.st_size)) or stat.st_mtime_ns != entry.get("mtime_ns", stat.st_mtime_ns):
                 raise ValueError(f"Changed upstream input: {path}")
@@ -253,7 +252,7 @@ def required_ranges(project, extracts):
 def model_path():
     cache = Path(os.environ.get("LOCALAPPDATA") or os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache")
     target = cache / "studio" / "face_detection_yunet_2023mar.onnx"
-    if target.exists() and find.sha256(target) == MODEL_SHA256:
+    if target.exists() and find.fingerprints.matches(target, MODEL_SHA256):
         return target
     if target.exists():
         raise ValueError(f"Cached face model has wrong SHA-256: {target}")
@@ -267,7 +266,7 @@ def model_path():
         except BaseException:
             temporary.unlink(missing_ok=True)
             raise
-    if find.sha256(temporary) != MODEL_SHA256:
+    if not find.fingerprints.matches(temporary, MODEL_SHA256):
         temporary.unlink()
         raise ValueError("Downloaded face model failed SHA-256 verification.")
     temporary.replace(target)
@@ -397,7 +396,8 @@ def run(project, *, analyzer=analyze_video, get_model=model_path):
         inputs = [fingerprint(shortlist, project)] if shortlist.is_file() else []
         inputs.extend(json.loads(item) for item in references)
         dependencies = [Path(__file__), Path(__file__).parents[1] / "SKILL.md", FIND_SCRIPT,
-                        ROOT / "studio/tools/line/mapping.py", ROOT / "scripts/append-log.py"]
+                         ROOT / "studio/tools/line/mapping.py", ROOT / "scripts/append-log.py",
+                         ROOT / "studio/fingerprints.py"]
         identity = {"schema": "studio.face-path", "schema_version": 1, "sample_fps": SAMPLE_FPS,
                     "padding_ms": PADDING_MS, "model_sha256": MODEL_SHA256,
                     "inputs": inputs, "dependencies": [
@@ -424,14 +424,14 @@ def run(project, *, analyzer=analyze_video, get_model=model_path):
             planned.append((output, (json.dumps(result, ensure_ascii=False, indent=2, allow_nan=False) + "\n").encode()))
         path_outputs = [fingerprint(path, project) if content is None else
                         {"scope": "project", "path": path.relative_to(project).as_posix(),
-                         "sha256": hashlib.sha256(content).hexdigest()}
+                          "sha256": find.fingerprints.digest_bytes(content, text=True)}
                         for path, content in planned]
         index = directory / "Face Paths.json"
         inventory = {"schema": "studio.face-path-index", "schema_version": 1, "inputs": inputs,
                      "dependencies": identity["dependencies"], "paths": path_outputs,
                      "no_extracts": not extracts}
         index_bytes = (json.dumps(inventory, indent=2) + "\n").encode()
-        if index.exists() and index.read_bytes() != index_bytes:
+        if index.exists() and find.sha256(index) != find.fingerprints.digest_bytes(index_bytes, text=True):
             raise ValueError(f"Existing face path index differs; inspect before replacing: {index}")
         for path, content in planned:
             if content is not None:

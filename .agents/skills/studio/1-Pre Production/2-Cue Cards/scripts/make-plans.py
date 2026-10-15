@@ -1,9 +1,14 @@
 from argparse import ArgumentParser
 from docx import Document
 from pathlib import Path
-import hashlib
 import json
 import re
+import sys
+
+ROOT = next(p for p in Path(__file__).resolve().parents if (p / "studio/fingerprints.py").is_file())
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+from studio.fingerprints import sha256
 
 
 parser = ArgumentParser(description="Prepare editable cue-card text plans from approved Studio scripts.")
@@ -60,7 +65,7 @@ for source in sources:
 
     plan = {
         "source_docx": str(source),
-        "source_sha256": hashlib.sha256(source.read_bytes()).hexdigest().upper(),
+        "source_sha256": sha256(source).upper(),
         "title": paragraphs[0],
         "slides": slides,
         "spoken_word_count": len(source_words),

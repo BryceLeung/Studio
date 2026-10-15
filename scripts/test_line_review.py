@@ -1,5 +1,6 @@
 """Regression checks for automatic quality, review controls, and keyboard mappings."""
 
+import hashlib
 import json
 import os
 from copy import deepcopy
@@ -40,6 +41,76 @@ def review_state():
     state["groupings"] = {panel: mapping.initial_groupings(state[panel]) for panel in mapping.PANELS}
     state["selected"] = {"script": 0, "transcript": 0}
     return state
+
+
+class FingerprintTests(unittest.TestCase):
+    def test_text_source_hashes_and_row_ids_ignore_line_endings(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            for name, text, loader in (
+                ("script.txt", "Hello world.\nSecond sentence.\n", sources.load_script),
+                ("script.json", json.dumps({"text": "Hello world."}, indent=2) + "\n", sources.load_script),
+                ("transcript.json", json.dumps({"words": [{"text": "Hello."}]}, indent=2) + "\n", sources.load_transcript),
+            ):
+                with self.subTest(name=name):
+                    path = root / name
+                    content = text.encode("utf-8")
+                    path.write_bytes(content)
+                    lf = loader(root, path)
+                    path.write_bytes(content.replace(b"\n", b"\r\n"))
+                    self.assertEqual(loader(root, path), lf)
+                    self.assertEqual(lf["source"]["sha256"], hashlib.sha256(content).hexdigest())
+
+    def test_binary_source_hash_is_byte_exact(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            path = root / "script.docx"
+            content = b"PK\x00\xff\r\n"
+            path.write_bytes(content)
+            reference = sources.source_reference(root, path, "script", "docx-spoken-script", content=content)
+            self.assertEqual(reference["sha256"], hashlib.sha256(content).hexdigest())
+            self.assertNotEqual(reference["sha256"], hashlib.sha256(content.replace(b"\r\n", b"\n")).hexdigest())
+
+    def test_mapping_preserves_canonical_and_legacy_source_identities(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            (root / "script.txt").write_bytes(b"Hello world.\r\nSecond sentence.\r\n")
+            transcript = (json.dumps({"words": [{"text": "Hello."}]}, indent=2) + "\n").encode("utf-8")
+            for name in ("C01.json", "C02.json"):
+                (root / name).write_bytes(transcript.replace(b"\n", b"\r\n"))
+            for multiple in (False, True):
+                state = mapping.new_state()
+                project = SimpleNamespace(root=root)
+                actions.load_script(project, state, "script.txt")
+                actions.add_transcripts(project, state, ["C01.json", "C02.json"] if multiple else ["C01.json"])
+                canonical = mapping._document(state, "review", 1)
+                for legacy in (False, True):
+                    with self.subTest(multiple=multiple, legacy=legacy):
+                        document = deepcopy(canonical)
+                        data = ([document["script"], *(item["transcript"] for item in document["recordings"])]
+                                if multiple else list(document["sources"].values()))
+                        if legacy:
+                            for source in data:
+                                source["source"]["sha256"] = hashlib.sha256((root / source["source"]["path"]).read_bytes()).hexdigest()
+                                for row in source["rows"]:
+                                    row["id"] = sources.row_id(source["source"], row["line"])
+                        original = deepcopy(document)
+                        self.assertEqual(mapping.validate_document(root, document), original)
+                        path = root / "review.json"
+                        path.write_text(json.dumps(document), encoding="utf-8")
+                        loaded = mapping.read_mapping(root, path)
+                        self.assertEqual(loaded["script"], data[0])
+                        self.assertEqual(combined.recordings(loaded["transcript"]), data[1:])
+                        saved = mapping.save_version(root, loaded, "review")
+                        self.assertEqual(mapping.read_mapping(root, saved)["script"], data[0])
+                        self.assertEqual(document, original)
+                        data[0]["rows"][0]["text"] = "Tampered sentence."
+                        with self.assertRaisesRegex(ValueError, "sentences differ"):
+                            mapping.validate_document(root, document)
+                (root / "C01.json").write_bytes(transcript.replace(b"Hello.", b"Changed."))
+                with self.assertRaisesRegex(ValueError, "input has changed"):
+                    mapping.validate_document(root, canonical)
+                (root / "C01.json").write_bytes(transcript.replace(b"\n", b"\r\n"))
 
 
 class QualityTests(unittest.TestCase):

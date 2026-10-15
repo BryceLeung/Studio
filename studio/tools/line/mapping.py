@@ -4,12 +4,13 @@ from __future__ import annotations
 
 from copy import deepcopy
 from datetime import datetime, timezone
-import hashlib
 import json
 import os
 from pathlib import Path
 import re
 from typing import Any
+
+from studio.fingerprints import matches, sha256
 
 from .sources import SEGMENTATION_VERSION, load_script, load_transcript, project_path, row_id
 from . import combined, quality
@@ -191,7 +192,7 @@ def _validate_source(root: Path, source_data: Any, kind: str, verify_inputs: boo
     source_path = project_path(root, path, must_exist=verify_inputs)
     if path != source_path.relative_to(root).as_posix():
         raise ValueError(f"Mapping {kind} path must be a normalized project-relative path.")
-    if verify_inputs and hashlib.sha256(source_path.read_bytes()).hexdigest() != fingerprint:
+    if verify_inputs and not matches(source_path, fingerprint):
         raise ValueError(f"The {kind} input has changed since this mapping was saved: {path}")
     rows = source_data.get("rows")
     if not isinstance(rows, list) or not rows:
@@ -244,7 +245,12 @@ def _validate_source(root: Path, source_data: Any, kind: str, verify_inputs: boo
     if verify_inputs:
         fresh = (load_script if kind == "script" else load_transcript)(root, source_path)
         if fresh["source"]["sha256"] != fingerprint:
-            raise ValueError(f"The {kind} input changed while this mapping was being loaded.")
+            if not matches(source_path, fingerprint) or fresh["source"]["sha256"] != sha256(source_path):
+                raise ValueError(f"The {kind} input changed while this mapping was being loaded.")
+            # Legacy CRLF digests remain authoritative for persisted row identities.
+            fresh["source"]["sha256"] = fingerprint
+            for row in fresh["rows"]:
+                row["id"] = row_id(fresh["source"], row["line"])
         if rows != fresh["rows"]:
             raise ValueError(f"Mapping {kind} sentences differ from their immutable source segmentation.")
         fields = ("index", "text", "separator") if kind == "script" else ("index", "text", "start_ms", "end_ms")

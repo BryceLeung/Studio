@@ -2,7 +2,6 @@
 
 import argparse
 from datetime import datetime, timezone
-import hashlib
 import json
 import math
 import os
@@ -13,6 +12,11 @@ import sys
 import tempfile
 
 from install_dependencies import ENVIRONMENT, dependency_info, environment_python
+
+ROOT = next(p for p in Path(__file__).resolve().parents if (p / "studio/fingerprints.py").is_file())
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+from studio.fingerprints import sha256
 
 
 FOOTAGE_PARTS = ("2-Production", "1-Footage Intake")
@@ -81,9 +85,10 @@ def generator_identity(dependencies: dict) -> dict:
         "max_correlation_frames": MAX_FRAMES,
         "dependencies": {k: v for k, v in dependencies.items() if k != "ffmpeg_executable"},
         "scripts_sha256": {
-            name: hashlib.sha256(Path(__file__).with_name(name).read_bytes()).hexdigest()
+            name: sha256(Path(__file__).with_name(name))
             for name in ("install_dependencies.py", "generate_offsets.py")
         },
+        "fingerprints_sha256": sha256(ROOT / "studio/fingerprints.py"),
     }
 
 

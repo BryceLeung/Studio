@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 from pathlib import Path
 from typing import Any
 
@@ -32,6 +31,7 @@ from PySide6.QtWidgets import (
 )
 
 from studio.actions import ActionLogError, invoke
+from studio.fingerprints import matches
 from . import actions as _registered_actions  # noqa: F401
 from .mapping import active_source, coverage, default_mapping_name, group_rows, is_discarded, linked_group, new_state, range_key, range_text, review_status, word_range
 from .shortcuts import KeyboardMappingsDialog, load_mappings, save_mappings
@@ -707,7 +707,7 @@ class LineWidget(QWidget):
             try:
                 same_source = (
                     path.relative_to(root.resolve()).as_posix() == reference["path"]
-                    and hashlib.sha256(path.read_bytes()).hexdigest() == reference["sha256"]
+                    and matches(path, reference["sha256"])
                 )
             except OSError as error:
                 QMessageBox.warning(self, "Line!", str(error))
