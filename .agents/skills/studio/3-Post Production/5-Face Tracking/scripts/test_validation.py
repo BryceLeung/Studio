@@ -67,6 +67,7 @@ class ValidationTests(unittest.TestCase):
         inputs = [track.fingerprint(shortlist, project)] if shortlist.exists() else []
         inputs.extend(json.loads(item) for item in references)
         dependencies = [Path(track.__file__), Path(track.__file__).parents[1] / "SKILL.md",
+                        Path(track.__file__).parents[1] / "requirements.txt",
                         track.FIND_SCRIPT, track.ROOT / "studio/tools/line/mapping.py",
                         track.ROOT / "scripts/append-log.py", track.ROOT / "studio/fingerprints.py"]
         identity = {"schema": "studio.face-path", "schema_version": 1, "sample_fps": track.SAMPLE_FPS,

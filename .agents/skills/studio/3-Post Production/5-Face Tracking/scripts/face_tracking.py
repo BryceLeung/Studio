@@ -12,8 +12,27 @@ import math
 import os
 from pathlib import Path
 import re
+import subprocess
+import sys
 import tempfile
 from urllib.request import urlopen
+
+ENVIRONMENT = Path(__file__).resolve().parents[1] / ".venv-tools"
+
+
+def use_stage_environment():
+    """Bootstrap before importing stage dependencies; never use another runtime."""
+    if Path(sys.prefix).resolve() == ENVIRONMENT.resolve():
+        return
+    python = ENVIRONMENT / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+    if not python.is_file():
+        raise SystemExit(f"Face Tracking environment missing: {ENVIRONMENT}. "
+                         "Follow this stage's SKILL.md setup instructions.")
+    raise SystemExit(subprocess.run([str(python), str(Path(__file__).resolve()), *sys.argv[1:]]).returncode)
+
+
+if __name__ == "__main__":
+    use_stage_environment()
 
 ROOT = next(p for p in Path(__file__).resolve().parents if (p / "studio/tools/line/mapping.py").is_file())
 FIND_SCRIPT = ROOT / ".agents/skills/studio/3-Post Production/3-Find Takes/scripts/find_takes.py"
@@ -255,8 +274,7 @@ def required_ranges(project, extracts):
 
 
 def model_path():
-    cache = Path(os.environ.get("LOCALAPPDATA") or os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache")
-    target = cache / "studio" / "face_detection_yunet_2023mar.onnx"
+    target = ENVIRONMENT / "model-cache" / "face_detection_yunet_2023mar.onnx"
     if target.exists() and find.fingerprints.matches(target, MODEL_SHA256):
         return target
     if target.exists():
@@ -332,7 +350,7 @@ def analyze_video(media, spans, model):
     try:
         import cv2
     except ImportError as error:
-        raise RuntimeError("Install opencv-python-headless>=4.8,<5 to run 3.5 Face Tracking.") from error
+        raise RuntimeError("Install this stage's requirements.txt into its .venv-tools environment.") from error
     capture = cv2.VideoCapture(str(media))
     if not capture.isOpened():
         raise ValueError(f"Cannot decode camera file: {media}")
@@ -400,8 +418,9 @@ def run(project, *, analyzer=analyze_video, get_model=model_path, regenerate=Fal
         ranges, references = required_ranges(project, extracts)
         inputs = [fingerprint(shortlist, project)] if shortlist.is_file() else []
         inputs.extend(json.loads(item) for item in references)
-        dependencies = [Path(__file__), Path(__file__).parents[1] / "SKILL.md", FIND_SCRIPT,
-                         ROOT / "studio/tools/line/mapping.py", ROOT / "scripts/append-log.py",
+        dependencies = [Path(__file__), Path(__file__).parents[1] / "SKILL.md",
+                         Path(__file__).parents[1] / "requirements.txt",
+                         FIND_SCRIPT, ROOT / "studio/tools/line/mapping.py", ROOT / "scripts/append-log.py",
                          ROOT / "studio/fingerprints.py"]
         identity = {"schema": "studio.face-path", "schema_version": 1, "sample_fps": SAMPLE_FPS,
                     "padding_ms": PADDING_MS, "model_sha256": MODEL_SHA256,

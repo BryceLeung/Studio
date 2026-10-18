@@ -5,6 +5,7 @@
   "completion": {"stage_owned": true},
   "workflow_dependencies": [
     ".agents/skills/studio/3-Post Production/5-Face Tracking/scripts/face_tracking.py",
+    ".agents/skills/studio/3-Post Production/5-Face Tracking/requirements.txt",
     ".agents/skills/studio/3-Post Production/3-Find Takes/scripts/find_takes.py",
     "scripts/append-log.py",
     "studio/tools/line/mapping.py",

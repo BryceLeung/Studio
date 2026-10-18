@@ -1,4 +1,5 @@
 """Check extract range selection, sync conversion, face continuity, and no-op completion."""
+from io import BytesIO
 import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -9,6 +10,68 @@ import face_tracking as track
 
 
 class FaceTrackingTests(unittest.TestCase):
+    def test_runtime_uses_only_stage_environment(self):
+        self.assertEqual(track.ENVIRONMENT, Path(track.__file__).resolve().parents[1] / ".venv-tools")
+        with patch.object(track.sys, "prefix", str(track.ENVIRONMENT)), \
+                patch.object(track.subprocess, "run") as launch:
+            track.use_stage_environment()
+            launch.assert_not_called()
+        with TemporaryDirectory() as directory:
+            environment = Path(directory) / ".venv-tools"
+            python = environment / ("Scripts/python.exe" if track.os.name == "nt" else "bin/python")
+            with patch.object(track, "ENVIRONMENT", environment), \
+                    patch.object(track.subprocess, "run") as launch:
+                with self.assertRaisesRegex(SystemExit, "environment missing"):
+                    track.use_stage_environment()
+                launch.assert_not_called()
+                python.parent.mkdir(parents=True)
+                python.touch()
+                launch.return_value.returncode = 7
+                with patch.object(track.sys, "argv", ["face_tracking.py", "--project-root", "project"]):
+                    with self.assertRaises(SystemExit) as result:
+                        track.use_stage_environment()
+                self.assertEqual(result.exception.code, 7)
+                launch.assert_called_once_with([str(python), str(Path(track.__file__).resolve()),
+                                               "--project-root", "project"])
+
+    def test_model_download_and_reuse_ignore_external_cache_settings(self):
+        with TemporaryDirectory() as directory:
+            environment = Path(directory) / ".venv-tools"
+            content = b"verified model"
+            target = environment / "model-cache/face_detection_yunet_2023mar.onnx"
+            with patch.object(track, "ENVIRONMENT", environment), \
+                    patch.object(track, "MODEL_SHA256", track.find.fingerprints.digest_bytes(content)), \
+                    patch.dict(track.os.environ, {key: str(Path(directory) / "external") for key in
+                               ("LOCALAPPDATA", "XDG_CACHE_HOME", "HF_HOME", "TMPDIR")}), \
+                    patch.object(track, "urlopen", return_value=BytesIO(content)) as download:
+                self.assertEqual(track.model_path(), target)
+                self.assertEqual(target.read_bytes(), content)
+                self.assertEqual(track.model_path(), target)
+                download.assert_called_once_with(track.MODEL_URL, timeout=60)
+                self.assertEqual(list(target.parent.iterdir()), [target])
+                self.assertFalse((Path(directory) / "external").exists())
+
+    def test_invalid_cached_model_is_preserved_without_download(self):
+        with TemporaryDirectory() as directory:
+            environment = Path(directory) / ".venv-tools"
+            target = environment / "model-cache/face_detection_yunet_2023mar.onnx"
+            target.parent.mkdir(parents=True)
+            target.write_bytes(b"invalid model")
+            with patch.object(track, "ENVIRONMENT", environment), patch.object(track, "urlopen") as download:
+                with self.assertRaisesRegex(ValueError, "wrong SHA-256"):
+                    track.model_path()
+                download.assert_not_called()
+                self.assertEqual(target.read_bytes(), b"invalid model")
+
+    def test_invalid_download_is_removed_from_local_cache(self):
+        with TemporaryDirectory() as directory:
+            environment = Path(directory) / ".venv-tools"
+            with patch.object(track, "ENVIRONMENT", environment), \
+                    patch.object(track, "urlopen", return_value=BytesIO(b"invalid model")):
+                with self.assertRaisesRegex(ValueError, "failed SHA-256"):
+                    track.model_path()
+            self.assertEqual(list((environment / "model-cache").iterdir()), [])
+
     def test_legacy_windows_manifest_paths_are_verified_locally(self):
         with TemporaryDirectory() as directory:
             project = Path(directory).resolve()

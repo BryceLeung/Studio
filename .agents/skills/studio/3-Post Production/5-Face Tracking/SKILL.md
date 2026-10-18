@@ -25,18 +25,37 @@ extracts has a validated no-op output; it needs no face model.
 
 ## Setup and run
 
-Use a Python environment with Studio's existing RapidFuzz/num2words packages
-and `opencv-python-headless>=4.8,<5` (on both macOS and Windows). The first
-run downloads OpenCV Zoo's MIT-licensed YuNet 2023mar ONNX model from a pinned
-revision into the local user cache after SHA-256 verification; subsequent runs
-use the cached model offline. Video is never sent to a remote service. A bad
-model, unavailable decoder, unsupported source, or failed timestamp validation
-stops the stage instead of producing misleading paths. For example:
+Use only `.venv-tools/` inside this substage's repository directory:
+`.agents/skills/studio/3-Post Production/5-Face Tracking/.venv-tools/`.
+Create it with Python 3.10+ (3.13 recommended) and install this stage's
+`requirements.txt`. Do not use the dashboard, Sync, home-directory, or tmp
+environments. The command automatically relaunches with the stage-local Python
+before importing stage dependencies, or stops with setup instructions if absent.
+On macOS/Linux, setup and execution are:
 
 ```text
-python -m pip install "opencv-python-headless>=4.8,<5"
-python "<workflow-root>/.agents/skills/studio/3-Post Production/5-Face Tracking/scripts/face_tracking.py" --project-root "<real-project-root>"
+python3.13 -m venv "<stage-repo-directory>/.venv-tools"
+"<stage-repo-directory>/.venv-tools/bin/python" -m pip install -r "<stage-repo-directory>/requirements.txt"
+"<stage-repo-directory>/.venv-tools/bin/python" "<stage-repo-directory>/scripts/face_tracking.py" --project-root "<real-project-root>"
 ```
+
+On Windows, use an available Python 3.10+ interpreter for creation and
+`.venv-tools/Scripts/python.exe` instead of `.venv-tools/bin/python`.
+`<stage-repo-directory>` is the repository directory containing this skill,
+not a OneDrive project folder. Reuse the existing environment on subsequent
+runs; do not recreate it or reinstall packages unless dependencies need repair.
+Both the environment and its model cache are Git-ignored.
+
+The first run downloads OpenCV Zoo's MIT-licensed YuNet 2023mar ONNX model from a pinned
+revision into `.venv-tools/model-cache/face_detection_yunet_2023mar.onnx`
+after SHA-256 verification; subsequent runs use the cached model offline.
+Video is never sent to a remote service. A bad
+model, unavailable decoder, unsupported source, or failed timestamp validation
+stops the stage instead of producing misleading paths. There are no alternative
+model-cache locations: `LOCALAPPDATA`, `XDG_CACHE_HOME`, `HF_HOME`, and `TMPDIR`
+do not select the model path. Partial downloads are created in that same local
+model-cache directory. Do not search or migrate old external caches automatically.
+Deleting `.venv-tools/` also deletes its cached model.
 
 The script samples decoded camera frames at about 4 Hz, runs face detection
 on a width-at-most-640 preview, and follows the solo presenter's face by
@@ -83,5 +102,5 @@ never moved. Failure alone invalidates markers, not work files.
 Tests:
 
 ```text
-python -m unittest discover -s ".agents/skills/studio/3-Post Production/5-Face Tracking/scripts" -p "test_*.py" -v
+"<stage-repo-directory>/.venv-tools/bin/python" -m unittest discover -s "<stage-repo-directory>/scripts" -p "test_*.py" -v
 ```
