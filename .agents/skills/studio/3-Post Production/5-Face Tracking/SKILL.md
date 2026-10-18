@@ -75,7 +75,7 @@ Normal project execution validates prerequisites through the shared JSON graph a
 Write one `<Script>__C<nn>__camA__FacePath.v1.json` and corresponding camB JSON
 for each camera source used by an approved extract, in the project's OneDrive
 `3-Post Production/5-Face Tracking/`. Every JSON records source-second ranges
-as millisecond pairs, camera role, media identity (size and mtime), declared
+as millisecond pairs, camera role, media identity (size and whole integer `mtime_s` seconds), declared
 input/dependency fingerprints, algorithm sampling/padding and verified model
 SHA-256, dimensions, face samples, and warnings. `Face Paths.json` inventories
 the exact path files (also written for the no-extract case). The append-only
@@ -87,11 +87,16 @@ Warnings from zero or uncertain face detections do not prevent computational
 completion; they require review when constructing the portrait edit. A missing
 model, invalid input, or unreadable required frames prevents completion.
 The script reuses unchanged existing path files, refuses changed files instead
-of overwriting them, checks exact input/source/dependency fingerprints, and
+of overwriting them, checks input/source/dependency fingerprints, and
 archives dependent `DONE` markers through the shared graph on changed completion or failure. The
 no-extract condition writes an index and `DONE` without a detector download.
 Validate this stage's `DONE` before starting 3.6 First Cut. Face framing is
 independent of 3.4 take selection.
+
+Media identity comparisons use byte size and whole modification seconds; saved
+legacy `mtime_ns` values are normalized with integer division by 1,000,000,000.
+Only media identities in saved headers/indexes are normalized. Generator and
+other dependency SHA-256 checks remain exact and are never bypassed.
 
 Use `--regenerate` only after deliberately choosing replacement of stale saved
 paths. Required analysis is prepared before archiving the selected old path/index

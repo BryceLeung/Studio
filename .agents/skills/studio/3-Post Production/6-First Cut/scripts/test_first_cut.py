@@ -7,6 +7,7 @@ import unittest
 from unittest.mock import patch
 import xml.etree.ElementTree as ET
 import json
+import os
 
 import first_cut as cut
 
@@ -42,6 +43,28 @@ def fixture(root):
 
 
 class FirstCutTests(unittest.TestCase):
+    def test_media_writer_and_legacy_done_validate_seconds_for_both_size_keys(self):
+        with TemporaryDirectory() as directory:
+            project = Path(directory).resolve()
+            media = project / "camera.mov"
+            media.write_bytes(b"camera")
+            os.utime(media, ns=(1_700_000_000_100_000_000,) * 2)
+            current = cut.media_fingerprint(media, project)
+            self.assertEqual(current["mtime_s"], 1_700_000_000)
+            self.assertNotIn("mtime_ns", current)
+            folder = project / "legacy"
+            folder.mkdir()
+            for size_key in ("bytes", "size_bytes"):
+                for key, timestamp in (("mtime_s", 1_700_000_000), ("mtime_ns", 1_700_000_000_900_000_000)):
+                    with self.subTest(size_key=size_key, key=key):
+                        entry = {"path": "camera.mov", size_key: media.stat().st_size, key: timestamp}
+                        (folder / "DONE").write_text(json.dumps({"outputs": [entry]}))
+                        cut.validate_done(project, Path("legacy"))
+                        entry[key] += 1 if key == "mtime_s" else 1_000_000_000
+                        (folder / "DONE").write_text(json.dumps({"outputs": [entry]}))
+                        with self.assertRaisesRegex(ValueError, "Changed media timestamp"):
+                            cut.validate_done(project, Path("legacy"))
+
     def test_stage_path_and_failure_invalidation_use_3_6(self):
         self.assertEqual(cut.STAGE, Path("3-Post Production/6-First Cut"))
         with TemporaryDirectory() as directory:

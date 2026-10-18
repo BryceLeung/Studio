@@ -144,6 +144,24 @@ class ValidationTests(unittest.TestCase):
             index.write_text(json.dumps(result))
             self.check_read_only(checker, ValueError)
 
+    def test_legacy_media_headers_and_index_are_readable_but_dependencies_stay_strict(self):
+        with TemporaryDirectory() as directory:
+            checker, paths, index = self.fixture(Path(directory).resolve())
+            for path in [*paths, index]:
+                document = json.loads(path.read_text())
+                entries = [*document["inputs"], *([document["media"]] if "media" in document else [])]
+                for entry in entries:
+                    if "mtime_s" in entry:
+                        entry["mtime_ns"] = entry.pop("mtime_s") * 1_000_000_000 + 900_000_000
+                if path == index:
+                    document["paths"] = [track.fingerprint(output, checker.project) for output in paths]
+                path.write_text(json.dumps(document))
+            self.check_read_only(checker)
+            document = json.loads(index.read_text())
+            document["dependencies"][0]["sha256"] = "0" * 64
+            index.write_text(json.dumps(document))
+            self.check_read_only(checker, ValueError)
+
     def test_new_latest_mapping_and_changed_sync_are_stale(self):
         with TemporaryDirectory() as directory:
             checker, _, _ = self.fixture(Path(directory).resolve())

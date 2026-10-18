@@ -8,6 +8,21 @@ from scripts import stage_completion as completion
 
 
 class StageCompletionTests(unittest.TestCase):
+    def test_same_manifest_normalizes_legacy_media_timestamps(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "source.wav"
+            source.write_bytes(b"audio")
+            fresh = completion.fingerprint(source, root, "project")
+            old = {"scope": "project", "path": "source.wav", "bytes": source.stat().st_size,
+                   "mtime_ns": source.stat().st_mtime_ns}
+            previous = {"inputs": [old]}
+            current = {"inputs": [fresh]}
+            self.assertTrue(completion.same_manifest(previous, current, root, root, sections=("inputs",)))
+            self.assertEqual(previous["inputs"], [old])
+            old["unexpected"] = True
+            self.assertFalse(completion.same_manifest(previous, current, root, root, sections=("inputs",)))
+
     def test_generated_ownership_is_explicit_and_excludes_intake_originals(self):
         from scripts.validation import load_stages
         definitions = load_stages()

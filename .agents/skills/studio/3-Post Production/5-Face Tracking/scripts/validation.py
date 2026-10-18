@@ -77,7 +77,8 @@ class Validation(StageValidation):
         expected = {"schema": "studio.face-path-index", "schema_version": 1, "inputs": inputs,
                     "dependencies": identity["dependencies"], "paths": path_outputs,
                     "no_extracts": not extracts}
-        if json.loads(index.read_text(encoding="utf-8-sig")) != expected:
+        if (track.normalized_media_header(json.loads(index.read_text(encoding="utf-8-sig")))
+                != track.normalized_media_header(expected)):
             raise ValueError("Face path index differs from required camera paths.")
         self.require_inventory("inputs", [self.confined(self.project / item["path"]) for item in inputs], exact=True)
         self.require_inventory("outputs", [*outputs, index], exact=True)

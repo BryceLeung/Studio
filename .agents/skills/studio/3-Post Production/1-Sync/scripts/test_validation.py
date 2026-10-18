@@ -2,6 +2,7 @@
 import importlib.util
 from concurrent.futures import ThreadPoolExecutor
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -83,6 +84,24 @@ class SyncValidationTests(unittest.TestCase):
 
     def test_matching_json_success_is_read_only(self):
         self.check_unchanged()
+
+    def test_wav_fractional_timestamp_changes_accept_seconds_and_legacy_records(self):
+        wav = self.footage / "A__C01__lav.wav"
+        second = wav.stat().st_mtime_ns // 1_000_000_000
+        self.assertEqual(self.document["clips"]["lav"]["mtime_s"], second)
+        for legacy in (False, True):
+            if legacy:
+                clip = self.document["clips"]["lav"]
+                clip["mtime_ns"] = clip.pop("mtime_s") * 1_000_000_000 + 123_456_700
+            os.utime(wav, ns=(second * 1_000_000_000, second * 1_000_000_000 + 987_654_300))
+            self.write_document()
+            self.validator.manifest["outputs"] = [completion.fingerprint(self.output, self.project, "project")]
+            self.check_unchanged()
+            status, measurement = self.run_generator()
+            self.assertEqual(status, 0)
+            measurement.assert_not_called()
+        os.utime(wav, ns=((second + 1) * 1_000_000_000,) * 2)
+        self.check_unchanged(ValueError)
 
     def test_selected_shot_requires_prerequisites_but_never_records_completion(self):
         self.output.unlink()

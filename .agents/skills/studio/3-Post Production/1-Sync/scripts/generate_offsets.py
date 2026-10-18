@@ -18,7 +18,7 @@ from install_dependencies import ENVIRONMENT, dependency_info, environment_pytho
 ROOT = next(p for p in Path(__file__).resolve().parents if (p / "studio/fingerprints.py").is_file())
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-from studio.fingerprints import sha256
+from studio.fingerprints import mtime_seconds, sha256
 from scripts.validation import require_prerequisites
 from scripts.stage_invalidation import invalidate, prepare_regeneration
 from scripts.stage_completion import mutation_guard
@@ -76,7 +76,7 @@ def file_identity(path: Path, project: Path) -> dict:
     return {
         "path": path.relative_to(project).as_posix(),
         "size_bytes": stat.st_size,
-        "mtime_ns": stat.st_mtime_ns,
+        "mtime_s": stat.st_mtime_ns // 1_000_000_000,
     }
 
 
@@ -111,7 +111,9 @@ def reusable(output: Path, expected: dict) -> bool:
             return False
         for role, identity in expected["clips"].items():
             clip = clips[role]
-            if not isinstance(clip, dict) or any(clip.get(k) != v for k, v in identity.items()):
+            if (not isinstance(clip, dict)
+                    or any(clip.get(k) != v for k, v in identity.items() if k not in ("mtime_s", "mtime_ns"))
+                    or mtime_seconds(clip) != mtime_seconds(identity)):
                 return False
             if type(clip.get("offset_ms")) is not int:
                 return False

@@ -61,8 +61,8 @@ class Validation(StageValidation):
                 if not isinstance(entry.get("sha256"), str) or not re.fullmatch(r"[0-9a-fA-F]{64}", entry["sha256"]):
                     raise NotImplementedError("Historical render hash needs review")
             elif method in ("media-stat", "legacy-media-stat"):
-                values = ([entry.get("size_bytes"), entry.get("mtime_s")] if method == "media-stat"
-                          else [entry.get("size_bytes", entry.get("bytes")), entry.get("mtime_ns")])
+                timestamp = next((entry[key] for key in ("mtime_s", "mtime_ns") if key in entry), None)
+                values = [entry.get("size_bytes", entry.get("bytes")), timestamp]
                 if any(type(value) is not int or value < 0 for value in values):
                     raise NotImplementedError("Historical render identity needs review")
             else:

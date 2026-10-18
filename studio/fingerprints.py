@@ -70,6 +70,15 @@ def identity(path):
     return {"method": "sha256", "sha256": sha256(path)}
 
 
+def mtime_seconds(saved):
+    """Read whole-second media timestamps, including persisted nanosecond records."""
+    key = "mtime_s" if "mtime_s" in saved else "mtime_ns"
+    value = saved.get(key)
+    if type(value) is not int:
+        raise ValueError("Media fingerprint requires an integer modification timestamp")
+    return value if key == "mtime_s" else value // 1_000_000_000
+
+
 def matches_identity(path, saved):
     """Honor a saved method, including legacy entries with only sha256."""
     method = saved.get("method", "sha256" if "sha256" in saved else "legacy-media-stat")
@@ -77,14 +86,10 @@ def matches_identity(path, saved):
         raise ValueError(f"Stat-only fingerprint is not allowed for non-media: {path}")
     if method == "sha256":
         return matches(path, saved["sha256"])
-    if method == "media-stat":
-        stat = Path(path).stat()
-        return (stat.st_size == saved["size_bytes"]
-                and stat.st_mtime_ns // 1_000_000_000 == saved["mtime_s"])
-    if method == "legacy-media-stat":
+    if method in ("media-stat", "legacy-media-stat"):
         stat = Path(path).stat()
         size = saved.get("size_bytes", saved.get("bytes"))
-        if size is None or "mtime_ns" not in saved:
-            raise ValueError("Incomplete legacy media fingerprint")
-        return stat.st_size == size and stat.st_mtime_ns == saved["mtime_ns"]
+        if type(size) is not int:
+            raise ValueError("Media fingerprint requires an integer file size")
+        return stat.st_size == size and stat.st_mtime_ns // 1_000_000_000 == mtime_seconds(saved)
     raise ValueError(f"Unknown fingerprint method: {method}")

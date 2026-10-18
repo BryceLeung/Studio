@@ -176,7 +176,9 @@ def same_manifest(previous, current, project, workflow, *, sections=("dependenci
             return False
         if any(not matches_entry(item, project, workflow) for item in entries):
             return False
-        normalized[section] = [dict(item, **{key: value for key, value in fresh.items()
+        normalized[section] = [dict({key: value for key, value in item.items()
+                                    if key not in ("bytes", "mtime_ns") or fresh.get("method") != "media-stat"},
+                                   **{key: value for key, value in fresh.items()
                                             if key in ("method", "sha256", "size_bytes", "mtime_s")})
                                for item, fresh in zip(entries, current[section])]
     return normalized == current

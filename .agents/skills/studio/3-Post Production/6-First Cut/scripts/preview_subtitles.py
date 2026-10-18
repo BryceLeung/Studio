@@ -36,11 +36,7 @@ def preview(project, shortlist, scores_paths, number, output):
         probes[recording] = {}
         for role, clip in sync["clips"].items():
             media = (project / clip["path"]).resolve(strict=True)
-            fingerprint = cut.media_fingerprint(media, project)
-            # Windows sync manifests have whole-second mtimes; OneDrive on macOS
-            # may report a different fractional second for the same file.
-            if (fingerprint["bytes"] != clip["size_bytes"] or
-                    fingerprint["mtime_ns"] // 1_000_000_000 != clip["mtime_ns"] // 1_000_000_000):
+            if not cut.matches_identity(media, clip):
                 raise ValueError(f"Media changed since sync: {media}")
             probes[recording][role] = cut.probe(media)
     included = {cut.find.mapping.range_key(g["script"]) for g in mapped["groups"] if not g["discarded"]}
@@ -53,7 +49,7 @@ def preview(project, shortlist, scores_paths, number, output):
     cut.find.append_log(output.parent, "First Cut subtitle preview", [
         f"Extract {number}; independent preview, not a completed 3.6 run or a replacement for existing edits.",
         f"Output: {output.relative_to(project)}; {report['takes']} alternatives; {report['subtitle_titles']} title states.",
-        "For this cross-platform preview, media fingerprints matched byte size and whole-second mtime; original sync timestamps retain Windows precision.",
+        "Media fingerprints matched byte size and whole-second mtime, including normalized legacy sync timestamps.",
         "Import into Final Cut and review word sync, title rendering, and audition switching; no DONE written."])
     return report
 

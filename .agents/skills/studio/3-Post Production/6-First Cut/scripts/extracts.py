@@ -173,8 +173,8 @@ def generate(project, shortlist, score_paths, padding_ms, omit_discarded, regene
                     for role, clip in sync["clips"].items():
                         path = (project / clip["path"]).resolve(strict=True)
                         actual = cut.media_fingerprint(path, project)
-                        if (not path.is_relative_to(project / cut.INTAKE) or actual["bytes"] != clip["size_bytes"]
-                                or actual["mtime_ns"] != clip["mtime_ns"] or type(clip["offset_ms"]) is not int):
+                        if (not path.is_relative_to(project / cut.INTAKE) or not cut.matches_identity(path, clip)
+                                or type(clip["offset_ms"]) is not int):
                             raise ValueError(f"Changed/invalid sync source: {path}")
                         probes[number][role] = cut.probe(path)
                         inputs.append(actual)

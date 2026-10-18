@@ -224,7 +224,7 @@ class CommonValidationTests(unittest.TestCase):
             source.write_text('{"changed": true}')
             self.assertEqual(CustomValidation(root, root, definition).validate()[0], "stale")
 
-    def test_legacy_media_stats_remain_readable_without_precision_conversion(self):
+    def test_legacy_media_stats_are_compared_in_seconds(self):
         with TemporaryDirectory() as directory:
             root = Path(directory).resolve()
             media = root / "source.wav"
@@ -234,7 +234,10 @@ class CommonValidationTests(unittest.TestCase):
                      "mtime_ns": stat.st_mtime_ns}
             self.assertEqual(validation.recorded_fingerprints({"inputs": {"media": entry}}), [entry])
             self.assertTrue(stage_completion.matches_entry(entry, root, root))
-            self.assertFalse(stage_completion.matches_entry(dict(entry, mtime_ns=stat.st_mtime_ns + 1), root, root))
+            self.assertTrue(stage_completion.matches_entry(
+                dict(entry, mtime_ns=stat.st_mtime_ns // 1_000_000_000 * 1_000_000_000), root, root))
+            self.assertFalse(stage_completion.matches_entry(
+                dict(entry, mtime_ns=stat.st_mtime_ns + 1_000_000_000), root, root))
 
     def test_stage_override_executes_after_common_checks(self):
         with TemporaryDirectory() as directory:

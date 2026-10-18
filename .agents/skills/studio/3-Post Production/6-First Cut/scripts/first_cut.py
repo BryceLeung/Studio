@@ -24,6 +24,7 @@ scoring = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(scoring)
 find = scoring.find
 from scripts.validation import require_prerequisites
+from studio.fingerprints import matches_identity, mtime_seconds
 STAGE = Path("3-Post Production/6-First Cut")
 INTAKE = Path("2-Production/1-Footage Intake")
 SYNC = Path("3-Post Production/1-Sync")
@@ -59,7 +60,7 @@ def snap(value, frame):
 def media_fingerprint(path, root):
     stat = path.stat()
     return {"scope": "project", "path": path.relative_to(root).as_posix(),
-            "bytes": stat.st_size, "mtime_ns": stat.st_mtime_ns}
+            "bytes": stat.st_size, "mtime_s": stat.st_mtime_ns // 1_000_000_000}
 
 
 def validate_done(project, folder):
@@ -71,7 +72,7 @@ def validate_done(project, folder):
     def entries(value):
         # Older stages used dictionaries grouping fingerprints by input kind.
         if isinstance(value, dict):
-            if "path" in value and any(k in value for k in ("sha256", "bytes", "size_bytes", "mtime_ns")):
+            if "path" in value and any(k in value for k in ("sha256", "bytes", "size_bytes", "mtime_s", "mtime_ns", "modified_utc")):
                 yield value
             else:
                 for child in value.values():
@@ -94,11 +95,12 @@ def validate_done(project, folder):
             size = entry.get("bytes", entry.get("size_bytes"))
             if size is not None and stat.st_size != size:
                 raise ValueError(f"Changed media size: {path}")
-            if "mtime_ns" in entry and stat.st_mtime_ns != entry["mtime_ns"]:
+            if (any(key in entry for key in ("mtime_s", "mtime_ns"))
+                    and stat.st_mtime_ns // 1_000_000_000 != mtime_seconds(entry)):
                 raise ValueError(f"Changed media timestamp: {path}")
             if "modified_utc" in entry:
                 expected = datetime.fromisoformat(entry["modified_utc"].replace("Z", "+00:00")).timestamp()
-                if abs(stat.st_mtime - expected) > 0.000001:
+                if stat.st_mtime_ns // 1_000_000_000 != math.floor(expected):
                     raise ValueError(f"Changed media timestamp: {path}")
     return manifest
 
@@ -415,7 +417,7 @@ def run(project, score_paths, padding_ms=50, ffprobe="ffprobe", regenerate=False
                     if type(clip["offset_ms"]) is not int:
                         raise ValueError("Sync offset must be integer milliseconds.")
                     actual = media_fingerprint(path, project)
-                    if actual["bytes"] != clip["size_bytes"] or actual["mtime_ns"] != clip["mtime_ns"]:
+                    if not matches_identity(path, clip):
                         raise ValueError(f"Sync source changed: {path}")
                     probes[number][role] = probe(path, ffprobe)
                     inputs.append(actual)

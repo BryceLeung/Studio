@@ -2,16 +2,54 @@
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from fractions import Fraction
+import json
 import sys
 import unittest
 from unittest.mock import patch
 
 import extracts
 import first_cut as cut
+import preview_subtitles
 from test_first_cut import fixture
 
 
 class ExtractTests(unittest.TestCase):
+    def test_preview_accepts_seconds_and_legacy_sync_but_rejects_changed_seconds(self):
+        for timestamp_key in ("mtime_s", "mtime_ns"):
+            with self.subTest(timestamp_key=timestamp_key), TemporaryDirectory() as directory:
+                project = Path(directory).resolve()
+                document, scores, syncs, probes = fixture(project)
+                scores["source_mapping"] = {"path": "A__Takes.v1.json"}
+                sync = syncs[1]
+                sync.update(reference_role="camA",
+                            offset_convention="positive_means_file_starts_later_than_camA")
+                for clip in sync["clips"].values():
+                    stat = (project / clip["path"]).stat()
+                    clip["size_bytes"] = stat.st_size
+                    seconds = stat.st_mtime_ns // 1_000_000_000
+                    clip[timestamp_key] = seconds if timestamp_key == "mtime_s" else seconds * 1_000_000_000 + 900_000_000
+                score = project / "A__Scores.v1.json"
+                score.write_text(json.dumps(scores))
+                sync_path = project / cut.SYNC / "A__C01.json"
+                sync_path.parent.mkdir(parents=True)
+                sync_path.write_text(json.dumps(sync))
+                output = project / "3-Post Production/0-Tmp/Preview.FCPXML"
+                output.parent.mkdir(parents=True)
+                mapped = {"number": 1, "source": "A.docx", "title": "Example", "issues": [],
+                          "groups": [{"script": {"word_start": 0, "word_end": 0}, "discarded": False}]}
+                with patch.object(extracts, "map_all", return_value={"extracts": [mapped]}), \
+                        patch.object(cut.scoring, "load_mapping", return_value=document), \
+                        patch.object(cut, "probe", return_value=probes[1]["camA"]), \
+                        patch.object(cut, "build_xml", return_value=(b"preview", {"takes": 1, "subtitle_titles": 1})), \
+                        patch.object(cut.find, "append_log"):
+                    preview_subtitles.preview(project, project / "shortlist.md", [score], 1, output)
+                    self.assertEqual(output.read_bytes(), b"preview")
+                    sync["clips"]["camA"][timestamp_key] += 1 if timestamp_key == "mtime_s" else 1_000_000_000
+                    sync_path.write_text(json.dumps(sync))
+                    with self.assertRaisesRegex(ValueError, "Media changed since sync"):
+                        preview_subtitles.preview(project, project / "shortlist.md", [score], 1,
+                                                  output.with_name("Changed.FCPXML"))
+
     def test_map_only_cli_does_not_require_stage_prerequisites(self):
         with TemporaryDirectory() as directory:
             project = Path(directory).resolve()

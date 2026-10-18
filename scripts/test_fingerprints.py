@@ -84,6 +84,28 @@ class FingerprintTests(unittest.TestCase):
                 self.assertEqual(saved["method"], "media-stat")
                 self.assertTrue(fp.matches_identity(path, saved))
 
+    def test_media_precision_changes_match_but_seconds_and_size_changes_do_not(self):
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "source.wav"
+            path.write_bytes(b"audio")
+            stamp = 1_700_000_000_123_456_700
+            os.utime(path, ns=(stamp, stamp))
+            canonical = fp.identity(path)
+            for size_key in ("bytes", "size_bytes"):
+                legacy = {size_key: 5, "mtime_ns": stamp}
+                os.utime(path, ns=(stamp, 1_700_000_000_987_654_300))
+                self.assertTrue(fp.matches_identity(path, legacy))
+                self.assertTrue(fp.matches_identity(path, canonical))
+                os.utime(path, ns=(stamp, stamp + 1_000_000_000))
+                self.assertFalse(fp.matches_identity(path, legacy))
+                self.assertFalse(fp.matches_identity(path, canonical))
+            os.utime(path, ns=(stamp, stamp))
+            self.assertFalse(fp.matches_identity(path, dict(canonical, size_bytes=6)))
+            for invalid in ({"bytes": 5}, {"bytes": 5, "mtime_s": True},
+                            {"bytes": 5, "mtime_ns": "1700000000000000000"}):
+                with self.assertRaises(ValueError):
+                    fp.matches_identity(path, invalid)
+
 
 if __name__ == "__main__":
     unittest.main()

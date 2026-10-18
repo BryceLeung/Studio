@@ -41,6 +41,7 @@ find = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(find)
 from scripts.stage_completion import record_done  # noqa: E402
 from scripts.validation import require_prerequisites  # noqa: E402
+from studio.fingerprints import matches_identity, mtime_seconds  # noqa: E402
 
 STAGE = Path("3-Post Production/5-Face Tracking")
 SHORTLIST = Path("1-Pre Production/3-Extracts/APPROVED/Short-Form Excerpt Shortlist.md")
@@ -61,7 +62,7 @@ def fingerprint(path, project):
 def media_fingerprint(path, project):
     stat = path.stat()
     return {"scope": "project", "path": path.relative_to(project).as_posix(),
-            "bytes": stat.st_size, "mtime_ns": stat.st_mtime_ns}
+            "bytes": stat.st_size, "mtime_s": stat.st_mtime_ns // 1_000_000_000}
 
 
 def validate_done(project, folder):
@@ -102,11 +103,13 @@ def validate_done(project, folder):
             stat = path.stat()
             if "sha256" in entry and not find.fingerprints.matches(path, entry["sha256"]):
                 raise ValueError(f"Stale upstream fingerprint: {path}")
-            if stat.st_size != entry.get("bytes", entry.get("size_bytes", stat.st_size)) or stat.st_mtime_ns != entry.get("mtime_ns", stat.st_mtime_ns):
+            if (stat.st_size != entry.get("bytes", entry.get("size_bytes", stat.st_size))
+                    or (any(key in entry for key in ("mtime_s", "mtime_ns"))
+                        and stat.st_mtime_ns // 1_000_000_000 != mtime_seconds(entry))):
                 raise ValueError(f"Changed upstream input: {path}")
             if "modified_utc" in entry:
                 expected = datetime.fromisoformat(entry["modified_utc"].replace("Z", "+00:00")).timestamp()
-                if abs(stat.st_mtime - expected) > 0.000001:
+                if stat.st_mtime_ns // 1_000_000_000 != math.floor(expected):
                     raise ValueError(f"Changed upstream timestamp: {path}")
 
 
@@ -245,8 +248,7 @@ def required_ranges(project, extracts):
                     media = (project / clip["path"]).resolve(strict=True)
                     if not media.is_relative_to(project / INTAKE):
                         raise ValueError(f"Camera source outside intake: {media}")
-                    stat = media.stat()
-                    if stat.st_size != clip["size_bytes"] or stat.st_mtime_ns != clip["mtime_ns"]:
+                    if not matches_identity(media, clip):
                         raise ValueError(f"Camera source changed since sync: {media}")
                     if type(clip["offset_ms"]) is not int or type(sync["clips"]["lav"]["offset_ms"]) is not int:
                         raise ValueError(f"Noninteger sync offset: {sync_path}")
@@ -315,7 +317,27 @@ def follow(previous, detections):
     return chosen, "tracked"
 
 
+def normalized_media_header(document):
+    """Normalize only media stat entries, never generator dependency hashes."""
+    def normalize(entry):
+        if (isinstance(entry, dict) and "sha256" not in entry
+                and Path(entry.get("path", "")).suffix.lower() in find.fingerprints.MEDIA_SUFFIXES
+                and any(key in entry for key in ("mtime_s", "mtime_ns"))):
+            entry = dict(entry, bytes=entry.get("bytes", entry.get("size_bytes")),
+                         mtime_s=mtime_seconds(entry))
+            entry.pop("mtime_ns", None)
+            entry.pop("size_bytes", None)
+        return entry
+    result = dict(document)
+    if "media" in result:
+        result["media"] = normalize(result["media"])
+    if "inputs" in result:
+        result["inputs"] = [normalize(entry) for entry in result["inputs"]]
+    return result
+
+
 def validate_path(document, header):
+    document, header = normalized_media_header(document), normalized_media_header(header)
     if any(document.get(key) != value for key, value in header.items()):
         raise ValueError("Face path inputs, source, or algorithm changed.")
     frames = document.get("frames")
@@ -458,7 +480,9 @@ def run(project, *, analyzer=analyze_video, get_model=model_path, regenerate=Fal
                      "dependencies": identity["dependencies"], "paths": path_outputs,
                      "no_extracts": not extracts}
         index_bytes = (json.dumps(inventory, indent=2) + "\n").encode()
-        if not regenerate and index.exists() and find.sha256(index) != find.fingerprints.digest_bytes(index_bytes, text=True):
+        if (not regenerate and index.exists()
+                and normalized_media_header(json.loads(index.read_text(encoding="utf-8-sig")))
+                != normalized_media_header(inventory)):
             raise ValueError(f"Existing face path index differs; inspect before replacing: {index}")
         if regenerate:
             from scripts.stage_invalidation import prepare_regeneration

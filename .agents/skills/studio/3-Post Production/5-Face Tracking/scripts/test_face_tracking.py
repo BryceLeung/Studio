@@ -1,5 +1,6 @@
 """Check extract range selection, sync conversion, face continuity, and no-op completion."""
 from io import BytesIO
+from copy import deepcopy
 import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -10,6 +11,42 @@ import face_tracking as track
 
 
 class FaceTrackingTests(unittest.TestCase):
+    def test_media_writer_and_legacy_done_use_whole_seconds(self):
+        with TemporaryDirectory() as directory:
+            project = Path(directory).resolve()
+            media = project / "camera.mov"
+            media.write_bytes(b"camera")
+            track.os.utime(media, ns=(1_700_000_000_100_000_000,) * 2)
+            current = track.media_fingerprint(media, project)
+            self.assertEqual(current["mtime_s"], 1_700_000_000)
+            self.assertNotIn("mtime_ns", current)
+            folder = project / "legacy"
+            folder.mkdir()
+            for key, timestamp in (("mtime_s", 1_700_000_000), ("mtime_ns", 1_700_000_000_900_000_000)):
+                entry = {"path": "camera.mov", "bytes": media.stat().st_size, key: timestamp}
+                (folder / "DONE").write_text(json.dumps({"outputs": [entry]}))
+                track.validate_done(project, Path("legacy"))
+                entry[key] += 1 if key == "mtime_s" else 1_000_000_000
+                (folder / "DONE").write_text(json.dumps({"outputs": [entry]}))
+                with self.assertRaisesRegex(ValueError, "Changed upstream input"):
+                    track.validate_done(project, Path("legacy"))
+
+    def test_saved_media_header_normalizes_without_relaxing_dependencies(self):
+        media = {"scope": "project", "path": "camera.mov", "bytes": 6, "mtime_s": 1_700_000_000}
+        header = {"ranges_ms": [[1000, 2000]], "media": media, "inputs": [media],
+                  "dependencies": [{"path": "generator.py", "sha256": "a" * 64}]}
+        saved = deepcopy(header)
+        for entry in (saved["media"], *saved["inputs"]):
+            if "mtime_s" in entry:
+                entry["mtime_ns"] = entry.pop("mtime_s") * 1_000_000_000 + 900_000_000
+                entry["size_bytes"] = entry.pop("bytes")
+        saved.update(width=640, height=360, warnings=[], frames=[
+            {"time_ms": timestamp, "status": "centered", "face": None} for timestamp in (1000, 1900)])
+        track.validate_path(saved, header)
+        saved["dependencies"][0]["sha256"] = "b" * 64
+        with self.assertRaisesRegex(ValueError, "inputs, source, or algorithm changed"):
+            track.validate_path(saved, header)
+
     def test_runtime_uses_only_stage_environment(self):
         self.assertEqual(track.ENVIRONMENT, Path(track.__file__).resolve().parents[1] / ".venv-tools")
         with patch.object(track.sys, "prefix", str(track.ENVIRONMENT)), \
@@ -154,6 +191,23 @@ class FaceTrackingTests(unittest.TestCase):
             b = ranges[(intake / "A__C01__camB.mov", "camB")]
             self.assertEqual([[float(x), float(y)] for x, y in a], [[1.15, 1.75], [2.15, 2.75]])
             self.assertEqual([[float(x), float(y)] for x, y in b], [[1.25, 1.85], [2.25, 2.85]])
+            for timestamp_key in ("mtime_ns", "mtime_s"):
+                clip = dict(files["camA"])
+                whole_seconds = clip.pop("mtime_ns") // 1_000_000_000
+                clip[timestamp_key] = (whole_seconds if timestamp_key == "mtime_s"
+                                       else whole_seconds * 1_000_000_000 + 900_000_000)
+                sync_document = json.loads(sync.read_text())
+                sync_document["clips"]["camA"] = clip
+                sync.write_text(json.dumps(sync_document))
+                with patch.object(track.find.mapping, "takes_versions", return_value=[(1, mapping)]), \
+                        patch.object(track, "load_mapping", return_value=(doc, [script, transcript])):
+                    self.assertEqual(track.required_ranges(project, [(1, "A.docx", ["Hello."])])[0], ranges)
+                    clip[timestamp_key] += 1 if timestamp_key == "mtime_s" else 1_000_000_000
+                    sync.write_text(json.dumps(sync_document))
+                    with self.assertRaisesRegex(ValueError, "Camera source changed"):
+                        track.required_ranges(project, [(1, "A.docx", ["Hello."])])
+            sync_document["clips"]["camA"] = files["camA"]
+            sync.write_text(json.dumps(sync_document))
             (mapping.parent / "DONE").write_text(json.dumps({"completion_mode": "manual-override", "outputs": [
                 {"scope": "project", "path": mapping.relative_to(project).as_posix()}]}))
             with patch.object(track.find.mapping, "takes_versions", return_value=[(1, mapping)]), \

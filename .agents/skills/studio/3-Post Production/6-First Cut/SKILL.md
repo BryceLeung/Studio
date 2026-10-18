@@ -67,7 +67,9 @@ file creation times or attempt to judge the edit.
 
 Record current input fingerprints (including the generated project inventories)
 and the complete approved movie inventory in `DONE`. Movies use the shared
-media fingerprint (size and integer modification seconds). `REVIEW.json` and
+media fingerprint (size and whole integer `mtime_s` modification seconds). Source
+media, sync checks, and previews use the same seconds-based identity; saved legacy
+`mtime_ns` values remain readable after integer division by 1,000,000,000. `REVIEW.json` and
 `Extract Mappings.json` remain generation provenance, not required approval
 outputs. The generators still do not write `DONE` themselves. Validation is
 read-only and never moves movies or XML files on the user's behalf.
