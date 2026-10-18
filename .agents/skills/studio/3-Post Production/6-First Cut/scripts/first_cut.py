@@ -16,6 +16,7 @@ from urllib.parse import quote, unquote
 import xml.etree.ElementTree as ET
 
 import subtitles
+import portrait
 
 ROOT = next(p for p in Path(__file__).resolve().parents if (p / "studio/tools/line/mapping.py").is_file())
 SCORER = ROOT / ".agents/skills/studio/3-Post Production/4-Take Selection/scripts/score_takes.py"
@@ -90,7 +91,7 @@ def validate_done(project, folder):
             if not (path.is_relative_to(project) or path.is_relative_to(ROOT)):
                 raise ValueError(f"Manifest path outside workflow/project: {path}")
             stat = path.stat()
-            if "sha256" in entry and not find.fingerprints.matches(path, entry["sha256"]):
+            if ("method" in entry or "sha256" in entry) and not find.fingerprints.matches_identity(path, entry):
                 raise ValueError(f"Stale upstream fingerprint: {path}")
             size = entry.get("bytes", entry.get("size_bytes"))
             if size is not None and stat.st_size != size:
@@ -209,7 +210,7 @@ def element(parent, tag, **attributes):
 
 
 def build_xml(project, output, name, document, scores, syncs, probes, padding_ms, included_groups=None,
-              with_subtitles=True):
+              with_subtitles=True, face_paths=None):
     first_video = probes[min(probes)]["camA"]["video"]
     frame = 1 / Fraction(first_video["r_frame_rate"])
     if frame <= 0:
@@ -228,7 +229,9 @@ def build_xml(project, output, name, document, scores, syncs, probes, padding_ms
         return identifier
     if (first_video.get("color_primaries"), first_video.get("color_transfer")) != ("bt709", "bt709"):
         raise ValueError("Project color space needs explicit handling for non-Rec.709 footage.")
-    project_format = format_for(first_video, frame)
+    project_format = format_for({"width": portrait.WIDTH, "height": portrait.HEIGHT}
+                                if face_paths is not None else first_video, frame)
+    framing_warnings = []
     title_effect = resource_id() if with_subtitles else None
     if title_effect:
         element(resources, "effect", id=title_effect, name="Basic Title", uid=subtitles.TITLE_UID)
@@ -280,6 +283,13 @@ def build_xml(project, output, name, document, scores, syncs, probes, padding_ms
                            name=Path(sync["clips"][role]["path"]).stem, duration=time(duration), audioRole="dialogue")
             if media["video"] and Fraction(media["video"]["r_frame_rate"]) != 1 / frame:
                 element(clip, "conform-rate", scaleEnabled="0")
+            if face_paths is not None and role != "lav":
+                key = ((project / sync["clips"][role]["path"]).resolve(strict=True), role)
+                if key not in face_paths:
+                    raise ValueError(f"Missing stage 3.5 face path for {key}")
+                framing_warnings.extend(portrait.add_framing(
+                    clip, face_paths[key], media["video"],
+                    [t for t in takes if t["recording_number"] == number], role, frame))
         multicams[number] = (identifier, angles)
     compounds = {}
     for index, take in enumerate(takes, 1):
@@ -297,7 +307,7 @@ def build_xml(project, output, name, document, scores, syncs, probes, padding_ms
         element(clip, "mc-source", angleID=angles[take["angle"]], srcEnable="video")
         if with_subtitles:
             subtitle_count += subtitles.add_titles(clip, take, transcript_words[take["transcript_source"]["path"]],
-                                                   frame, title_effect, subtitle_count)
+                                                   frame, title_effect, subtitle_count, portrait=face_paths is not None)
         element(clip, "marker", start=time(take["cut_in"]), duration=time(frame), value=f"{label} IN")
         # OUT labels the final included frame, so the marker stays inside the trim.
         element(clip, "marker", start=time(take["cut_out"] - frame), duration=time(frame), value=f"{label} OUT")
@@ -332,7 +342,10 @@ def build_xml(project, output, name, document, scores, syncs, probes, padding_ms
               "selected": [{"sentence": a["sentence"], "take_key": a["candidates"][0]["take_key"],
                             "camera": a["candidates"][0]["angle"],
                             "source_in": time(a["candidates"][0]["cut_in"]),
-                            "source_out": time(a["candidates"][0]["cut_out"])} for a in auditions]}
+                             "source_out": time(a["candidates"][0]["cut_out"])} for a in auditions]}
+    if face_paths is not None:
+        report["portrait"] = {"width": portrait.WIDTH, "height": portrait.HEIGHT,
+                              "framing": "horizontal face-centered fill", "warnings": framing_warnings}
     validate_xml(xml, output, report)
     return xml, report
 

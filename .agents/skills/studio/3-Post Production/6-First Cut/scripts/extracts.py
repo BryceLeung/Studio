@@ -125,17 +125,23 @@ def map_all(project, shortlist, score_paths):
             "shortlist": cut.scoring.fingerprint(shortlist, project, "project"), "extracts": result}
 
 
-def generate(project, shortlist, score_paths, padding_ms, omit_discarded, regenerate=False):
+def generate(project, shortlist, score_paths, padding_ms, omit_discarded, regenerate=False, *, portrait=False):
     approved_shortlist = project / cut.EXTRACTS / "APPROVED" / "Short-Form Excerpt Shortlist.md"
     if shortlist.resolve() != approved_shortlist.resolve():
         raise ValueError(f"Extract generation requires the approved shortlist: {approved_shortlist}")
     cut.require_prerequisites(project, cut.ROOT, "3.6")
     directory = project / cut.STAGE / "Extracts"
+    if portrait:
+        directory /= "Portrait"
     cut.find.append_log(project / cut.STAGE, "Extract projects started", [
-        f"Shortlist: {shortlist}; padding_ms={padding_ms}; omit_discarded={omit_discarded}."])
+        f"Shortlist: {shortlist}; padding_ms={padding_ms}; omit_discarded={omit_discarded}; portrait={portrait}."])
     try:
         mappings = map_all(project, shortlist, score_paths)
         planned, reports, inputs, contexts = [], [], [], {}
+        face_paths = None
+        if portrait:
+            face_paths, face_inputs = cut.portrait.load_paths(cut, project)
+            inputs.extend(face_inputs)
         for mapped in mappings["extracts"]:
             discarded_sentences = {g["sentence"] for g in mapped["groups"] if g["discarded"]}
             unresolved = [issue for issue in mapped["issues"]
@@ -181,9 +187,12 @@ def generate(project, shortlist, score_paths, padding_ms, omit_discarded, regene
                 contexts[mapped["source"]] = document, scores, syncs, probes
             included = {cut.find.mapping.range_key(g["script"]) for g in mapped["groups"] if not g["discarded"]}
             name = f"{mapped['number']:02d}-{mapped['title']}"
+            if portrait:
+                name += " Portrait"
             safe_name = re.sub(r'[<>:"/\\|?*]', "-", name)
             output = directory / f"{safe_name}.FCPXML"
-            xml, report = cut.build_xml(project, output, name, *contexts[mapped["source"]], padding_ms, included)
+            xml, report = cut.build_xml(project, output, name, *contexts[mapped["source"]], padding_ms, included,
+                                        face_paths=face_paths)
             report["extract_number"] = mapped["number"]
             report["source_script"] = mapped["source"]
             report["omitted_discarded_sentences"] = mapped["omitted_discarded_sentences"]
@@ -192,9 +201,11 @@ def generate(project, shortlist, score_paths, padding_ms, omit_discarded, regene
         mappings["projects"] = reports
         mappings["inputs"] = inputs
         mappings["dependencies"] = [cut.scoring.fingerprint(p, cut.ROOT, "workflow") for p in
-                                    (Path(__file__), Path(cut.__file__), Path(__file__).parents[1] / "SKILL.md",
+                                    (Path(__file__), Path(cut.__file__), Path(cut.subtitles.__file__),
+                                     Path(cut.portrait.__file__), Path(__file__).parents[1] / "SKILL.md",
                                      cut.ROOT / "studio/fingerprints.py")]
-        mappings["review_required"] = "Edit and render extract projects; move same-stem movie files into this stage's APPROVED folder."
+        mappings["review_required"] = ("Import and review every extract project in Final Cut, including framing and subtitles; "
+                                       "edit and render, then move same-stem movies into this stage's APPROVED folder.")
         mapping_path = directory / "Extract Mappings.json"
         mapping_bytes = (json.dumps(mappings, ensure_ascii=False, indent=2, allow_nan=False) + "\n").encode("utf-8")
         planned.append((mapping_path, mapping_bytes))
@@ -217,7 +228,7 @@ def generate(project, shortlist, score_paths, padding_ms, omit_discarded, regene
             cut.find.invalidate(project, (3, 6), "Extract projects changed; edited renders require review.")
         cut.find.append_log(project / cut.STAGE, "Extract projects ready for review", [
             "Outputs: " + json.dumps([cut.scoring.fingerprint(p, project, "project") for p, _ in planned]),
-            "Extract 6 omits previously discarded script sentence 109 with user's explicit authorization; shortlist and source mappings preserved.",
+            "Omitted discarded sentences: " + json.dumps({p["extract_number"]: p["omitted_discarded_sentences"] for p in reports}),
             "All extract sentences matched verbatim, in unique source order, to reviewed script group ranges and scored takes.",
             "No DONE written; edit and render extract projects, then move the rendered movies into APPROVED."])
         return reports
@@ -235,6 +246,7 @@ def main():
     parser.add_argument("--generate", action="store_true", help="Write separate FCPXML projects and exact sentence/take mapping JSON")
     parser.add_argument("--regenerate", action="store_true", help="Archive selected generated extract outputs before replacing")
     parser.add_argument("--padding-ms", type=int, default=50)
+    parser.add_argument("--portrait", action="store_true", help="Use stage 3.5 face paths for separate 1080x1920 portrait projects")
     parser.add_argument("--omit-discarded", action="store_true", help="Explicitly authorize omission of already discarded script groups")
     args = parser.parse_args()
     project = args.project_root.resolve(strict=True)
@@ -242,7 +254,7 @@ def main():
         if args.padding_ms < 0:
             parser.error("Padding must be nonnegative.")
         generated = generate(project, (project / args.shortlist).resolve(strict=True), args.scores,
-                             args.padding_ms, args.omit_discarded, args.regenerate)
+                             args.padding_ms, args.omit_discarded, regenerate=args.regenerate, portrait=args.portrait)
         print(json.dumps([{k: v for k, v in p.items() if k != "selected"} for p in generated], indent=2))
     else:
         report = map_all(project, (project / args.shortlist).resolve(strict=True), args.scores)

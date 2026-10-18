@@ -14,7 +14,7 @@ records completion. Do not hand-author the marker.
 Read the Studio root skill for project resolution and logging rules. Resolve the
 real OneDrive project root and pass each script's stage 3.4 `__Scores.v1.json`
 file explicitly to the Python script. Validate stage 3.5 Face Tracking completion
-first; current landscape XML does not yet consume its face paths. Use the dashboard Python environment and
+first; landscape exports do not consume its face paths. Use the dashboard Python environment and
 an available FFprobe executable:
 
 ```text
@@ -32,6 +32,34 @@ only with explicit authorization to omit included script-side discards; report
 unresolved matches instead of guessing. The user authorized omitting sentence
 109 from extract 6 in project `01-Love Compounds Too` on 2026-10-13.
 
+For portrait extract projects, add `--portrait` to the extract generation
+command. This consumes the fingerprinted stage 3.5 index and camera paths and
+writes separate 1080x1920 projects plus `Extract Mappings.json` under
+`3-Post Production/6-First Cut/Extracts/Portrait/`. Landscape outputs remain
+untouched. Both camera angles are reframed inside the multicam, preserving all
+take auditions and camera switching. Original asset dimensions, media, audio,
+and synchronization remain unchanged.
+
+Portrait framing fills the canvas with the full camera height and follows the
+face horizontally using editable, frame-snapped linear position keyframes.
+The crop is clamped at source edges; it does not zoom or track vertically.
+Untracked gaps, including shared-midpoint pauses, hold the last sampled crop
+position until tracking resumes. The first sample supplies any leading trim;
+the last sample supplies any trailing trim. Holds are source-local and never
+carry across cameras or recordings. There is no pan toward the next range
+across a gap: a one-frame transition joins the held crop to the next sample,
+then normal tracked interpolation resumes. Stage 3.5 outputs remain unchanged.
+Held/centered samples and source-time `held_intervals_ms` (leading, gap, or
+trailing holds) are listed in each project's `portrait.warnings` for review.
+Sparse/malformed paths, missing camera sources, stale media, rotated footage,
+non-square pixels, or dimension mismatches still stop generation.
+Portrait draft titles use smaller type, narrower margins, and a lower-frame
+position independently of camera motion.
+
+Review portrait framing, pan motion, edge holds, subtitle placement, both
+camera angles, and alternate takes in Final Cut before accepting these edits.
+Automated XML checks do not establish visual framing or title-rendering quality.
+
 The Python scripts own input validation, timing, camera logic, XML construction,
 logging, and output verification. Full-script files and `REVIEW.json` are written
 under `3-Post Production/6-First Cut/`; extract FCPXML projects and
@@ -44,6 +72,12 @@ compound, using its mapped transcript word times, heavy Arial Black lettering,
 and the mockup's warm-yellow active-word highlight. Long phrases use a bounded
 paragraph layout and explicit word-boundary line breaks, with oversized single
 words scaled down. These titles are not the final editorial subtitle review.
+If frame rounding collapses a word's highlight interval, share the preceding
+word's interval, or the following word's interval when there is no predecessor.
+Both words are highlighted together and kept in the same displayed phrase,
+even across an original phrase boundary. A word with no usable neighbour gets
+one frame, shifted earlier if needed to remain within its take. Source
+transcript timestamps and text remain unchanged.
 Import into Final Cut to
 check title rendering, frame timing, legibility, and audition switching.
 

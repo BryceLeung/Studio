@@ -125,21 +125,36 @@ class CommonValidationTests(unittest.TestCase):
                 self.assertEqual(validation.check_marker(project, validation.ROOT, definition)[0], "stale")
 
     def test_generated_extract_projects_require_their_own_render(self):
+        for relative in ("Extracts/01-Example.FCPXML", "Extracts/Portrait/01-Example Portrait.FCPXML"):
+            with self.subTest(project=relative), TemporaryDirectory() as directory:
+                project = Path(directory).resolve()
+                definition, source, output, marker = self.gate_fixture(project, "3.6")
+                xml = marker.parent / relative
+                xml.parent.mkdir(parents=True)
+                xml.write_text("<fcpxml />")
+                self.record_gate(project, definition, [source, xml], [output])
+                status, reason = validation.check_marker(project, validation.ROOT, definition)
+                self.assertEqual(status, "stale")
+                self.assertIn(xml.stem, reason)
+                rendered = output.with_name(xml.stem + ".mp4")
+                rendered.write_bytes(b"rendered extract")
+                self.record_gate(project, definition, [source, xml], [output, rendered])
+                self.assertEqual(validation.check_marker(project, validation.ROOT, definition)[0], "current")
+                xml.write_text("<fcpxml version='changed' />")
+                self.assertEqual(validation.check_marker(project, validation.ROOT, definition)[0], "stale")
+
+    def test_new_portrait_project_invalidates_complete_input_inventory(self):
         with TemporaryDirectory() as directory:
             project = Path(directory).resolve()
-            definition, source, output, marker = self.gate_fixture(project, "3.6")
-            xml = marker.parent / "Extracts/01-Example.FCPXML"
-            xml.parent.mkdir()
+            definition, _, output, marker = self.gate_fixture(project, "3.6")
+            xml = marker.parent / "Extracts/Portrait/01-Example Portrait.FCPXML"
+            xml.parent.mkdir(parents=True)
             xml.write_text("<fcpxml />")
-            self.record_gate(project, definition, [source, xml], [output])
-            status, reason = validation.check_marker(project, validation.ROOT, definition)
-            self.assertEqual(status, "stale")
-            self.assertIn("01-Example", reason)
-            rendered = output.with_name("01-Example.mp4")
-            rendered.write_bytes(b"rendered extract")
-            self.record_gate(project, definition, [source, xml], [output, rendered])
-            self.assertEqual(validation.check_marker(project, validation.ROOT, definition)[0], "current")
-            xml.write_text("<fcpxml version='changed' />")
+            rendered = output.with_name(xml.stem + ".mp4")
+            rendered.write_bytes(b"rendered portrait extract")
+            evidence = json.loads(marker.read_text())
+            evidence["outputs"].append(stage_completion.fingerprint(rendered, project, "project"))
+            marker.write_text(json.dumps(evidence))
             self.assertEqual(validation.check_marker(project, validation.ROOT, definition)[0], "stale")
 
     def test_first_cut_records_actual_generation_sources_not_only_scores(self):

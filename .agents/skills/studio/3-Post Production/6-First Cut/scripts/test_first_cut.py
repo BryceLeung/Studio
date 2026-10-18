@@ -65,6 +65,21 @@ class FirstCutTests(unittest.TestCase):
                         with self.assertRaisesRegex(ValueError, "Changed media timestamp"):
                             cut.validate_done(project, Path("legacy"))
 
+    def test_shared_media_stat_timestamp_is_validated(self):
+        with TemporaryDirectory() as directory:
+            project = Path(directory).resolve()
+            folder = project / "stage"
+            folder.mkdir()
+            source = project / "source.mov"
+            source.write_bytes(b"media")
+            entry = {"scope": "project", "path": "source.mov", **cut.find.fingerprints.identity(source)}
+            (folder / "DONE").write_text(json.dumps({"outputs": [entry]}))
+            cut.validate_done(project, Path("stage"))
+            stamp = source.stat().st_mtime_ns + 2_000_000_000
+            os.utime(source, ns=(stamp, stamp))
+            with self.assertRaisesRegex(ValueError, "fingerprint"):
+                cut.validate_done(project, Path("stage"))
+
     def test_stage_path_and_failure_invalidation_use_3_6(self):
         self.assertEqual(cut.STAGE, Path("3-Post Production/6-First Cut"))
         with TemporaryDirectory() as directory:
@@ -295,6 +310,73 @@ class FirstCutTests(unittest.TestCase):
             self.assertEqual({p.attrib["name"]: p.attrib["value"] for p in titles[0].findall("param")},
                              {"Layout Method": "1 (Paragraph)", "Left Margin": "-1500", "Right Margin": "1500"})
             self.assertFalse(titles[0].findall(".//text-style[@strokeWidth]"))
+
+    def test_collapsed_subtitle_words_share_adjacent_highlights_without_losing_text(self):
+        cases = [
+            ("preceding", [("He", 0, 200), ("wanted", 200, 500), ("a", 506, 514)],
+             [(0, 6, ["He"]), (6, 15, ["wanted", "a"])]),
+            ("following", [("a", 6, 14), ("friend", 100, 500)], [(3, 15, ["a", "friend"])]),
+            ("middle_prefers_preceding", [("give", 0, 200), ("a", 206, 214), ("hug", 300, 500)],
+             [(0, 9, ["give", "a"]), (9, 15, ["hug"])]),
+            ("alone", [("a", 6, 14)], [(0, 1, ["a"])]),
+            ("alone_at_cut_end", [("a", 986, 994)], [(29, 30, ["a"])]),
+            ("short_second_same_start", [("one", 0, 400), ("a", 6, 14)], [(0, 12, ["one", "a"])]),
+            ("all_short", [("a", 6, 10), ("b", 11, 14)], [(0, 1, ["a", "b"])]),
+            ("consecutive_short", [("He", 0, 200), ("a", 206, 214), ("b", 207, 215), ("gift", 300, 500)],
+             [(0, 6, ["He", "a", "b"]), (9, 15, ["gift"])]),
+            ("same_start_with_preceding", [("keep", 0, 200), ("this", 206, 400), ("word", 214, 500)],
+             [(0, 6, ["keep", "this"]), (6, 15, ["word"])]),
+            ("same_start_without_preceding", [("we", 0, 20), ("go", 6, 200)], [(0, 6, ["we", "go"])]),
+            ("phrase_boundary", [("one", 0, 200), ("two", 200, 400), ("three", 400, 600),
+                                  ("a", 606, 614), ("four", 700, 900)],
+             [(0, 6, ["one"]), (6, 12, ["two"]), (12, 21, ["three", "a"]), (21, 27, ["four"])])]
+        frame = Fraction(1, 30)
+        for name, rows, expected in cases:
+            with self.subTest(name=name):
+                clip = ET.Element("mc-clip")
+                take = {"take_key": name, "transcript": {"word_start": 0, "word_end": len(rows) - 1},
+                        "origins": {"lav": Fraction(0)}, "cut_in": Fraction(0), "cut_out": Fraction(1)}
+                words = [{"text": label, "start_ms": start, "end_ms": end} for label, start, end in rows]
+                original = deepcopy((take, words))
+                count = cut.subtitles.add_titles(clip, take, words, frame, "r1")
+                actual = []
+                for title in clip.findall("title"):
+                    start = cut.parse_time(title.attrib["offset"])
+                    end = start + cut.parse_time(title.attrib["duration"])
+                    active = [s.text.strip() for s in title.findall("text/text-style")
+                              if s.attrib["fontColor"] == cut.subtitles.HIGHLIGHT_COLOR]
+                    actual.append((start / frame, end / frame, active))
+                    self.assertTrue(take["cut_in"] <= start < end <= take["cut_out"])
+                    self.assertEqual("".join(title.find("text").itertext()).replace("\n", " "), title.attrib["name"])
+                self.assertEqual(count, len(expected))
+                self.assertEqual(actual, expected)
+                self.assertEqual((take, words), original)
+                if name == "phrase_boundary":
+                    self.assertEqual(clip.findall("title")[2].attrib["name"], "three a four")
+
+    def test_one_frame_subtitle_fallback_handles_fractional_rate_and_take_limits(self):
+        frame = Fraction(1001, 30000)
+        take = {"take_key": "single", "transcript": {"word_start": 0, "word_end": 0},
+                "origins": {"lav": Fraction(0)}, "cut_in": Fraction(0), "cut_out": frame * 30}
+        words = [{"text": "a", "start_ms": 6, "end_ms": 14}]
+        clip = ET.Element("mc-clip")
+        cut.subtitles.add_titles(clip, take, words, frame, "r1", portrait=True)
+        self.assertEqual(cut.parse_time(clip.find("title").attrib["duration"]), frame)
+        self.assertEqual(clip.find("title/adjust-transform").attrib["position"], "0 -28")
+        take["cut_out"] = Fraction(1, 100)
+        with self.assertRaisesRegex(ValueError, "No subtitle frame fits"):
+            cut.subtitles.add_titles(ET.Element("mc-clip"), take, words, frame, "r1")
+
+    def test_subtitle_sharing_does_not_repair_invalid_or_out_of_order_timestamps(self):
+        take = {"take_key": "invalid", "transcript": {"word_start": 0, "word_end": 1},
+                "origins": {"lav": Fraction(0)}, "cut_in": Fraction(0), "cut_out": Fraction(1)}
+        words = [{"text": "later", "start_ms": 400, "end_ms": 500},
+                 {"text": "earlier", "start_ms": 100, "end_ms": 200}]
+        with self.assertRaisesRegex(ValueError, "out of source order"):
+            cut.subtitles.add_titles(ET.Element("mc-clip"), take, words, Fraction(1, 30), "r1")
+        words[0]["end_ms"] = 300
+        with self.assertRaisesRegex(ValueError, "outside take trim"):
+            cut.subtitles.add_titles(ET.Element("mc-clip"), take, words, Fraction(1, 30), "r1")
 
     def test_long_phrase_wraps_at_word_boundary_without_losing_highlight(self):
         clip = ET.Element("mc-clip")

@@ -123,6 +123,55 @@ class ExtractTests(unittest.TestCase):
                         extracts.generate(project, shortlist, [], 50, False)
                     invalidate.assert_called_once()
 
+    def test_portrait_regeneration_archives_owned_mapping_and_preserves_landscape(self):
+        from scripts.stage_invalidation import prepare_regeneration
+        with TemporaryDirectory() as directory:
+            project = Path(directory).resolve()
+            shortlist = project / cut.EXTRACTS / "APPROVED/Short-Form Excerpt Shortlist.md"
+            shortlist.parent.mkdir(parents=True)
+            shortlist.write_text("approved source")
+            stage = project / cut.STAGE
+            preserved = {}
+            for relative in ("A.FCPXML", "Extracts/01-Example.FCPXML", "Extracts/Extract Mappings.json",
+                             "APPROVED/01-Example.mp4", "APPROVED/01-Example Portrait.mp4"):
+                path = stage / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b"existing landscape or approved artifact")
+                preserved[path] = (path.read_bytes(), path.stat().st_mtime_ns)
+            with patch.object(cut, "require_prerequisites"), patch.object(cut.find, "append_log"), \
+                    patch.object(extracts, "map_all", side_effect=lambda *args: {"extracts": []}), \
+                    patch.object(cut.portrait, "load_paths", return_value=({}, [])):
+                extracts.generate(project, shortlist, [], 50, False, portrait=True)
+                output = stage / "Extracts/Portrait/Extract Mappings.json"
+                original = output.read_bytes()
+                output.write_bytes(b"edited portrait mappings")
+                with patch("scripts.stage_invalidation.prepare_regeneration", wraps=prepare_regeneration) as prepare:
+                    extracts.generate(project, shortlist, [], 50, False, regenerate=True, portrait=True)
+                    prepare.assert_called_once()
+                    self.assertEqual(prepare.call_args.args[3], [output])
+                archived = list(stage.glob("STALE/*/Extracts/Portrait/Extract Mappings.json"))
+                self.assertEqual(len(archived), 1)
+                self.assertEqual(archived[0].read_bytes(), b"edited portrait mappings")
+                self.assertEqual(output.read_bytes(), original)
+                self.assertEqual({path: (path.read_bytes(), path.stat().st_mtime_ns) for path in preserved}, preserved)
+                self.assertEqual(list(stage.glob("STALE/*/Extracts/*.FCPXML")), [])
+                self.assertEqual(list(stage.glob("STALE/*/Extracts/Extract Mappings.json")), [])
+                self.assertEqual(shortlist.read_text(), "approved source")
+
+    def test_portrait_cli_is_explicit_and_forwarded_to_generation(self):
+        with TemporaryDirectory() as directory:
+            project = Path(directory).resolve()
+            shortlist = project / "shortlist.md"
+            shortlist.write_text("placeholder")
+            args = ["extracts.py", "--project-root", str(project), "--shortlist", str(shortlist),
+                    "--scores", "A__Scores.v1.json", "--generate"]
+            for flags, expected in (([], False), (["--portrait"], True), (["--portrait", "--regenerate"], True)):
+                with patch("sys.argv", args + flags), patch.object(extracts, "map_all", return_value={"extracts": []}):
+                    with patch.object(extracts, "generate", return_value=[]) as generate, patch("builtins.print"):
+                        extracts.main()
+                        self.assertEqual(generate.call_args.kwargs["portrait"], expected)
+                        self.assertEqual(generate.call_args.kwargs["regenerate"], "--regenerate" in flags)
+
     def test_parser_preserves_six_separate_headers_and_jump_directives(self):
         text = "\n".join(f"## {i}. Title {i}\n\n- **Review status:** Approved\n- **Source:** A.docx\n\n"
                          "### Provisional spoken script\n\nFirst.\n\n> [PROPOSED JUMP]\n\nLast.\n"

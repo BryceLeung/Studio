@@ -35,7 +35,7 @@ class ActionInputTests(unittest.TestCase):
         self.assertEqual(state["selected"]["transcript"], 8)
         self.assertEqual(inputs["path"], "script.docx")
         self.assertEqual(inputs["classification"], "exact")
-        self.assertEqual(inputs["project"]["root"], "/example/project")
+        self.assertEqual(inputs["project"]["root"], str(self.project.root))
         output = captured["output"]
         self.assertEqual(output["selected"]["transcript"], 8)
         self.assertEqual(log.call_args.args[2], "Edited selection")
