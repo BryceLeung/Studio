@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import date
+import hashlib
 import importlib.util
 import json
 import os
@@ -48,11 +49,20 @@ def _json(path):
         raise ValueError(f"Invalid archive record: {path}") from error
 
 
-def read_pending(directory, step=None) -> Path | None:
+def _pointer(directory, job_id=None):
+    if job_id is None:
+        return directory / "STALE/PENDING.json"
+    if not isinstance(job_id, str):
+        raise ValueError("Archive job_id must be a string")
+    digest = hashlib.sha256(job_id.encode("utf-8")).hexdigest()
+    return directory / "STALE/PENDING" / f"{digest}.json"
+
+
+def read_pending(directory, step=None, *, job_id=None) -> Path | None:
     """Read only the explicit pending pointer; never guess from archive numbers."""
     directory = _directory(directory)
     stale = directory / "STALE"
-    pointer = stale / "PENDING.json"
+    pointer = _pointer(directory, job_id)
     _safe(pointer, directory)
     if not pointer.exists():
         return None
@@ -62,7 +72,8 @@ def read_pending(directory, step=None) -> Path | None:
     if (data.get("schema") != "studio.stale.pending" or data.get("schema_version") != 1
             or type(number) is not int or number < 1 or not isinstance(identifier, str)
             or not re.fullmatch(r"(?:\d+\.\d+|stage:\d+)", identifier)
-            or (step is not None and identifier != step)):
+            or (step is not None and identifier != step)
+            or data.get("job_id") != job_id):
         raise ValueError(f"Invalid pending archive pointer: {pointer}")
     slot = stale / str(number)
     _safe(slot / "EVENT.json", directory)
@@ -71,7 +82,8 @@ def read_pending(directory, step=None) -> Path | None:
         raise ValueError(f"Missing pending archive slot: {slot}")
     event = _json(slot / "EVENT.json")
     if (event.get("schema") != "studio.stale.event" or event.get("schema_version") != 1
-            or event.get("step") != identifier or type(event.get("had_done")) is not bool):
+            or event.get("step") != identifier or type(event.get("had_done")) is not bool
+            or event.get("job_id") != job_id):
         raise ValueError(f"Invalid archive event: {slot}")
     artifacts = event.get("artifacts", [])
     if not isinstance(artifacts, list):
@@ -81,14 +93,57 @@ def read_pending(directory, step=None) -> Path | None:
     marker = slot / "DONE"
     if (marker.exists() and not marker.is_file()) or (event["had_done"] and not marker.is_file()):
         raise ValueError(f"Invalid archived completion marker: {marker}")
+    if job_id is not None:
+        baseline = event.get("baseline_slot")
+        if type(baseline) is not int or baseline < 1 or baseline == number:
+            raise ValueError(f"Invalid job archive baseline: {slot}")
+        baseline_slot = stale / str(baseline)
+        _safe(baseline_slot / "EVENT.json", directory)
+        _safe(baseline_slot / "DONE", directory)
+        baseline_event = _json(baseline_slot / "EVENT.json")
+        if (baseline_event.get("schema") != "studio.stale.event"
+                or baseline_event.get("schema_version") != 1
+                or baseline_event.get("step") != identifier
+                or baseline_event.get("job_id") is not None
+                or type(baseline_event.get("had_done")) is not bool
+                or baseline_event["had_done"] != event["had_done"]
+                or (event["had_done"] and not (baseline_slot / "DONE").is_file())):
+            raise ValueError(f"Invalid job archive baseline: {slot}")
     return slot
 
 
-def clear_pending(directory):
-    """Clear only a validated pointer, leaving every historical archive intact."""
+def read_all_pending(directory, step=None):
+    """Validate every explicit pointer, returning slots keyed by job (None for legacy)."""
     directory = _directory(directory)
-    if read_pending(directory) is not None:
-        (directory / "STALE/PENDING.json").unlink()
+    result = {}
+    legacy = read_pending(directory, step)
+    if legacy is not None:
+        result[None] = legacy
+    pending = directory / "STALE/PENDING"
+    _safe(pending, directory)
+    if pending.exists():
+        if not pending.is_dir():
+            raise ValueError(f"Invalid pending archive directory: {pending}")
+        for pointer in sorted(pending.iterdir()):
+            _safe(pointer, directory)
+            data = _json(pointer)
+            job_id = data.get("job_id")
+            if not isinstance(job_id, str) or pointer != _pointer(directory, job_id):
+                raise ValueError(f"Invalid job archive pointer: {pointer}")
+            result[job_id] = read_pending(directory, step, job_id=job_id)
+    return result
+
+
+def clear_pending(directory, *, job_id=None):
+    """Clear validated pointers (all by default), leaving historical archives intact."""
+    directory = _directory(directory)
+    if job_id is None:
+        jobs = read_all_pending(directory)
+    else:
+        jobs = {job_id: read_pending(directory, job_id=job_id)}
+    for job, slot in jobs.items():
+        if slot is not None:
+            _pointer(directory, job).unlink()
 
 
 def _replace_json(path, payload):
@@ -107,10 +162,15 @@ def _replace_json(path, payload):
             temporary.unlink(missing_ok=True)
 
 
-def _write_pointer(directory, step, slot):
-    _replace_json(directory / "STALE/PENDING.json",
-                  {"schema": "studio.stale.pending", "schema_version": 1,
-                   "step": step, "slot": int(slot.name)})
+def _write_pointer(directory, step, slot, *, job_id=None):
+    pointer = _pointer(directory, job_id)
+    _safe(pointer, directory)
+    pointer.parent.mkdir(parents=True, exist_ok=True)
+    payload = {"schema": "studio.stale.pending", "schema_version": 1,
+               "step": step, "slot": int(slot.name)}
+    if job_id is not None:
+        payload["job_id"] = job_id
+    _replace_json(pointer, payload)
 
 
 def _targets(project, stages, step, include_self):
@@ -212,11 +272,12 @@ def _outputs(project, definition, paths):
     return sorted(result)
 
 
-def _next_slot(directory):
+def _next_slot(directory, reserved=()):
     stale = directory / "STALE"
     number = (max((int(path.name) for path in stale.iterdir() if path.name.isdecimal()), default=0)
               + 1) if stale.is_dir() else 1
-    while _occupied(directory / "STALE" / str(number)):
+    while (_occupied(directory / "STALE" / str(number))
+           or directory / "STALE" / str(number) in reserved):
         number += 1
     slot = directory / "STALE" / str(number)
     _safe(slot, directory)
@@ -229,7 +290,7 @@ def _plan(directory, step):
         _safe(path, directory)
         if path.exists() and (not path.is_dir() if name == "STALE" else not path.is_file()):
             raise ValueError(f"Invalid transition path: {path}")
-    pending = read_pending(directory, step)
+    pending = read_all_pending(directory, step).get(None)
     had_done = (directory / "DONE").exists()
     if pending is not None and not had_done:
         return pending, False, False
@@ -247,8 +308,48 @@ def _default_log(directory, title, items):
     module.append_entry(log, title, items, date.today())
 
 
-def _transition(project, workflow, step, reason, append_log, include_self, paths=None):
+def _archive_plan(directory, step, plan, reason, *, job_id=None, baseline=None, previous=None):
+    slot, had_done, fresh = plan
+    if not fresh:
+        return
+    if had_done:
+        saved = completion.archive_done(directory)
+        if saved != slot / "DONE":
+            raise ValueError(f"Unexpected completion archive slot: {saved}")
+    else:
+        slot.mkdir(parents=True)
+    event = {"schema": "studio.stale.event", "schema_version": 1,
+             "step": step, "had_done": had_done, "reason": reason}
+    source_slot = previous if previous is not None else baseline
+    if source_slot is not None:
+        prior_event = _json(source_slot / "EVENT.json")
+        event["had_done"] = prior_event["had_done"]
+        if previous is not None:
+            event["previous_slot"] = int(previous.name)
+        if event["had_done"]:
+            with (source_slot / "DONE").open("rb") as source, (slot / "DONE").open("xb") as destination:
+                shutil.copyfileobj(source, destination)
+                destination.flush()
+                os.fsync(destination.fileno())
+    if job_id is not None:
+        event.update(job_id=job_id, baseline_slot=int(baseline.name))
+    with (slot / "EVENT.json").open("x", encoding="utf-8") as stream:
+        json.dump(event, stream, indent=2)
+        stream.write("\n")
+        stream.flush()
+        os.fsync(stream.fileno())
+    _write_pointer(directory, step, slot, job_id=job_id)
+
+
+def _transition(project, workflow, step, reason, append_log, include_self, paths=None, *, job_id=None):
+    with completion.mutation_guard(project):
+        return _transition_locked(project, workflow, step, reason, append_log, include_self,
+                                  paths, job_id=job_id)
+
+
+def _transition_locked(project, workflow, step, reason, append_log, include_self, paths=None, *, job_id=None):
     project = _directory(project)
+    _pointer(project, job_id)  # Reject invalid identities before taking locks or mutating state.
     workflow = Path(workflow).resolve(strict=True)
     stages = load_stages(workflow)
     targets = _targets(project, stages, step, include_self)
@@ -268,6 +369,15 @@ def _transition(project, workflow, step, reason, append_log, include_self, paths
                 raise ValueError(f"Completion transition already active: {lock}") from error
             locks.append((lock, lock.stat()))
         plans = {name: _plan(directory, name) for name, directory in targets.items()}
+        baseline_plan = None
+        if job_id is not None and step in plans:
+            baseline_plan = plans[step]
+            pending = read_pending(own, step, job_id=job_id)
+            if (pending is not None and not baseline_plan[2]
+                    and _json(pending / "EVENT.json")["baseline_slot"] == int(baseline_plan[0].name)):
+                plans[step] = pending, False, False
+            else:
+                plans[step] = _next_slot(own, (baseline_plan[0],)), False, True
         previous = None
         if paths is not None:
             # Recheck all sources under the same locks used by invalidation.
@@ -286,7 +396,7 @@ def _transition(project, workflow, step, reason, append_log, include_self, paths
                 if all(path.is_file() and path.relative_to(slot).as_posix() in recorded
                        for path in collisions):
                     previous = slot
-                    slot = _next_slot(own)
+                    slot = _next_slot(own, (baseline_plan[0],) if baseline_plan else ())
                     plans[step] = slot, False, True
             for source in selected:
                 destination = slot / source.relative_to(own)
@@ -298,31 +408,14 @@ def _transition(project, workflow, step, reason, append_log, include_self, paths
                         break
                     if parent.exists() and not parent.is_dir():
                         raise ValueError(f"Archive parent is not a directory: {parent}")
+        if baseline_plan is not None:
+            _archive_plan(own, step, baseline_plan, reason)
         for name, directory in targets.items():
-            slot, had_done, fresh = plans[name]
-            if fresh:
-                if had_done:
-                    saved = completion.archive_done(directory)
-                    if saved != slot / "DONE":
-                        raise ValueError(f"Unexpected completion archive slot: {saved}")
-                else:
-                    slot.mkdir(parents=True)
-                event = {"schema": "studio.stale.event", "schema_version": 1,
-                         "step": name, "had_done": had_done, "reason": reason}
-                if name == step and previous is not None:
-                    prior_event = _json(previous / "EVENT.json")
-                    event.update(previous_slot=int(previous.name), had_done=prior_event["had_done"])
-                    if event["had_done"]:
-                        with (previous / "DONE").open("rb") as source, (slot / "DONE").open("xb") as destination:
-                            shutil.copyfileobj(source, destination)
-                            destination.flush()
-                            os.fsync(destination.fileno())
-                with (slot / "EVENT.json").open("x", encoding="utf-8") as stream:
-                    json.dump(event, stream, indent=2)
-                    stream.write("\n")
-                    stream.flush()
-                    os.fsync(stream.fileno())
-                _write_pointer(directory, name, slot)
+            scoped = job_id is not None and name == step
+            _archive_plan(directory, name, plans[name], reason,
+                          job_id=job_id if scoped else None,
+                          baseline=baseline_plan[0] if scoped else None,
+                          previous=previous if name == step else None)
         if paths is not None:
             for source in selected:
                 destination = plans[step][0] / source.relative_to(own)
@@ -374,12 +467,13 @@ def _transition(project, workflow, step, reason, append_log, include_self, paths
                 pass
 
 
-def invalidate(project, workflow, step: str, reason: str, append_log=None, *, include_self=True) -> dict[str, Path]:
+def invalidate(project, workflow, step: str, reason: str, append_log=None, *, include_self=True,
+               job_id=None) -> dict[str, Path]:
     """Archive affected active markers, preserving every generated output in place."""
-    return _transition(project, workflow, step, reason, append_log, include_self)
+    return _transition(project, workflow, step, reason, append_log, include_self, job_id=job_id)
 
 
-def prepare_regeneration(project, workflow, step, paths, reason, append_log=None) -> Path:
+def prepare_regeneration(project, workflow, step, paths, reason, append_log=None, *, job_id=None) -> Path:
     """Invalidate the DAG and archive only explicitly selected owned artifacts."""
     paths = list(paths)
-    return _transition(project, workflow, step, reason, append_log, True, paths)[step]
+    return _transition(project, workflow, step, reason, append_log, True, paths, job_id=job_id)[step]

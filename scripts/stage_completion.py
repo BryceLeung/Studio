@@ -1,5 +1,6 @@
 """Shared stage definitions, portable fingerprints, and completion-marker archiving."""
 import argparse
+from contextlib import contextmanager
 from datetime import datetime, timezone
 import json
 import hashlib
@@ -7,13 +8,63 @@ import os
 from pathlib import Path, PurePosixPath
 import re
 import shutil
+import stat
 import sys
 import tempfile
+import threading
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+if __name__ == "__main__":
+    # Invalidation imports this module again; nested guards must share ownership.
+    sys.modules["scripts.stage_completion"] = sys.modules[__name__]
 
 from studio import fingerprints
+
+
+_mutation_state = threading.local()
+
+
+@contextmanager
+def mutation_guard(project):
+    """Serialize local project mutations, allowing nested transitions in one thread."""
+    project = Path(project).resolve(strict=True)
+    key = (os.getpid(), str(project))
+    held = getattr(_mutation_state, "held", None)
+    if held is None:
+        held = _mutation_state.held = set()
+    if key in held:
+        yield
+        return
+    path = project / ".studio-mutations.lock"
+    if path.is_symlink():
+        raise ValueError(f"Refusing symlinked mutation lock: {path}")
+    descriptor = os.open(path, os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0), 0o600)
+    locked = False
+    try:
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            raise ValueError(f"Mutation lock must be a regular file: {path}")
+        if os.name == "nt":
+            import msvcrt
+            if os.fstat(descriptor).st_size == 0:
+                os.write(descriptor, b"\0")
+            os.lseek(descriptor, 0, os.SEEK_SET)
+            msvcrt.locking(descriptor, msvcrt.LK_LOCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(descriptor, fcntl.LOCK_EX)
+        locked = True
+        held.add(key)
+        yield
+    finally:
+        held.discard(key)
+        if locked:
+            if os.name == "nt":
+                os.lseek(descriptor, 0, os.SEEK_SET)
+                msvcrt.locking(descriptor, msvcrt.LK_UNLCK, 1)
+            else:
+                fcntl.flock(descriptor, fcntl.LOCK_UN)
+        os.close(descriptor)
 
 
 def relative_path(value):
@@ -23,6 +74,13 @@ def relative_path(value):
     if path.is_absolute() or any(part in (".", "..") for part in value.split("/")):
         raise ValueError(f"Stage path must be root-relative: {value!r}")
     return Path(*path.parts)
+
+
+def require_idle_jobs(directory):
+    """Job exclusion is a lifecycle gate, including during manual overrides."""
+    jobs = Path(directory) / ".SYNC-JOBS"
+    if jobs.is_symlink() or (jobs.exists() and (not jobs.is_dir() or any(jobs.iterdir()))):
+        raise ValueError(f"Sync jobs are active or interrupted; inspect {jobs} before completion")
 
 
 def load_definition(file):
@@ -231,10 +289,16 @@ def _record_manual_override(project, workflow, step, manifest):
 
 
 def _record_done(project, workflow, step, manifest, *, manual_override=False):
+    with mutation_guard(project):
+        return _record_done_locked(project, workflow, step, manifest, manual_override=manual_override)
+
+
+def _record_done_locked(project, workflow, step, manifest, *, manual_override=False):
     from scripts.validation import load_stages, recorded_fingerprints, require_prerequisites, validate_evidence
-    from scripts.stage_invalidation import clear_pending, invalidate, read_pending
+    from scripts.stage_invalidation import clear_pending, invalidate, read_all_pending
     project, workflow = Path(project).resolve(strict=True), Path(workflow).resolve(strict=True)
     definition = load_stages(workflow)[step]
+    require_idle_jobs(project / relative_path(definition["folder"]))
     require_prerequisites(project, workflow, step)
     if not isinstance(manifest, dict):
         raise ValueError("Completion evidence must be a JSON object")
@@ -269,7 +333,7 @@ def _record_done(project, workflow, step, manifest, *, manual_override=False):
     temporary = None
     published = False
     try:
-        read_pending(directory, step)
+        read_all_pending(directory, step)
         status, reason = validate_evidence(project, workflow, definition, manifest)
         if status != "current":
             raise ValueError(f"Cannot complete {step}: {status}: {reason}")

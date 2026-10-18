@@ -1,7 +1,9 @@
 """Generate one sync-offset JSON per Studio recording group, relative to camA."""
 
 import argparse
+from contextlib import contextmanager
 from datetime import datetime, timezone
+import hashlib
 import json
 import math
 import os
@@ -19,6 +21,7 @@ if str(ROOT) not in sys.path:
 from studio.fingerprints import sha256
 from scripts.validation import require_prerequisites
 from scripts.stage_invalidation import invalidate, prepare_regeneration
+from scripts.stage_completion import mutation_guard
 
 
 FOOTAGE_PARTS = ("2-Production", "1-Footage Intake")
@@ -194,6 +197,99 @@ def write_json(output: Path, result: dict, overwrite: bool) -> None:
             temporary.unlink(missing_ok=True)
 
 
+def job_path(project: Path, shot: str):
+    directory = project.joinpath(*OUTPUT_PARTS) / ".SYNC-JOBS"
+    return directory / (hashlib.sha256(shot.encode("utf-8")).hexdigest() + ".json")
+
+
+@contextmanager
+def shot_job(project: Path, shot: str):
+    """Register exclusive clip ownership; interrupted jobs require inspection."""
+    project = project.resolve(strict=True)
+    job = job_path(project, shot)
+    directory = job.parent
+    with mutation_guard(project):
+        if directory.is_symlink() or job.is_symlink():
+            raise ValueError(f"Refusing redirected Sync job: {job}")
+        directory.mkdir(exist_ok=True)
+        try:
+            with job.open("x", encoding="utf-8") as stream:
+                json.dump({"shot": shot, "pid": os.getpid()}, stream)
+        except FileExistsError as error:
+            raise ValueError(f"Sync job active or interrupted; inspect {job}") from error
+        owner = job.stat()
+    try:
+        yield
+    finally:
+        with mutation_guard(project):
+            current = job.lstat()
+            if (current.st_dev, current.st_ino) != (owner.st_dev, owner.st_ino):
+                raise ValueError(f"Sync job ownership changed; inspect {job}")
+            job.unlink()
+
+
+def output_identity(output: Path):
+    if output.is_symlink():
+        raise ValueError(f"Invalid Sync output: {output}")
+    if not output.exists():
+        return None
+    if not output.is_file():
+        raise ValueError(f"Invalid Sync output: {output}")
+    identity = output.stat()
+    return identity.st_ino, identity.st_size, identity.st_mtime_ns, sha256(output)
+
+
+def generate_shot(project: Path, shot: str, files: dict, dependencies: dict, generator: dict,
+                  overwrite: bool = False):
+    project = project.resolve(strict=True)
+    files = {role: path.resolve(strict=True) for role, path in files.items()}
+    output = project.joinpath(*OUTPUT_PARTS) / f"{shot}.json"
+    expected = {
+        "schema_version": 1, "shot": shot, "reference_role": "camA",
+        "offset_convention": OFFSET_CONVENTION, "generator": generator,
+        "clips": {role: file_identity(files[role], project) for role in ROLES},
+    }
+    if output.is_symlink():
+        raise ValueError(f"Invalid Sync output: {output}")
+    with mutation_guard(project):
+        job = job_path(project, shot)
+        if job.parent.is_symlink() or job.is_symlink() or job.exists():
+            raise ValueError(f"Sync job active or interrupted; inspect {job}")
+        if output.exists() and not overwrite and reusable(output, expected):
+            print(f"KEEP {output.name} (matching inputs and settings)", flush=True)
+            return
+    with shot_job(project, shot):
+        with mutation_guard(project):
+            previous = output_identity(output)
+            if previous is not None and not overwrite:
+                if reusable(output, expected):
+                    print(f"KEEP {output.name} (matching inputs and settings)", flush=True)
+                    return
+                raise ValueError(f"{output.name} exists but is stale or invalid; inspect it before using --overwrite")
+        print(f"Syncing {shot}", flush=True)
+        estimates = measure_shot(files, dependencies["ffmpeg_executable"])
+        result = {**expected, "generated_at_utc": datetime.now(timezone.utc).isoformat()}
+        result["clips"] = {
+            role: {**expected["clips"][role], **estimates[role]} for role in ROLES
+        }
+        with tempfile.TemporaryDirectory(prefix="studio-sync-") as temporary:
+            candidate = Path(temporary) / output.name
+            write_json(candidate, result, False)
+            if not reusable(candidate, expected):
+                raise ValueError(f"Invalid synchronization result for {shot}")
+            # Measurement is independent; rechecks, archival and publication are one commit.
+            with mutation_guard(project):
+                require_prerequisites(project, ROOT, "3.1")
+                if expected["clips"] != {role: file_identity(files[role], project) for role in ROLES}:
+                    raise ValueError("Source media changed during synchronization; rerun this group")
+                if output_identity(output) != previous:
+                    raise ValueError(f"{output.name} changed during synchronization; replacement refused")
+                prepare_regeneration(project, ROOT, "3.1", [output] if output.exists() else [],
+                                     f"Publishing synchronization result for {shot}", job_id=shot)
+                write_json(output, result, False)
+        print(f"WROTE {output}", flush=True)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("project", type=Path, help="Studio project folder")
@@ -238,44 +334,12 @@ def main() -> int:
 
     failures = 0
     for shot, files in groups.items():
-        output = destination / f"{shot}.json"
         try:
-            expected = {
-                "schema_version": 1,
-                "shot": shot,
-                "reference_role": "camA",
-                "offset_convention": OFFSET_CONVENTION,
-                "generator": generator,
-                "clips": {role: file_identity(files[role], project) for role in ROLES},
-            }
-            if output.exists() and not args.overwrite:
-                if reusable(output, expected):
-                    print(f"KEEP {output.name} (matching inputs and settings)", flush=True)
-                    continue
-                raise ValueError(f"{output.name} exists but is stale or invalid; inspect it before using --overwrite")
-            print(f"Syncing {shot}", flush=True)
-            estimates = measure_shot(files, dependencies["ffmpeg_executable"])
-            # Do not publish results if the media changed while it was being read.
-            if expected["clips"] != {role: file_identity(files[role], project) for role in ROLES}:
-                raise ValueError("Source media changed during synchronization; rerun this group")
-            result = {**expected, "generated_at_utc": datetime.now(timezone.utc).isoformat()}
-            result["clips"] = {
-                role: {**expected["clips"][role], **estimates[role]} for role in ROLES
-            }
-            # Validate serialization before archiving any previous human-edited estimate.
-            with tempfile.TemporaryDirectory(prefix="studio-sync-") as temporary:
-                candidate = Path(temporary) / output.name
-                write_json(candidate, result, False)
-                if not reusable(candidate, expected):
-                    raise ValueError(f"Invalid synchronization result for {shot}")
-                prepare_regeneration(project, ROOT, "3.1", [output] if output.exists() else [],
-                                     f"Publishing synchronization result for {shot}")
-                write_json(output, result, False)
-            print(f"WROTE {output}", flush=True)
+            generate_shot(project, shot, files, dependencies, generator, args.overwrite)
         except Exception as error:
             # A failed group must not prevent independent groups from being attempted.
             failures += 1
-            invalidate(project, ROOT, "3.1", f"Synchronization failed for {shot}: {error}")
+            invalidate(project, ROOT, "3.1", f"Synchronization failed for {shot}: {error}", job_id=shot)
             print(f"FAIL {shot}: {error}", file=sys.stderr, flush=True)
     print(f"Sync: {len(groups) - failures}/{len(groups)} recording groups ready")
     return 1 if failures else 0

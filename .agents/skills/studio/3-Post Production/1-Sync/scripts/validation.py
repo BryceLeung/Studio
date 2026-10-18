@@ -5,6 +5,7 @@ from pathlib import Path
 import sys
 
 from scripts.validation import StageValidation
+from scripts.stage_completion import require_idle_jobs
 
 
 def read_helpers():
@@ -41,6 +42,7 @@ class Validation(StageValidation):
         destination = self.confined(Path(*helper.OUTPUT_PARTS))
         if not footage.is_dir() or not destination.is_dir():
             raise ValueError("Sync footage and output folders must exist")
+        require_idle_jobs(destination)
         for path in footage.iterdir():
             if path.is_file():
                 self.confined(path)

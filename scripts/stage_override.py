@@ -93,11 +93,13 @@ def _impacts(project, stages, selected):
             targets[step] = own
         for identifier, directory in targets.items():
             invalidation._safe(directory, project)
+            completion.require_idle_jobs(directory)
             lock = directory / ".DONE.lock"
             invalidation._safe(lock, project)
             if lock.exists():
                 raise ValueError(f"Completion operation is active or interrupted: {lock}")
             invalidation._plan(directory, identifier)
+            pending = invalidation.read_all_pending(directory, identifier)
             log = directory / "LOG.md"
             if log.is_file() and log.stat().st_nlink > 1:
                 raise ValueError(f"Refusing hardlinked override/invalidation log: {log}")
@@ -109,6 +111,16 @@ def _impacts(project, stages, selected):
                 "pending_sha256": fingerprints.raw_sha256(pointer) if pointer.is_file() else None,
                 "outputs_moved": False,
             }
+            # Preserve legacy plan hashes when no per-job pointers are present.
+            if any(job_id is not None for job_id in pending):
+                pointers = ([pointer] if None in pending else []) + [
+                    directory / "STALE/PENDING" / f"{hashlib.sha256(job_id.encode('utf-8')).hexdigest()}.json"
+                    for job_id in pending if job_id is not None
+                ]
+                result[directory.relative_to(project).as_posix()]["pending_files_sha256"] = {
+                    path.relative_to(directory).as_posix(): fingerprints.raw_sha256(path)
+                    for path in sorted(pointers)
+                }
     return dict(sorted(result.items()))
 
 
@@ -144,7 +156,7 @@ def preview(project, workflow=ROOT, *, stage, reason):
     for step in selected:
         try:
             snapshots[step] = collect_snapshot(project, workflow, step)
-            invalidation.read_pending(project / stages[step]["folder"], step)
+            invalidation.read_all_pending(project / stages[step]["folder"], step)
         except (OSError, UnicodeError, ValueError, TypeError, KeyError) as error:
             blocked.setdefault(step, []).append(str(error))
     needed = set()
@@ -190,6 +202,7 @@ def validate_override(project, workflow, definition, manifest):
     from scripts.override_snapshot import validate_snapshot
     from scripts.validation import check_common
     try:
+        completion.require_idle_jobs(Path(project) / completion.relative_path(definition["folder"]))
         if (manifest.get("schema") != "studio.done" or type(manifest.get("schema_version")) is not int
                 or manifest.get("schema_version") != 1
                 or manifest.get("step") != definition["step"] or manifest.get("completion_mode") != "manual-override"):
@@ -252,9 +265,14 @@ def preview_report(plan):
 
 def apply(project, workflow=ROOT, *, stage, reason, confirm, actor):
     """Recheck confirmation before writes; report any durable partial completion."""
-    from scripts.validation import load_stages
     if not isinstance(actor, str) or not actor.strip():
         raise ValueError("An explicit confirmation actor is required")
+    with completion.mutation_guard(project):
+        return _apply_locked(project, workflow, stage=stage, reason=reason, confirm=confirm, actor=actor)
+
+
+def _apply_locked(project, workflow, *, stage, reason, confirm, actor):
+    from scripts.validation import load_stages
     plan = preview(project, workflow, stage=stage, reason=reason)
     if not plan["can_apply"]:
         raise ValueError("Override preflight is blocked: " + json.dumps(plan["blocked"], sort_keys=True))

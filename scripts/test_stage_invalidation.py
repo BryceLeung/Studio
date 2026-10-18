@@ -1,5 +1,6 @@
 """Temporary-project tests for graph invalidation and recoverable regeneration."""
 import copy
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -44,9 +45,9 @@ class InvalidationTests(unittest.TestCase):
     def invalidate(self, step="3.2", **kwargs):
         return invalidation.invalidate(self.project, WORKFLOW, step, "changed", self.log, **kwargs)
 
-    def prepare(self, paths, step="3.2", logger=None):
+    def prepare(self, paths, step="3.2", logger=None, **kwargs):
         return invalidation.prepare_regeneration(self.project, WORKFLOW, step, paths, "regenerate",
-                                                 self.log if logger is None else logger)
+                                                 self.log if logger is None else logger, **kwargs)
 
     def test_all_graph_branches_preserve_independent_siblings(self):
         expected = {
@@ -646,6 +647,150 @@ class InvalidationTests(unittest.TestCase):
         self.assertIn("Completion invalidated", text)
         self.assertIn("source changed", text)
         self.assertIn("outputs preserved", text)
+
+    def test_distinct_jobs_have_distinct_pointers_and_shared_explicit_baseline(self):
+        own = self.folder("3.1")
+        child = self.folder("3.5")
+        (own.parent / "DONE").write_text("aggregate")
+        slots = {}
+        for job in ("clip/A", "clip/B"):
+            output = own / (job[-1] + ".json")
+            output.write_text(job)
+            slots[job] = self.prepare([output], step="3.1", job_id=job)
+            self.assertEqual((slots[job] / output.name).read_text(), job)
+            digest = hashlib.sha256(job.encode("utf-8")).hexdigest()
+            pointer = own / "STALE/PENDING" / f"{digest}.json"
+            self.assertEqual(json.loads(pointer.read_text())["job_id"], job)
+            self.assertEqual(invalidation.read_pending(own, "3.1", job_id=job), slots[job])
+        baseline = invalidation.read_pending(own, "3.1")
+        self.assertEqual(len({baseline, *slots.values()}), 3)
+        for job, slot in slots.items():
+            event = json.loads((slot / "EVENT.json").read_text())
+            self.assertEqual(event["job_id"], job)
+            self.assertEqual(event["baseline_slot"], int(baseline.name))
+            self.assertEqual((slot / "DONE").read_text(), "3.1")
+            self.assertNotEqual((slot / "DONE").stat().st_ino, (baseline / "DONE").stat().st_ino)
+        self.assertNotIn("job_id", json.loads((baseline / "EVENT.json").read_text()))
+        self.assertEqual(invalidation.read_all_pending(own), {None: baseline, **slots})
+        self.assertEqual(set(invalidation.read_all_pending(child)), {None})
+        self.assertEqual(set(invalidation.read_all_pending(own.parent)), {None})
+
+    def test_scoped_same_job_collision_preserves_baseline_and_previous_slot(self):
+        own = self.folder("3.2")
+        output = own / "one.json"
+        output.write_text("first")
+        first = self.prepare([output], job_id="same")
+        baseline = invalidation.read_pending(own)
+        output.write_text("second")
+        second = self.prepare([output], job_id="same")
+        event = json.loads((second / "EVENT.json").read_text())
+        self.assertEqual(event["previous_slot"], int(first.name))
+        self.assertEqual(event["baseline_slot"], int(baseline.name))
+        self.assertEqual((second / "DONE").read_text(), "3.2")
+        self.assertEqual((first / "one.json").read_text(), "first")
+        self.assertEqual((second / "one.json").read_text(), "second")
+        self.assertEqual(self.invalidate(job_id="same")["3.2"], second)
+        self.assertEqual(invalidation.read_pending(own), baseline)
+
+    def test_scoped_uses_legacy_baseline_not_latest_archived_done(self):
+        own = self.folder("3.2")
+        baseline = self.invalidate()["3.2"]
+        historic = own / "STALE/99"
+        historic.mkdir()
+        (historic / "DONE").write_text("not the baseline")
+        slot = self.prepare([], job_id="new")
+        self.assertEqual(slot.name, "100")
+        self.assertEqual((slot / "DONE").read_text(), "3.2")
+        self.assertEqual(json.loads((slot / "EVENT.json").read_text())["baseline_slot"], int(baseline.name))
+
+    def test_scoped_without_explicit_baseline_never_recovers_historical_done(self):
+        own = self.folder("3.2", marker=False)
+        historic = own / "STALE/99"
+        historic.mkdir(parents=True)
+        (historic / "DONE").write_text("historical")
+        slot = self.prepare([], job_id="new")
+        baseline = invalidation.read_pending(own)
+        self.assertEqual(baseline.name, "100")
+        self.assertEqual(slot.name, "101")
+        self.assertFalse((slot / "DONE").exists())
+        self.assertFalse(json.loads((slot / "EVENT.json").read_text())["had_done"])
+
+    def test_new_active_marker_starts_new_baseline_for_existing_job(self):
+        own = self.folder("3.2")
+        first = self.prepare([], job_id="same")
+        (own / "DONE").write_text("new baseline")
+        second = self.prepare([], job_id="same")
+        baseline = invalidation.read_pending(own)
+        self.assertNotEqual(first, second)
+        self.assertEqual((first / "DONE").read_text(), "3.2")
+        self.assertEqual((second / "DONE").read_text(), "new baseline")
+        self.assertEqual(json.loads((second / "EVENT.json").read_text())["baseline_slot"], int(baseline.name))
+
+    def test_all_pending_cleanup_prevalidates_scoped_records_before_any_unlink(self):
+        own = self.folder("3.2")
+        first = self.prepare([], job_id="one")
+        second = self.prepare([], job_id="two")
+        event = second / "EVENT.json"
+        valid = event.read_text()
+        data = json.loads(valid)
+        data["job_id"] = "wrong"
+        event.write_text(json.dumps(data))
+        pointers = [own / "STALE/PENDING.json", *sorted((own / "STALE/PENDING").iterdir())]
+        for action in (lambda: invalidation.read_all_pending(own),
+                       lambda: invalidation.clear_pending(own),
+                       lambda: self.invalidate(),
+                       lambda: self.prepare([], job_id="one")):
+            with self.assertRaises(ValueError):
+                action()
+            self.assertTrue(all(path.exists() for path in pointers))
+        event.write_text(valid)
+        invalidation.clear_pending(own, job_id="one")
+        self.assertIsNone(invalidation.read_pending(own, job_id="one"))
+        self.assertIsNotNone(invalidation.read_pending(own))
+        self.assertEqual(invalidation.read_pending(own, job_id="two"), second)
+        invalidation.clear_pending(own)
+        self.assertEqual(invalidation.read_all_pending(own), {})
+        self.assertTrue((first / "DONE").exists())
+        self.assertTrue((second / "DONE").exists())
+        self.assertFalse(any(path.exists() for path in pointers))
+
+    def test_scoped_pointer_identity_filename_and_symlink_are_validated(self):
+        own = self.folder("3.2")
+        self.prepare([], job_id="one")
+        pointer = next((own / "STALE/PENDING").iterdir())
+        valid = pointer.read_text()
+        data = json.loads(valid)
+        data["job_id"] = "two"
+        pointer.write_text(json.dumps(data))
+        with self.assertRaises(ValueError):
+            invalidation.read_pending(own, job_id="one")
+        with self.assertRaises(ValueError):
+            invalidation.read_all_pending(own)
+        pointer.write_text(valid)
+        renamed = pointer.with_name("wrong.json")
+        pointer.rename(renamed)
+        with self.assertRaises(ValueError):
+            invalidation.clear_pending(own)
+        renamed.rename(pointer)
+        pointer.unlink()
+        pointer.symlink_to(self.project / "missing")
+        with self.assertRaisesRegex(ValueError, "symlink"):
+            invalidation.read_all_pending(own)
+
+    def test_scoped_baseline_copy_failure_preserves_legacy_pointer(self):
+        own = self.folder("3.2")
+        output = own / "one.json"
+        output.write_text("original")
+        with patch.object(invalidation.shutil, "copyfileobj", side_effect=OSError("copy failure")):
+            with self.assertRaisesRegex(OSError, "copy failure"):
+                self.prepare([output], job_id="one")
+        baseline = invalidation.read_pending(own)
+        self.assertEqual((baseline / "DONE").read_text(), "3.2")
+        self.assertIsNone(invalidation.read_pending(own, job_id="one"))
+        self.assertEqual(output.read_text(), "original")
+        slot = self.prepare([output], job_id="one")
+        self.assertEqual(slot.name, "3")
+        self.assertEqual(json.loads((slot / "EVENT.json").read_text())["baseline_slot"], int(baseline.name))
 
 
 if __name__ == "__main__":

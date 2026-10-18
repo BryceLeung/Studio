@@ -174,6 +174,84 @@ class RecordingTests(unittest.TestCase):
         self.assertTrue(lock.is_dir())
         self.assertFalse(self.marker("1.1").exists())
 
+    def test_project_mutation_guard_queues_another_process_and_is_reentrant(self):
+        command = (
+            "import sys; from scripts.stage_completion import mutation_guard; "
+            "print('waiting', flush=True); "
+            "\nwith mutation_guard(sys.argv[1]): print('acquired', flush=True)"
+        )
+        with completion.mutation_guard(self.project):
+            with completion.mutation_guard(self.project):
+                child = subprocess.Popen([sys.executable, "-c", command, str(self.project)],
+                                         cwd=validation.ROOT, stdout=subprocess.PIPE,
+                                         stderr=subprocess.PIPE, text=True)
+                try:
+                    self.assertEqual(child.stdout.readline().strip(), "waiting")
+                    self.assertIsNone(child.poll())
+                except BaseException:
+                    child.kill()
+                    child.communicate()
+                    raise
+        try:
+            stdout, stderr = child.communicate(timeout=10)
+            self.assertEqual(child.returncode, 0, stderr)
+            self.assertEqual(stdout.strip(), "acquired")
+        finally:
+            if child.poll() is None:
+                child.kill()
+                child.communicate()
+
+    def test_completion_clears_all_job_pointers_but_preserves_archives(self):
+        from scripts.stage_invalidation import invalidate, read_pending
+        self.record("1.1")
+        directory = self.marker("1.1").parent
+        for job in ("A__C01", "A__C02"):
+            invalidate(self.project, validation.ROOT, "1.1", "job attempt", job_id=job)
+        slots = [read_pending(directory, "1.1", job_id=job) for job in ("A__C01", "A__C02")]
+        self.record("1.1")
+        self.assertIsNone(read_pending(directory, "1.1"))
+        for job, slot in zip(("A__C01", "A__C02"), slots):
+            self.assertIsNone(read_pending(directory, "1.1", job_id=job))
+            self.assertTrue((slot / "EVENT.json").is_file())
+
+    def test_invalid_job_pointer_prevents_completion_without_clearing_other_pointers(self):
+        from scripts.stage_invalidation import invalidate
+        directory = self.marker("1.1").parent
+        invalidate(self.project, validation.ROOT, "1.1", "job attempt", job_id="A__C01")
+        pointers = list((directory / "STALE/PENDING").glob("*.json"))
+        self.assertEqual(len(pointers), 1)
+        pointers[0].write_text("invalid JSON")
+        with self.assertRaises(ValueError):
+            self.record("1.1")
+        self.assertFalse(self.marker("1.1").exists())
+        self.assertTrue((directory / "STALE/PENDING.json").exists())
+
+    def test_manual_recording_cannot_bypass_job_lifecycle_gate(self):
+        candidate = self.manifest("1.1")
+        candidate["completion_mode"] = "manual-override"
+        jobs = self.marker("1.1").parent / ".SYNC-JOBS"
+        jobs.mkdir()
+        job = jobs / "interrupted.json"
+        job.write_text("{}")
+        with self.assertRaisesRegex(ValueError, "active or interrupted"):
+            completion._record_manual_override(self.project, validation.ROOT, "1.1", candidate)
+        self.assertFalse(self.marker("1.1").exists())
+        self.assertTrue(job.exists())
+
+    def test_existing_override_is_not_current_while_a_job_is_active(self):
+        from scripts import stage_override
+        self.record("1.1")
+        plan = stage_override.preview(self.project, validation.ROOT, stage="1.1", reason="fixture acceptance")
+        stage_override.apply(self.project, validation.ROOT, stage="1.1", reason="fixture acceptance",
+                             confirm=plan["plan_id"], actor="fixture")
+        self.assertEqual(validation.check_marker(self.project, validation.ROOT, self.stages["1.1"])[0], "current")
+        jobs = self.marker("1.1").parent / ".SYNC-JOBS"
+        jobs.mkdir()
+        (jobs / "active.json").write_text("{}")
+        status, reason = validation.check_marker(self.project, validation.ROOT, self.stages["1.1"])
+        self.assertNotEqual(status, "current")
+        self.assertIn("active or interrupted", reason)
+
     def test_replaced_recording_lock_is_not_removed_and_prevents_publication(self):
         self.record("1.1")
         before = self.marker("1.1").read_bytes()

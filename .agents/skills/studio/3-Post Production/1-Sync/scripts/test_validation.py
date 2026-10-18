@@ -1,8 +1,11 @@
 """Read-only Sync checks use dummy media, never decoding or probing it."""
 import importlib.util
+from concurrent.futures import ThreadPoolExecutor
 import json
 from pathlib import Path
+import subprocess
 import sys
+import threading
 from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import patch
@@ -93,7 +96,8 @@ class SyncValidationTests(unittest.TestCase):
                 patch.object(self.helper, "measure_shot", return_value=estimates), \
                 patch.object(self.helper.subprocess, "run", side_effect=AssertionError("No subprocess allowed")):
             self.assertEqual(self.helper.main(), 0)
-        prerequisites.assert_called_once_with(self.project.resolve(), ROOT, "3.1")
+        self.assertEqual(prerequisites.call_count, 2)
+        prerequisites.assert_called_with(self.project.resolve(), ROOT, "3.1")
         self.assertTrue(self.output.is_file())
         self.assertFalse((self.destination / "DONE").exists())
 
@@ -131,6 +135,8 @@ class SyncValidationTests(unittest.TestCase):
 
     def test_default_matching_reuse_keeps_done_and_outputs_untouched(self):
         self.markers()
+        with completion.mutation_guard(self.project):
+            pass
         before = snapshot(self.project)
         status, measurement = self.run_generator()
         self.assertEqual(status, 0)
@@ -232,6 +238,126 @@ class SyncValidationTests(unittest.TestCase):
         before = snapshot(self.project)
         self.assertEqual(self.validator.validate()[0], "current")
         self.assertEqual(snapshot(self.project), before)
+
+    def test_different_groups_measure_concurrently_and_keep_separate_pending_slots(self):
+        self.markers()
+        for path in list(self.footage.iterdir()):
+            path.with_name(path.name.replace("A__C01", "A__C02")).write_bytes(b"other media")
+        groups = self.helper.discover_shots(self.footage, None)
+        dependencies = self.document["generator"]["dependencies"] | {"ffmpeg_executable": "fixture"}
+        barrier = threading.Barrier(2)
+        estimates = {role: {"offset_ms": clip["offset_ms"], "standard_score": clip["standard_score"]}
+                     for role, clip in self.document["clips"].items()}
+
+        def measure(*args):
+            barrier.wait(timeout=10)
+            return estimates
+
+        with patch.object(self.helper, "require_prerequisites"), \
+                patch.object(self.helper, "measure_shot", side_effect=measure), \
+                ThreadPoolExecutor(max_workers=2) as pool:
+            futures = [pool.submit(self.helper.generate_shot, self.project, shot, files,
+                                   dependencies, self.document["generator"], True)
+                       for shot, files in groups.items()]
+            for future in futures:
+                future.result(timeout=20)
+        from scripts.stage_invalidation import read_pending
+        slots = [read_pending(self.destination, "3.1", job_id=shot) for shot in groups]
+        self.assertEqual(len(set(slots)), 2)
+        for shot, slot in zip(groups, slots):
+            self.assertTrue((self.destination / f"{shot}.json").is_file())
+            self.assertEqual((slot / "DONE").read_text(), "previous marker")
+        self.assertEqual(list((self.destination / ".SYNC-JOBS").iterdir()), [])
+
+    def test_duplicate_group_job_is_refused_without_removing_owner(self):
+        with self.helper.shot_job(self.project, "A__C01"):
+            with self.assertRaisesRegex(ValueError, "active or interrupted"):
+                with self.helper.shot_job(self.project, "A__C01"):
+                    self.fail("duplicate job entered")
+            self.check_unchanged(ValueError)
+        self.check_unchanged()
+
+    def test_matching_output_cannot_bypass_active_or_interrupted_job(self):
+        dependencies = self.document["generator"]["dependencies"] | {"ffmpeg_executable": "fixture"}
+        files = self.helper.discover_shots(self.footage, None)["A__C01"]
+        with self.helper.shot_job(self.project, "A__C01"):
+            with self.assertRaisesRegex(ValueError, "active or interrupted"):
+                self.helper.generate_shot(self.project, "A__C01", files, dependencies,
+                                          self.document["generator"])
+        job = self.helper.job_path(self.project, "A__C01")
+        job.write_text('{"shot": "A__C01", "pid": 0}')
+        with self.assertRaisesRegex(ValueError, "active or interrupted"):
+            self.helper.generate_shot(self.project, "A__C01", files, dependencies,
+                                      self.document["generator"])
+        self.assertTrue(job.is_file())
+
+    def test_separate_process_workers_publish_independent_clip_groups(self):
+        self.output.unlink()
+        for path in list(self.footage.iterdir()):
+            path.with_name(path.name.replace("A__C01", "A__C02")).write_bytes(b"other media")
+        command = """
+import importlib.util, json, sys
+from pathlib import Path
+spec = importlib.util.spec_from_file_location('sync_check', sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+helper, _ = module.read_helpers()
+project = Path(sys.argv[2]).resolve()
+shot = sys.argv[3]
+dependencies = json.loads(sys.argv[4])
+dependencies['ffmpeg_executable'] = 'fixture'
+helper.require_prerequisites = lambda *args: None
+def measure(*args):
+    print('ready', flush=True)
+    sys.stdin.readline()
+    return {role: {'offset_ms': 0, 'standard_score': None if role == 'camA' else 2.0}
+            for role in helper.ROLES}
+helper.measure_shot = measure
+files = helper.discover_shots(project.joinpath(*helper.FOOTAGE_PARTS), [shot])[shot]
+helper.generate_shot(project, shot, files, dependencies, helper.generator_identity(dependencies))
+"""
+        workers = []
+        try:
+            for shot in ("A__C01", "A__C02"):
+                worker = subprocess.Popen(
+                    [sys.executable, "-c", command, str(SOURCE), str(self.project), shot,
+                     json.dumps(self.document["generator"]["dependencies"])], cwd=ROOT,
+                    stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                workers.append(worker)
+                self.assertEqual(worker.stdout.readline().strip(), f"Syncing {shot}")
+                self.assertEqual(worker.stdout.readline().strip(), "ready")
+            self.assertEqual(len(list((self.destination / ".SYNC-JOBS").iterdir())), 2)
+            self.check_unchanged(ValueError)
+            for worker in workers:
+                stdout, stderr = worker.communicate(input="continue\n", timeout=20)
+                self.assertEqual(worker.returncode, 0, stderr)
+                self.assertIn("WROTE", stdout)
+            self.assertEqual(len(list((self.destination / "STALE/PENDING").glob("*.json"))), 2)
+            self.assertTrue((self.destination / "A__C01.json").is_file())
+            self.assertTrue((self.destination / "A__C02.json").is_file())
+        finally:
+            for worker in workers:
+                if worker.poll() is None:
+                    worker.kill()
+                worker.communicate()
+
+    def test_output_edited_during_measurement_is_not_archived_or_replaced(self):
+        dependencies = self.document["generator"]["dependencies"] | {"ffmpeg_executable": "fixture"}
+        files = self.helper.discover_shots(self.footage, None)["A__C01"]
+        estimates = {role: {"offset_ms": clip["offset_ms"], "standard_score": clip["standard_score"]}
+                     for role, clip in self.document["clips"].items()}
+
+        def measure(*args):
+            self.output.write_text("new human edit")
+            return estimates
+
+        with patch.object(self.helper, "require_prerequisites"), \
+                patch.object(self.helper, "measure_shot", side_effect=measure):
+            with self.assertRaisesRegex(ValueError, "changed during synchronization"):
+                self.helper.generate_shot(self.project, "A__C01", files, dependencies,
+                                          self.document["generator"], True)
+        self.assertEqual(self.output.read_text(), "new human edit")
+        self.assertFalse(list(self.destination.glob("STALE/*/A__C01.json")))
 
     def test_invalid_offsets_and_scores_fail_read_only(self):
         for role, field, value in (("camA", "offset_ms", 1), ("camB", "offset_ms", True),

@@ -1,11 +1,15 @@
 """Manual overrides are explicit attestations, not stage executions."""
+from concurrent.futures import ThreadPoolExecutor
+import hashlib
 import importlib.util
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
 import sys
 from tempfile import TemporaryDirectory
+from threading import Event
 import unittest
 from unittest.mock import patch
 
@@ -25,6 +29,9 @@ class OverrideTests(unittest.TestCase):
         self.project, self.workflow = root / "project", root / "workflow"
         self.project.mkdir()
         self.workflow.mkdir()
+        # Initialize guard infrastructure before read-only evidence comparisons.
+        with completion.mutation_guard(self.project):
+            pass
         self.stages = validation.load_stages()
         paths = {Path(path) for path in override_snapshot.CRITICAL_FILES}
         paths.add(Path("scripts/append-log.py"))
@@ -74,6 +81,24 @@ class OverrideTests(unittest.TestCase):
     def apply(self, plan):
         return override.apply(self.project, self.workflow, stage=plan["requested"], reason=plan["reason"],
                               confirm=plan["plan_id"], actor="Explicit test-user confirmation")
+
+    def pending(self, step, job_id=None, slot=2):
+        stale = self.folder(step) / "STALE"
+        baseline = stale / "1"
+        baseline.mkdir(parents=True, exist_ok=True)
+        event = {"schema": "studio.stale.event", "schema_version": 1, "step": step, "had_done": False}
+        (baseline / "EVENT.json").write_text(json.dumps(event))
+        payload = {"schema": "studio.stale.pending", "schema_version": 1, "step": step, "slot": 1}
+        pointer = stale / "PENDING.json"
+        if job_id is not None:
+            archive = stale / str(slot)
+            archive.mkdir(exist_ok=True)
+            (archive / "EVENT.json").write_text(json.dumps(dict(event, job_id=job_id, baseline_slot=1)))
+            payload.update(job_id=job_id, slot=slot)
+            pointer = stale / "PENDING" / f"{hashlib.sha256(job_id.encode('utf-8')).hexdigest()}.json"
+            pointer.parent.mkdir(exist_ok=True)
+        pointer.write_text(json.dumps(payload))
+        return pointer
 
     def test_preview_is_read_only_and_reports_scope_warning_and_impacts(self):
         before = tree(self.project)
@@ -197,6 +222,120 @@ class OverrideTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Confirmation"):
             self.apply(plan)
         self.assertEqual(tree(self.project), changed)
+
+    def test_legacy_pending_preview_preserves_impact_schema(self):
+        pointer = self.pending("1.1")
+        before = tree(self.project)
+        plan = self.plan("1.1")
+        self.assertTrue(plan["can_apply"], plan["blocked"])
+        impact = plan["impacts"][self.stages["1.1"]["folder"]]
+        self.assertEqual(set(impact), {"step", "active_done_sha256", "pending_sha256", "outputs_moved"})
+        self.assertEqual(impact["pending_sha256"], override.fingerprints.raw_sha256(pointer))
+        self.assertEqual(tree(self.project), before)
+
+    def test_preview_fingerprints_all_pending_pointer_files(self):
+        pointers = [self.pending("1.1"), self.pending("1.1", "job-a"), self.pending("1.1", "job-b", slot=3)]
+        before = tree(self.project)
+        plan = self.plan("1.1")
+        self.assertTrue(plan["can_apply"], plan["blocked"])
+        impact = plan["impacts"][self.stages["1.1"]["folder"]]
+        self.assertEqual(impact["pending_files_sha256"], {
+            path.relative_to(self.folder("1.1")).as_posix(): override.fingerprints.raw_sha256(path)
+            for path in pointers
+        })
+        self.assertEqual(tree(self.project), before)
+        self.assertEqual(plan["plan_id"], self.plan("1.1")["plan_id"])
+
+    def test_new_scoped_pending_pointer_invalidates_confirmation(self):
+        for step, job_id, slot in (("1.1", "job-a", 2), ("1.1", "job-b", 3), ("3.6", "job-c", 2)):
+            with self.subTest(step=step, job_id=job_id):
+                plan = self.plan("1.1")
+                self.pending(step, job_id, slot)
+                before = tree(self.project)
+                with self.assertRaisesRegex(ValueError, "Confirmation"):
+                    self.apply(plan)
+                self.assertEqual(tree(self.project), before)
+
+    def test_changed_scoped_pending_pointer_invalidates_confirmation(self):
+        pointer = self.pending("3.6", "job-a")
+        plan = self.plan("1.1")
+        pointer.write_text(pointer.read_text() + "\n")
+        before = tree(self.project)
+        with self.assertRaisesRegex(ValueError, "Confirmation"):
+            self.apply(plan)
+        self.assertEqual(tree(self.project), before)
+
+    def test_invalid_scoped_pending_pointer_blocks_preview(self):
+        for step in ("1.1", "3.6"):
+            with self.subTest(step=step):
+                pointer = self.pending(step, "job-a")
+                pointer.write_text("{}")
+                before = tree(self.project)
+                plan = self.plan("1.1")
+                self.assertFalse(plan["can_apply"])
+                with self.assertRaisesRegex(ValueError, "blocked"):
+                    self.apply(plan)
+                self.assertEqual(tree(self.project), before)
+                pointer.unlink()
+
+    def test_active_or_interrupted_jobs_block_preview_and_confirmation(self):
+        jobs = self.folder("3.1") / ".SYNC-JOBS"
+        jobs.mkdir()
+        job = jobs / "job.json"
+        for state in ("active", "interrupted"):
+            with self.subTest(state=state):
+                plan = self.plan("1.1")
+                self.assertTrue(plan["can_apply"], plan["blocked"])
+                job.write_text(json.dumps({"state": state}))
+                before = tree(self.project)
+                blocked = self.plan("1.1")
+                self.assertFalse(blocked["can_apply"])
+                self.assertIn("active or interrupted", str(blocked["blocked"]))
+                with self.assertRaisesRegex(ValueError, "active or interrupted"):
+                    self.apply(plan)
+                self.assertEqual(tree(self.project), before)
+                job.unlink()
+
+    def test_invalid_actor_is_rejected_before_guard_or_preview(self):
+        with patch.object(completion, "mutation_guard") as guard, patch.object(override, "preview") as preview:
+            with self.assertRaisesRegex(ValueError, "actor"):
+                override.apply(self.project, self.workflow, stage="1.1", reason="test", confirm=None, actor=" ")
+        guard.assert_not_called()
+        preview.assert_not_called()
+
+    def test_apply_rechecks_confirmation_after_competing_mutation(self):
+        plan = self.plan("1.1")
+        attempted = Event()
+        original_guard = completion.mutation_guard
+
+        def guarded(project):
+            attempted.set()
+            return original_guard(project)
+
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            with patch.object(completion, "mutation_guard", side_effect=guarded), \
+                    patch.object(override, "preview", wraps=override.preview) as preview:
+                with original_guard(self.project):
+                    future = executor.submit(self.apply, plan)
+                    self.assertTrue(attempted.wait(timeout=5), "Apply did not attempt to acquire the guard")
+                    preview.assert_not_called()
+                    self.pending("3.6", "competing-job")
+                    before = tree(self.project)
+                with self.assertRaisesRegex(ValueError, "Confirmation"):
+                    future.result(timeout=10)
+                preview.assert_called_once()
+        self.assertEqual(tree(self.project), before)
+
+    def test_apply_holds_guard_through_publication(self):
+        plan = self.plan("1.1")
+        original = completion._record_manual_override
+
+        def publish(project, workflow, step, manifest):
+            self.assertIn((os.getpid(), str(self.project)), completion._mutation_state.held)
+            return original(project, workflow, step, manifest)
+
+        with patch.object(completion, "_record_manual_override", side_effect=publish):
+            self.apply(plan)
 
     def test_source_output_helpers_and_new_takes_invalidate_override(self):
         self.apply(self.plan())
