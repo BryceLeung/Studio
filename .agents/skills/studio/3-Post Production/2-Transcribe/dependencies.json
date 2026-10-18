@@ -1,0 +1,28 @@
+{
+  "schema": "studio.stage",
+  "schema_version": 1,
+  "step": "3.2",
+  "completion": {"stage_owned": true},
+  "override_watches": [
+    {"folder": "3-Post Production/2-Transcribe", "filename_regex": "^Stale Transcripts\\.json$", "minimum": 0, "maximum": 1}
+  ],
+  "workflow_dependencies": [
+    ".agents/skills/studio/3-Post Production/2-Transcribe/scripts/check_transcripts.py",
+    ".agents/skills/studio/2-Production/1-Footage Intake/scripts/validate-footage.py",
+    "scripts/append-log.py"
+  ],
+  "validation": {"script": "scripts/validation.py"},
+  "folder": "3-Post Production/2-Transcribe",
+  "generated": [
+    {"folder": "3-Post Production/2-Transcribe", "filename_regex": "^.+__C\\d{2}__lav\\.(?:json|srt|vtt|tsv|txt)$"}
+  ],
+  "prerequisites": [
+    {"step": "2.1", "folder": "2-Production/1-Footage Intake"}
+  ],
+  "inputs": [
+    {"folder": "2-Production/1-Footage Intake", "filename_regex": "^.+__C\\d{2}__lav\\.wav$", "minimum": 1, "complete_set": true}
+  ],
+  "outputs": [
+    {"folder": "3-Post Production/2-Transcribe", "filename_regex": "^.+__C\\d{2}__lav\\.json$", "minimum": 1, "suffix": ".json", "complete_set": true}
+  ]
+}

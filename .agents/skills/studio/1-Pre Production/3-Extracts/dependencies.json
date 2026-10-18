@@ -1,0 +1,20 @@
+{
+  "schema": "studio.stage",
+  "schema_version": 1,
+  "step": "1.3",
+  "workflow_dependencies": [".agents/skills/studio/1-Pre Production/3-Extracts/EXCERPT-PREFERENCES.md"],
+  "folder": "1-Pre Production/3-Extracts",
+  "generated": [
+    {"folder": "1-Pre Production/3-Extracts", "filename_regex": "^Short-Form Excerpt Shortlist\\.md$"}
+  ],
+  "prerequisites": [
+    {"step": "1.1", "folder": "1-Pre Production/1-Script Review"},
+    {"step": "1.2", "folder": "1-Pre Production/2-Cue Cards"}
+  ],
+  "inputs": [
+    {"folder": "1-Pre Production/1-Script Review/Approved", "filename_regex": "^.+\\.docx$", "minimum": 1, "complete_set": true}
+  ],
+  "outputs": [
+    {"folder": "1-Pre Production/3-Extracts/APPROVED", "filename_regex": "^Short-Form Excerpt Shortlist\\.md$", "minimum": 1, "maximum": 1, "complete_set": true}
+  ]
+}

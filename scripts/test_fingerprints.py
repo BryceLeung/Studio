@@ -1,5 +1,6 @@
 """Exercise Studio's shared newline and binary fingerprint convention."""
 import hashlib
+import os
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
@@ -58,6 +59,30 @@ class FingerprintTests(unittest.TestCase):
             self.assertEqual(fp.sha256(path), fp.digest_bytes(b""))
             path.write_bytes(b"{}\r\n")
             self.assertEqual(fp.sha256(path), fp.digest_bytes(b"{}\n"))
+
+    def test_media_uses_integer_seconds_and_other_files_use_content(self):
+        with TemporaryDirectory() as directory:
+            wav = Path(directory) / "recording.WAV"
+            wav.write_bytes(b"first")
+            os.utime(wav, ns=(1_700_000_000_123_456_789, 1_700_000_000_123_456_789))
+            saved = fp.identity(wav)
+            self.assertEqual(saved, {"method": "media-stat", "size_bytes": 5, "mtime_s": 1_700_000_000})
+            self.assertTrue(fp.matches_identity(wav, saved))
+            os.utime(wav, ns=(1_700_000_001_123_456_789, 1_700_000_001_123_456_789))
+            self.assertFalse(fp.matches_identity(wav, saved))
+            transcript = Path(directory) / "transcript.json"
+            transcript.write_bytes(b"{}")
+            self.assertEqual(fp.identity(transcript), {"method": "sha256", "sha256": fp.sha256(transcript)})
+            self.assertTrue(fp.matches_identity(transcript, {"sha256": fp.sha256(transcript)}))
+
+    def test_rendered_movie_extensions_use_media_stat(self):
+        with TemporaryDirectory() as directory:
+            for suffix in ("MOV", "mp4", "m4v", "mkv", "avi", "webm", "mxf"):
+                path = Path(directory) / ("rendered." + suffix)
+                path.write_bytes(b"rendered movie")
+                saved = fp.identity(path)
+                self.assertEqual(saved["method"], "media-stat")
+                self.assertTrue(fp.matches_identity(path, saved))
 
 
 if __name__ == "__main__":

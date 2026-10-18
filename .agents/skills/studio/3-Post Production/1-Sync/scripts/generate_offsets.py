@@ -17,6 +17,8 @@ ROOT = next(p for p in Path(__file__).resolve().parents if (p / "studio/fingerpr
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 from studio.fingerprints import sha256
+from scripts.validation import require_prerequisites
+from scripts.stage_invalidation import invalidate, prepare_regeneration
 
 
 FOOTAGE_PARTS = ("2-Production", "1-Footage Intake")
@@ -215,6 +217,12 @@ def main() -> int:
 
     try:
         project = args.project.resolve(strict=True)
+        require_prerequisites(project, ROOT, "3.1")
+    except (OSError, RuntimeError, ValueError, ImportError) as error:
+        print(f"FAIL: {error}", file=sys.stderr)
+        return 1
+
+    try:
         footage = project.joinpath(*FOOTAGE_PARTS)
         if not footage.is_dir():
             raise ValueError(f"Footage folder does not exist: {footage}")
@@ -224,6 +232,7 @@ def main() -> int:
         destination = project.joinpath(*OUTPUT_PARTS)
         destination.mkdir(parents=True, exist_ok=True)
     except (OSError, RuntimeError, ValueError, ImportError, subprocess.CalledProcessError) as error:
+        invalidate(project, ROOT, "3.1", f"Synchronization setup failed: {error}")
         print(f"FAIL: {error}", file=sys.stderr)
         return 1
 
@@ -253,11 +262,20 @@ def main() -> int:
             result["clips"] = {
                 role: {**expected["clips"][role], **estimates[role]} for role in ROLES
             }
-            write_json(output, result, args.overwrite)
+            # Validate serialization before archiving any previous human-edited estimate.
+            with tempfile.TemporaryDirectory(prefix="studio-sync-") as temporary:
+                candidate = Path(temporary) / output.name
+                write_json(candidate, result, False)
+                if not reusable(candidate, expected):
+                    raise ValueError(f"Invalid synchronization result for {shot}")
+                prepare_regeneration(project, ROOT, "3.1", [output] if output.exists() else [],
+                                     f"Publishing synchronization result for {shot}")
+                write_json(output, result, False)
             print(f"WROTE {output}", flush=True)
         except Exception as error:
             # A failed group must not prevent independent groups from being attempted.
             failures += 1
+            invalidate(project, ROOT, "3.1", f"Synchronization failed for {shot}: {error}")
             print(f"FAIL {shot}: {error}", file=sys.stderr, flush=True)
     print(f"Sync: {len(groups) - failures}/{len(groups)} recording groups ready")
     return 1 if failures else 0

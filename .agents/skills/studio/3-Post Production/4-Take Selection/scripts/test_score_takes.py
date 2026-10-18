@@ -1,9 +1,11 @@
 """Verify editorial ranking, source identity, complete scoring, and safe reruns."""
 from copy import deepcopy
+from contextlib import ExitStack
 import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
+from unittest.mock import patch
 
 import score_takes as scoring
 
@@ -79,6 +81,13 @@ class RankingTests(unittest.TestCase):
 
 
 class StageTests(unittest.TestCase):
+    def setUp(self):
+        # Exercise candidate validation without constructing unrelated ancestors.
+        stack = ExitStack()
+        self.addCleanup(stack.close)
+        self.prerequisites = stack.enter_context(patch.object(scoring, "require_prerequisites"))
+        self.recheck = stack.enter_context(patch("scripts.validation.require_prerequisites"))
+
     def fixture(self, project):
         approved, transcribed = project / scoring.find.APPROVED, project / scoring.find.TRANSCRIBED
         approved.mkdir(parents=True)
@@ -121,7 +130,11 @@ class StageTests(unittest.TestCase):
             path = self.fixture(project)
             original = path.read_bytes()
             output = project / "trial"
-            report = scoring.run_stage(project, [path], output)
+            with patch.object(scoring, "record_done") as record:
+                report = scoring.run_stage(project, [path], output)
+            self.prerequisites.assert_not_called()
+            self.recheck.assert_not_called()
+            record.assert_not_called()
             self.assertTrue(report["complete"])
             self.assertFalse(report["done_written"])
             target = Path(report["outputs"][0])
@@ -161,11 +174,19 @@ class StageTests(unittest.TestCase):
             generated = scoring.find.generate(project, project / scoring.find.OUTPUT)
             scoring.find.write_json(project / scoring.find.OUTPUT / "DONE",
                                     scoring.find.completion_manifest(project, generated))
-            report = scoring.run_stage(project, [path])
+            with patch.object(scoring, "record_done", wraps=scoring.record_done) as record:
+                report = scoring.run_stage(project, [path])
+            self.prerequisites.assert_called_once_with(project, scoring.ROOT, "3.4")
+            record.assert_called_once()
+            self.assertEqual(record.call_args.args[:3], (project, scoring.ROOT, "3.4"))
+            self.recheck.assert_called_once_with(project, scoring.ROOT, "3.4")
             marker = project / scoring.STAGE / "DONE"
             self.assertTrue(report["done_written"])
             self.assertTrue(marker.is_file())
+            original_done, original_mtime = marker.read_bytes(), marker.stat().st_mtime_ns
             scoring.run_stage(project, [path])
+            self.assertEqual(marker.read_bytes(), original_done)
+            self.assertEqual(marker.stat().st_mtime_ns, original_mtime)
             target = Path(report["outputs"][0])
             edited = json.loads(target.read_text())
             edited["takes"][0]["score"] = -1
@@ -175,6 +196,42 @@ class StageTests(unittest.TestCase):
             self.assertFalse(marker.exists())
             self.assertTrue((project / scoring.find.OUTPUT / "DONE").exists())
             self.assertEqual(json.loads(target.read_text()), edited)
+
+    def test_blocked_prerequisites_never_generate_or_record_completion(self):
+        with TemporaryDirectory() as temp:
+            project = Path(temp).resolve()
+            self.prerequisites.side_effect = ValueError("3.3 blocked")
+            with patch.object(scoring.find, "discover") as discover, \
+                    patch.object(scoring, "record_done") as record:
+                with self.assertRaisesRegex(ValueError, "3.3 blocked"):
+                    scoring.run_stage(project, [])
+            discover.assert_not_called()
+            record.assert_not_called()
+            self.assertFalse((project / scoring.STAGE / "DONE").exists())
+
+    def test_explicit_regeneration_archives_scores_and_reuses_unchanged_marker(self):
+        from scripts.stage_invalidation import prepare_regeneration
+        with TemporaryDirectory() as temp:
+            project = Path(temp).resolve()
+            mapping = self.fixture(project)
+            report = scoring.run_stage(project, [mapping])
+            target = Path(report["outputs"][0])
+            marker = target.parent / "DONE"
+            baseline = target.read_bytes()
+            previous_done = marker.read_bytes()
+            target.write_text("not JSON")
+            with patch("scripts.stage_invalidation.prepare_regeneration", wraps=prepare_regeneration) as prepare:
+                scoring.run_stage(project, [mapping], regenerate=True)
+                prepare.assert_called_once()
+            self.assertEqual(target.read_bytes(), baseline)
+            self.assertEqual((target.parent / "STALE/1" / target.name).read_text(), "not JSON")
+            self.assertEqual((target.parent / "STALE/1/DONE").read_bytes(), previous_done)
+            done, mtime = marker.read_bytes(), marker.stat().st_mtime_ns
+            with patch("scripts.stage_invalidation.prepare_regeneration") as prepare:
+                scoring.run_stage(project, [mapping], regenerate=True)
+                prepare.assert_not_called()
+            self.assertEqual((marker.read_bytes(), marker.stat().st_mtime_ns), (done, mtime))
+            self.assertTrue(mapping.is_file())
 
 
 if __name__ == "__main__":

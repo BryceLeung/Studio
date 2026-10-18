@@ -91,6 +91,12 @@ class FaceTrackingTests(unittest.TestCase):
             b = ranges[(intake / "A__C01__camB.mov", "camB")]
             self.assertEqual([[float(x), float(y)] for x, y in a], [[1.15, 1.75], [2.15, 2.75]])
             self.assertEqual([[float(x), float(y)] for x, y in b], [[1.25, 1.85], [2.25, 2.85]])
+            (mapping.parent / "DONE").write_text(json.dumps({"completion_mode": "manual-override", "outputs": [
+                {"scope": "project", "path": mapping.relative_to(project).as_posix()}]}))
+            with patch.object(track.find.mapping, "takes_versions", return_value=[(1, mapping)]), \
+                    patch.object(track, "load_mapping", return_value=(doc, [script, transcript])):
+                overridden_ranges, _ = track.required_ranges(project, [(1, "A.docx", ["Hello."])])
+            self.assertEqual(overridden_ranges, ranges)
             (mapping.parent / "DONE").write_text(json.dumps({"conditions": {"latest_versions": []}}))
             with patch.object(track.find.mapping, "takes_versions", return_value=[(1, mapping)]):
                 with self.assertRaisesRegex(ValueError, "not recorded in 3.3 DONE"):
@@ -113,10 +119,22 @@ class FaceTrackingTests(unittest.TestCase):
     def test_no_approved_extracts_does_not_fetch_model(self):
         with TemporaryDirectory() as directory:
             project = Path(directory).resolve()
-            with patch.object(track, "validate_done"), patch.object(track.find, "append_log"), \
-                    patch.object(track.find, "validate_approved"):
+            shortlist = project / track.SHORTLIST
+            shortlist.parent.mkdir(parents=True)
+            shortlist.write_text("# No viable extracts\n")
+            with patch.object(track, "require_prerequisites") as prerequisites, \
+                    patch("scripts.validation.require_prerequisites") as recheck, \
+                    patch.object(track, "record_done", wraps=track.record_done) as record, \
+                    patch.object(track.find, "append_log"):
                 result = track.run(project, get_model=lambda: self.fail("model downloaded"))
+                prerequisites.assert_called_once_with(project, track.ROOT, "3.5")
+                record.assert_called_once_with(project, track.ROOT, "3.5", result)
+                recheck.assert_called_once_with(project, track.ROOT, "3.5")
+                marker = project / track.STAGE / "DONE"
+                original_done, original_mtime = marker.read_bytes(), marker.stat().st_mtime_ns
                 self.assertEqual(track.run(project, get_model=lambda: self.fail("model downloaded")), result)
+                self.assertEqual(marker.read_bytes(), original_done)
+                self.assertEqual(marker.stat().st_mtime_ns, original_mtime)
             self.assertTrue(result["conditions"]["no_extracts"])
             self.assertEqual(result["conditions"]["face_paths"], [])
             self.assertEqual(len(result["outputs"]), 1)
@@ -131,6 +149,19 @@ class FaceTrackingTests(unittest.TestCase):
         output["frames"][0]["face"][0] = float("nan")
         with self.assertRaisesRegex(ValueError, "normalized"):
             track.validate_path(output, header)
+
+    def test_blocked_prerequisites_never_analyze_or_record_completion(self):
+        with TemporaryDirectory() as directory:
+            project = Path(directory).resolve()
+            with patch.object(track, "require_prerequisites", side_effect=ValueError("3.3 blocked")), \
+                    patch.object(track, "required_ranges") as ranges, \
+                    patch.object(track, "record_done") as record:
+                with self.assertRaisesRegex(ValueError, "3.3 blocked"):
+                    track.run(project, analyzer=lambda *args: self.fail("analyzer called"),
+                              get_model=lambda: self.fail("model requested"))
+            ranges.assert_not_called()
+            record.assert_not_called()
+            self.assertFalse((project / track.STAGE / "DONE").exists())
 
     def test_run_writes_and_reuses_face_paths_without_rescanning(self):
         with TemporaryDirectory() as directory:
@@ -147,16 +178,46 @@ class FaceTrackingTests(unittest.TestCase):
                 {"time_ms": 1000, "face": [0.5, 0.4, 0.1, 0.1], "status": "tracked", "confidence": 0.9},
                 {"time_ms": 1900, "face": [0.5, 0.4, 0.1, 0.1], "status": "tracked", "confidence": 0.9}],
                       "warnings": []}
-            with patch.object(track, "validate_done"), patch.object(track.find, "append_log"), \
-                    patch.object(track.find, "validate_approved"), \
+            with patch.object(track, "require_prerequisites"), patch.object(track.find, "append_log"), \
+                    patch.object(track, "record_done", side_effect=lambda project, root, step, manifest: manifest) as record, \
                     patch.object(track, "required_ranges", return_value=(paths, [])):
                 with patch.object(track, "analyze_video", return_value=sample) as analyzer:
                     first = track.run(project, analyzer=analyzer, get_model=lambda: Path("model.onnx"))
                     second = track.run(project, analyzer=analyzer, get_model=lambda: self.fail("model requested"))
                     self.assertEqual(analyzer.call_count, 1)
+                self.assertEqual(record.call_count, 2)
+                output = project / track.STAGE / (media.stem + "__FacePath.v1.json")
+                original = output.read_bytes()
+                edited = json.loads(original)
+                edited["model_sha256"] = "changed"
+                output.write_text(json.dumps(edited))
+                stale_bytes = output.read_bytes()
+                marker = output.parent / "DONE"
+                marker.write_text("prior completion")
+                with self.assertRaisesRegex(ValueError, "inspect before replacing"):
+                    track.run(project, analyzer=lambda *args: self.fail("default must preserve edits"),
+                              get_model=lambda: self.fail("default must not load model"))
+                self.assertEqual(output.read_bytes(), stale_bytes)
+                from scripts.stage_invalidation import prepare_regeneration
+                with patch("scripts.stage_invalidation.prepare_regeneration") as prepare:
+                    def failed_analysis(*args):
+                        raise RuntimeError("detector failed")
+                    with self.assertRaisesRegex(RuntimeError, "detector failed"):
+                        track.run(project, analyzer=failed_analysis, get_model=lambda: Path("model.onnx"), regenerate=True)
+                    prepare.assert_not_called()
+                self.assertEqual(output.read_bytes(), stale_bytes)
+                with patch("scripts.stage_invalidation.prepare_regeneration", wraps=prepare_regeneration) as prepare, \
+                        patch.object(track, "analyze_video", return_value=sample) as analyzer:
+                    track.run(project, analyzer=analyzer, get_model=lambda: Path("model.onnx"), regenerate=True)
+                    prepare.assert_called_once()
+                    analyzer.assert_called_once()
+                self.assertEqual(output.read_bytes(), original)
+                self.assertEqual((output.parent / "STALE/1" / output.name).read_bytes(), stale_bytes)
+                self.assertEqual((output.parent / "STALE/1/DONE").read_text(), "prior completion")
+                self.assertFalse((output.parent / "STALE/2").exists())
             self.assertEqual(first, second)
             self.assertEqual(len(first["conditions"]["face_paths"]), 1)
-            self.assertTrue((project / track.STAGE / "DONE").is_file())
+            self.assertFalse((project / track.STAGE / "DONE").exists())
 
 
 if __name__ == "__main__":

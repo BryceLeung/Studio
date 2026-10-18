@@ -23,6 +23,7 @@ spec = importlib.util.spec_from_file_location("studio_scoring_for_first_cut", SC
 scoring = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(scoring)
 find = scoring.find
+from scripts.validation import require_prerequisites
 STAGE = Path("3-Post Production/6-First Cut")
 INTAKE = Path("2-Production/1-Footage Intake")
 SYNC = Path("3-Post Production/1-Sync")
@@ -367,24 +368,19 @@ def validate_xml(xml, output, report):
         raise ValueError("Project duration differs from active audition choices.")
 
 
-def run(project, score_paths, padding_ms=50, ffprobe="ffprobe"):
+def run(project, score_paths, padding_ms=50, ffprobe="ffprobe", regenerate=False):
     project = project.resolve(strict=True)
+    require_prerequisites(project, ROOT, "3.6")
+    if type(padding_ms) is not int or padding_ms < 0:
+        raise ValueError("padding_ms must be a nonnegative integer")
+    inventory = find.discover(project)
+    expected = [(project / scoring.STAGE / (s.stem + "__Scores.v1.json")).resolve() for s, _ in inventory]
+    supplied = [(project / p).resolve(strict=True) if not p.is_absolute() else p.resolve(strict=True) for p in score_paths]
+    if len(supplied) != len(set(supplied)) or set(supplied) != set(expected):
+        raise ValueError("Pass one stage 3.4 score file for every approved script.")
     directory = project / STAGE
     find.append_log(directory, "First Cut started", [f"padding_ms={padding_ms}; start camA; flip at nonadjacent selections."])
-    failed = (3, 6)
     try:
-        for step, folder in (((1, 1), find.APPROVED.parent), ((1, 3), EXTRACTS), ((2, 1), INTAKE),
-                             ((3, 1), SYNC), ((3, 3), find.OUTPUT), ((3, 4), scoring.STAGE),
-                             ((3, 5), FACE)):
-            failed = step
-            validate_done(project, folder)
-        find.validate_approved(project)
-        failed = (3, 6)
-        inventory = find.discover(project)
-        expected = [(project / scoring.STAGE / (s.stem + "__Scores.v1.json")).resolve() for s, _ in inventory]
-        supplied = [(project / p).resolve(strict=True) if not p.is_absolute() else p.resolve(strict=True) for p in score_paths]
-        if len(supplied) != len(set(supplied)) or set(supplied) != set(expected):
-            raise ValueError("Pass one stage 3.4 score file for every approved script.")
         planned, inputs = [], []
         for (script, transcript_paths), score_path in zip(inventory, expected):
             scores = read_json(score_path)
@@ -429,41 +425,56 @@ def run(project, score_paths, padding_ms=50, ffprobe="ffprobe"):
             xml, report = build_xml(project, output, script.stem, document, scores, syncs, probes, padding_ms)
             planned.append((output, xml, report))
         for output, xml, _ in planned:
-            if output.exists() and output.read_bytes() != xml:
+            if not regenerate and output.exists() and output.read_bytes() != xml:
                 raise ValueError(f"Existing First Cut differs; inspect before replacing: {output}")
-        for output, xml, _ in planned:
-            if not output.exists():
-                with output.open("xb") as stream:
-                    stream.write(xml)
-            validate_xml(output.read_bytes(), output, next(r for p, _, r in planned if p == output))
+        for output, xml, item_report in planned:
+            validate_xml(xml, output, item_report)
         dependencies = [Path(__file__), Path(subtitles.__file__), Path(__file__).parents[1] / "SKILL.md", SCORER, scoring.FIND_SCRIPT,
                          ROOT / "scripts/append-log.py", ROOT / "studio/fingerprints.py"]
         dependencies.extend(ROOT / "studio/tools/line" / name for name in
                             ("mapping.py", "sources.py", "combined.py", "quality.py", "actions.py", "boundaries.py"))
         # Extracts remain a declared input; no extract projects are emitted yet.
-        inputs.extend(scoring.fingerprint(p, project, "project") for p in (project / EXTRACTS).iterdir()
+        inputs.extend(scoring.fingerprint(p, project, "project") for p in (project / EXTRACTS / "APPROVED").iterdir()
                       if p.is_file() and p.name not in ("LOG.md", "DONE"))
         report = {"schema": "studio.first-cut.review", "schema_version": 1,
                   "generated": True, "complete": False, "done_written": False,
-                  "review_required": "Import both FCPXML files in Final Cut; verify sync, auditions, cameras, and boundaries.",
+                  "review_required": "Edit and render each project; move same-stem movie files into this stage's APPROVED folder.",
                   "inputs": inputs, "dependencies": [scoring.fingerprint(p, ROOT, "workflow") for p in dependencies],
-                  "outputs": [scoring.fingerprint(p, project, "project") for p, _, _ in planned],
+                  "outputs": [{"scope": "project", "path": p.relative_to(project).as_posix(),
+                               "sha256": find.fingerprints.digest_bytes(xml, text=True)} for p, xml, _ in planned],
                   "projects": [r for _, _, r in planned]}
         review_path = directory / "REVIEW.json"
-        if review_path.exists() and read_json(review_path) != report:
+        try:
+            review_changed = not review_path.exists() or read_json(review_path) != report
+        except (ValueError, TypeError):
+            if not regenerate:
+                raise
+            review_changed = True
+        changed = review_changed or any(not p.exists() or p.read_bytes() != xml for p, xml, _ in planned)
+        if not regenerate and review_path.exists() and review_changed:
             raise ValueError("Existing REVIEW.json differs; inspect before replacing.")
+        if regenerate and changed:
+            from scripts.stage_invalidation import prepare_regeneration
+            selected = [p for p, _, _ in planned if p.exists()]
+            if review_path.exists():
+                selected.append(review_path)
+            prepare_regeneration(project, ROOT, "3.6", selected,
+                                 "Explicit First Cut regeneration.", append_log=find.append_log)
+        for output, xml, item_report in planned:
+            if not output.exists():
+                with output.open("xb") as stream:
+                    stream.write(xml)
+            validate_xml(output.read_bytes(), output, item_report)
         if not review_path.exists():
             find.write_json(review_path, report)
-        if (directory / "DONE").exists():
-            find.invalidate(project, (3, 6), "First Cut regenerated; Final Cut import review required.")
-        find.append_log(directory, "First Cut ready for import review", [
+        if changed:
+            find.invalidate(project, (3, 6), "First Cut regenerated; edited renders in APPROVED required.")
+        find.append_log(directory, "First Cut ready for approval", [
             json.dumps({"projects": [{k: v for k, v in r.items() if k != "selected"} for _, _, r in planned]}),
-            "No DONE: Final Cut import/playback review pending. See REVIEW.json for fingerprints and selected source ranges."])
+            "No DONE: edit and render each project, then move the rendered movies into APPROVED. See REVIEW.json for source provenance."])
         return report
     except (OSError, ValueError, TypeError, KeyError, subprocess.SubprocessError) as error:
-        # Implementation/shape errors must never invalidate otherwise valid upstream work.
-        actual_failed = (3, 6) if isinstance(error, (TypeError, KeyError)) else failed
-        find.invalidate(project, actual_failed, f"First Cut failed: {error}")
+        find.invalidate(project, (3, 6), f"First Cut failed: {error}")
         find.append_log(directory, "First Cut failed", [str(error), "Preserved existing work files."])
         raise
 
@@ -474,11 +485,12 @@ def main():
     parser.add_argument("--scores", required=True, nargs="+", type=Path)
     parser.add_argument("--padding-ms", type=int, default=50)
     parser.add_argument("--ffprobe", default="ffprobe")
+    parser.add_argument("--regenerate", action="store_true", help="Archive selected generated XML/review files before replacing")
     args = parser.parse_args()
     if args.padding_ms < 0:
         parser.error("Padding must be nonnegative.")
     try:
-        report = run(args.project_root, args.scores, args.padding_ms, args.ffprobe)
+        report = run(args.project_root, args.scores, args.padding_ms, args.ffprobe, args.regenerate)
         print(json.dumps({"generated": report["generated"], "complete": report["complete"],
                           "review_required": report["review_required"],
                           "projects": [{k: v for k, v in p.items() if k != "selected"} for p in report["projects"]]}, indent=2))

@@ -14,6 +14,8 @@ TEXT_SUFFIXES = frozenset({
     ".sh", ".ps1", ".bat", ".cmd", ".sql", ".rst", ".srt", ".vtt",
 })
 
+MEDIA_SUFFIXES = frozenset({".mov", ".mp4", ".m4v", ".mkv", ".avi", ".webm", ".mxf", ".wav"})
+
 
 def is_text(path):
     path = Path(path)
@@ -56,3 +58,33 @@ def matches(path, expected):
     """Validate canonical hashes or an existing exact-byte legacy fingerprint."""
     expected = expected.lower()
     return sha256(path) == expected or (is_text(path) and raw_sha256(path) == expected)
+
+
+def identity(path):
+    """Fingerprint ingested media cheaply; hash all other file types."""
+    path = Path(path)
+    if path.suffix.lower() in MEDIA_SUFFIXES:
+        stat = path.stat()
+        return {"method": "media-stat", "size_bytes": stat.st_size,
+                "mtime_s": stat.st_mtime_ns // 1_000_000_000}
+    return {"method": "sha256", "sha256": sha256(path)}
+
+
+def matches_identity(path, saved):
+    """Honor a saved method, including legacy entries with only sha256."""
+    method = saved.get("method", "sha256" if "sha256" in saved else "legacy-media-stat")
+    if method in ("media-stat", "legacy-media-stat") and Path(path).suffix.lower() not in MEDIA_SUFFIXES:
+        raise ValueError(f"Stat-only fingerprint is not allowed for non-media: {path}")
+    if method == "sha256":
+        return matches(path, saved["sha256"])
+    if method == "media-stat":
+        stat = Path(path).stat()
+        return (stat.st_size == saved["size_bytes"]
+                and stat.st_mtime_ns // 1_000_000_000 == saved["mtime_s"])
+    if method == "legacy-media-stat":
+        stat = Path(path).stat()
+        size = saved.get("size_bytes", saved.get("bytes"))
+        if size is None or "mtime_ns" not in saved:
+            raise ValueError("Incomplete legacy media fingerprint")
+        return stat.st_size == size and stat.st_mtime_ns == saved["mtime_ns"]
+    raise ValueError(f"Unknown fingerprint method: {method}")

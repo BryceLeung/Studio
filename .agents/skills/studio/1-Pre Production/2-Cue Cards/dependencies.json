@@ -1,0 +1,24 @@
+{
+  "schema": "studio.stage",
+  "schema_version": 1,
+  "step": "1.2",
+  "workflow_dependencies": [
+    ".agents/skills/studio/1-Pre Production/2-Cue Cards/scripts/make-plans.py",
+    ".agents/skills/studio/1-Pre Production/2-Cue Cards/scripts/build-cue-cards.py"
+  ],
+  "validation": {"script": "scripts/validation.py"},
+  "folder": "1-Pre Production/2-Cue Cards",
+  "generated": [
+    {"folder": "1-Pre Production/2-Cue Cards", "filename_regex": "^.+\\.pptx$"},
+    {"folder": "1-Pre Production/2-Cue Cards/working", "filename_regex": "^.+\\.json$"}
+  ],
+  "prerequisites": [
+    {"step": "1.1", "folder": "1-Pre Production/1-Script Review"}
+  ],
+  "inputs": [
+    {"folder": "1-Pre Production/1-Script Review/Approved", "filename_regex": "^.+\\.docx$", "minimum": 1, "complete_set": true}
+  ],
+  "outputs": [
+    {"folder": "1-Pre Production/2-Cue Cards", "filename_regex": "^.+\\.pptx$", "minimum": 1, "complete_set": true}
+  ]
+}

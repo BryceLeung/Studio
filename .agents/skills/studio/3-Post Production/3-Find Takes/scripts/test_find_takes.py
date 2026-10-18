@@ -1,5 +1,6 @@
 """Behavior checks for range matching, input inventory, and safe stage reruns."""
 from copy import deepcopy
+from contextlib import ExitStack
 import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -44,6 +45,14 @@ class MatcherTests(unittest.TestCase):
 
 
 class GenerationTests(unittest.TestCase):
+    def setUp(self):
+        # Lifecycle fixtures intentionally omit the full prerequisite graph.
+        stack = ExitStack()
+        self.addCleanup(stack.close)
+        self.prerequisites = stack.enter_context(patch.object(find_takes, "require_prerequisites"))
+        self.recheck = stack.enter_context(patch("scripts.validation.require_prerequisites"))
+        self.current = stack.enter_context(patch.object(find_takes, "require_current"))
+
     def test_coverage_requires_non_flub_or_saved_script_discard(self):
         with TemporaryDirectory() as directory:
             root = Path(directory).resolve()
@@ -226,66 +235,109 @@ class GenerationTests(unittest.TestCase):
             root = Path(directory).resolve()
             self.fixture(root)
             self.approve(root)
-            with patch("sys.argv", ["find_takes.py", str(root)]), patch("builtins.print"):
+            with patch("sys.argv", ["find_takes.py", str(root)]), patch("builtins.print"), \
+                    patch.object(find_takes, "record_done", wraps=find_takes.record_done) as record:
                 self.assertEqual(find_takes.main(), 0)
+            self.prerequisites.assert_called_once_with(root, find_takes.ROOT, "3.3")
+            self.current.assert_not_called()
+            record.assert_called_once()
+            self.assertEqual(record.call_args.args[:3], (root, find_takes.ROOT, "3.3"))
+            self.recheck.assert_called_once_with(root, find_takes.ROOT, "3.3")
             stage = root / find_takes.OUTPUT
             done = json.loads((stage / "DONE").read_text())
             self.assertEqual(done["conditions"]["latest_versions"][0]["version"], 1)
             self.assertTrue(all(find_takes.sha256(root / entry["path"]) == entry["sha256"] for entry in done["inputs"] + done["outputs"]))
             original_log = (stage / "LOG.md").read_bytes()
             original_mapping = (stage / "A__Takes.v1.json").read_bytes()
+            original_done = (stage / "DONE").read_bytes()
+            original_mtime = (stage / "DONE").stat().st_mtime_ns
             with patch.object(find_takes, "match_recording", side_effect=AssertionError("Must skip generation")):
                 self.assertTrue(find_takes.run_stage(root)["complete"])
             self.assertTrue((stage / "LOG.md").read_bytes().startswith(original_log))
             self.assertEqual((stage / "A__Takes.v1.json").read_bytes(), original_mapping)
+            self.assertEqual((stage / "DONE").read_bytes(), original_done)
+            self.assertEqual((stage / "DONE").stat().st_mtime_ns, original_mtime)
 
-    def test_failed_coverage_deletes_own_containing_and_future_markers(self):
+    def test_failed_coverage_archives_own_containing_and_future_markers(self):
         with TemporaryDirectory() as directory:
             root = Path(directory).resolve()
             self.fixture(root)
             (root / find_takes.APPROVED / "A.txt").write_text("Amber birch cedar dogwood. Missing filmed line.")
             self.approve(root)
-            folders = [find_takes.OUTPUT, Path("3-Post Production"), Path("3-Post Production/4-Edit"), Path("4-Publish/1-Export")]
+            folders = [find_takes.OUTPUT, Path("3-Post Production"), Path("3-Post Production/4-Take Selection"), Path("4-Publish/1-Export")]
             for folder in folders:
                 (root / folder).mkdir(parents=True, exist_ok=True)
                 (root / folder / "DONE").write_text("{}")
                 (root / folder / "work.txt").write_text("keep")
-            result = find_takes.run_stage(root)
+            with patch.object(find_takes, "record_done") as record:
+                result = find_takes.run_stage(root)
+            record.assert_not_called()
             self.assertFalse(result["complete"])
             self.assertFalse(result["done_written"])
             self.assertEqual(len(result["invalidated_markers"]), 4)
             for folder in folders:
                 self.assertFalse((root / folder / "DONE").exists())
+                self.assertEqual((root / folder / "STALE/1/DONE").read_text(), "{}")
                 self.assertEqual((root / folder / "work.txt").read_text(), "keep")
                 self.assertTrue((root / folder / "LOG.md").exists())
             self.assertEqual(list(root.rglob("DONE.invalidated*")), [])
 
-    def test_prerequisite_failure_is_logged_and_never_generates(self):
+    def test_prerequisite_failure_preserves_markers_and_never_generates(self):
         with TemporaryDirectory() as directory:
             root = Path(directory).resolve()
             self.fixture(root)
             self.approve(root)
             (root / find_takes.APPROVED / "A.txt").write_text("Changed approved script.")
+            marker = root / find_takes.APPROVED.parent / "DONE"
+            before = marker.read_bytes()
+            self.prerequisites.side_effect = ValueError("Approved script fingerprint differs")
             with patch.object(find_takes, "match_recording", side_effect=AssertionError("Must not generate")):
                 with self.assertRaisesRegex(ValueError, "fingerprint"):
                     find_takes.run_stage(root)
-            self.assertFalse((root / find_takes.APPROVED.parent / "DONE").exists())
-            self.assertIn("fingerprint", (root / find_takes.OUTPUT / "LOG.md").read_text())
+            self.assertEqual(marker.read_bytes(), before)
+            self.assertFalse((root / find_takes.OUTPUT / "LOG.md").exists())
             self.assertEqual(list((root / find_takes.OUTPUT).glob("*__Takes*.json")), [])
 
-    def test_invalidation_preserves_declared_independence_and_follows_dependencies(self):
+    def test_legacy_crlf_fingerprint_reuse_does_not_invalidate_descendants(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            self.fixture(root)
+            source = root / find_takes.APPROVED / "A.txt"
+            source.write_bytes(b"Amber birch cedar dogwood.\r\n")
+            self.approve(root)
+            self.assertTrue(find_takes.run_stage(root)["complete"])
+            marker = root / find_takes.OUTPUT / "DONE"
+            legacy = json.loads(marker.read_text())
+            for item in legacy["inputs"]:
+                if item["path"] == source.relative_to(root).as_posix():
+                    item["sha256"] = find_takes.fingerprints.raw_sha256(source)
+            marker.write_text(json.dumps(legacy))
+            before = marker.read_bytes()
+            downstream = root / "3-Post Production/4-Take Selection/DONE"
+            downstream.parent.mkdir(parents=True)
+            downstream.write_text("preserve independent existing evidence")
+            result = find_takes.run_stage(root)
+            self.assertTrue(result["complete"])
+            self.assertEqual(result["invalidated_markers"], [])
+            self.assertEqual(marker.read_bytes(), before)
+            self.assertTrue(downstream.is_file())
+
+    def test_invalidation_uses_definitions_not_legacy_manifest_dependencies(self):
         with TemporaryDirectory() as directory:
             root = Path(directory).resolve()
             for folder, inputs in ((find_takes.OUTPUT, []),
-                                   (Path("3-Post Production/4-Edit"), [str(find_takes.OUTPUT / "A__Takes.v1.json")]),
-                                   (Path("4-Publish/1-Export"), ["3-Post Production/4-Edit/video.mp4"]),
-                                   (Path("4-Publish/2-Independent"), ["3-Post Production/1-Sync/offsets.json"])):
+                                   (Path("3-Post Production/4-Take Selection"), []),
+                                   (Path("3-Post Production/6-First Cut"), ["3-Post Production/1-Sync/offsets.json"]),
+                                   (Path("3-Post Production/1-Sync"), []),
+                                   (Path("3-Post Production/2-Transcribe"), [])):
                 target = root / folder
                 target.mkdir(parents=True)
                 (target / "DONE").write_text(json.dumps({"inputs": [{"scope": "project", "path": path} for path in inputs]}))
-            deleted = find_takes.invalidate(root, (3, 3), "coverage failed")
-            self.assertEqual(len(deleted), 3)
-            self.assertTrue((root / "4-Publish/2-Independent/DONE").exists())
+            archived = find_takes.invalidate(root, (3, 3), "coverage failed")
+            self.assertEqual(len(archived), 3)
+            self.assertTrue(all((root / path).is_file() and "/STALE/1/DONE" in path for path in archived))
+            self.assertTrue((root / "3-Post Production/1-Sync/DONE").exists())
+            self.assertTrue((root / "3-Post Production/2-Transcribe/DONE").exists())
 
     def test_isolated_run_does_not_modify_project_completion_or_log(self):
         with TemporaryDirectory() as directory:
@@ -296,7 +348,12 @@ class GenerationTests(unittest.TestCase):
             stage.mkdir(parents=True)
             (stage / "DONE").write_text("keep marker")
             output = root / "trial"
-            result = find_takes.run_stage(root, output)
+            with patch.object(find_takes, "record_done") as record:
+                result = find_takes.run_stage(root, output)
+            self.current.assert_called_once_with(root, find_takes.ROOT, "1.1")
+            self.prerequisites.assert_not_called()
+            self.recheck.assert_not_called()
+            record.assert_not_called()
             self.assertTrue(result["complete"])
             self.assertFalse(result["done_written"])
             self.assertEqual((stage / "DONE").read_text(), "keep marker")

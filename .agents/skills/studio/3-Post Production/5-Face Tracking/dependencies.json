@@ -1,0 +1,37 @@
+{
+  "schema": "studio.stage",
+  "schema_version": 1,
+  "step": "3.5",
+  "completion": {"stage_owned": true},
+  "workflow_dependencies": [
+    ".agents/skills/studio/3-Post Production/5-Face Tracking/scripts/face_tracking.py",
+    ".agents/skills/studio/3-Post Production/3-Find Takes/scripts/find_takes.py",
+    "scripts/append-log.py",
+    "studio/tools/line/mapping.py",
+    "studio/tools/line/sources.py",
+    "studio/tools/line/actions.py",
+    "studio/tools/line/quality.py",
+    "studio/tools/line/combined.py",
+    "studio/tools/line/boundaries.py"
+  ],
+  "validation": {"script": "scripts/validation.py"},
+  "folder": "3-Post Production/5-Face Tracking",
+  "generated": [
+    {"folder": "3-Post Production/5-Face Tracking", "filename_regex": "^(?:Face Paths|.+__C\\d{2}__cam[AB]__FacePath\\.v1)\\.json$"}
+  ],
+  "prerequisites": [
+    {"step": "1.1", "folder": "1-Pre Production/1-Script Review"},
+    {"step": "1.3", "folder": "1-Pre Production/3-Extracts"},
+    {"step": "2.1", "folder": "2-Production/1-Footage Intake"},
+    {"step": "3.1", "folder": "3-Post Production/1-Sync"},
+    {"step": "3.3", "folder": "3-Post Production/3-Find Takes"}
+  ],
+  "inputs": [
+    {"folder": "1-Pre Production/3-Extracts/APPROVED", "filename_regex": "^Short-Form Excerpt Shortlist\\.md$", "minimum": 1, "maximum": 1},
+    {"folder": "3-Post Production/3-Find Takes", "filename_regex": "^.+__Takes\\.v[1-9]\\d*\\.json$", "minimum": 0}
+  ],
+  "outputs": [
+    {"folder": "3-Post Production/5-Face Tracking", "filename_regex": "^Face Paths\\.json$", "minimum": 1},
+    {"folder": "3-Post Production/5-Face Tracking", "filename_regex": "^.+__C\\d{2}__cam[AB]__FacePath\\.v1\\.json$", "minimum": 0}
+  ]
+}

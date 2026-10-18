@@ -7,11 +7,14 @@ import math
 import os
 import re
 import sys
+import tempfile
 
 ROOT = next(p for p in Path(__file__).resolve().parents if (p / "studio/fingerprints.py").is_file())
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 from studio.fingerprints import matches
+from scripts.validation import load_stages, require_prerequisites
+from scripts.stage_invalidation import invalidate, prepare_regeneration
 
 from PIL import ImageFont
 from pptx import Presentation
@@ -173,29 +176,82 @@ def main() -> None:
     args = parser.parse_args()
 
     project = args.project.resolve(strict=True)
+    require_prerequisites(project, ROOT, "1.2")
     approved = project / "1-Pre Production" / "1-Script Review" / "Approved"
     working = project / "1-Pre Production" / "2-Cue Cards" / "working"
     destination = args.output_root or working.parent
-    sources = sorted(approved.glob("*.docx"))
-    plans = sorted(working.glob("*.json"))
-    if not sources or {path.stem for path in sources} != {path.stem for path in plans}:
-        parser.error("Approved Word scripts and cue-card plans must be a nonempty matching set")
+    canonical = args.output_root is None
+    if not canonical:
+        preview = destination.resolve()
+        parents = (preview, *preview.parents)
+        if any(parent.name.casefold() in ("stale", "approved") for parent in parents):
+            parser.error("--output-root cannot be inside an archive or approval folder")
+        for definition in load_stages(ROOT).values():
+            suffix = tuple(part.casefold() for part in Path(definition["folder"]).parts)
+            if any(tuple(part.casefold() for part in parent.parts[-len(suffix):]) == suffix for parent in parents):
+                parser.error("--output-root cannot be a canonical stage folder in any project")
+            protected = (project / definition["folder"]).resolve()
+            if preview.is_relative_to(protected) or (protected.exists() and any(
+                    parent.exists() and parent.samefile(protected) for parent in parents)):
+                parser.error("--output-root must be separate from all canonical stage folders")
+    replacement_refused = False
+    try:
+        sources = sorted(approved.glob("*.docx"))
+        plans = sorted(working.glob("*.json"))
+        if not sources or {path.stem for path in sources} != {path.stem for path in plans}:
+            raise ValueError("Approved Word scripts and cue-card plans must be a nonempty matching set")
 
-    jobs = []
-    for plan_file in plans:
-        source = approved / f"{plan_file.stem}.docx"
-        plan = json.loads(plan_file.read_text(encoding="utf-8"))
-        if not matches(source, plan["source_sha256"]):
-            raise ValueError(f"Approved script changed after planning: {source}")
-        output = destination / f"{plan_file.stem}.pptx"
-        if output.exists() and not args.overwrite:
-            raise FileExistsError(f"Review the existing deck before passing --overwrite: {output}")
-        jobs.append((plan, output))
+        jobs = []
+        for plan_file in plans:
+            source = approved / f"{plan_file.stem}.docx"
+            plan = json.loads(plan_file.read_text(encoding="utf-8"))
+            if not matches(source, plan["source_sha256"]):
+                raise ValueError(f"Approved script changed after planning: {source}")
+            output = destination / f"{plan_file.stem}.pptx"
+            canonical_output = working.parent / output.name
+            if not canonical and (output.resolve() == canonical_output.resolve() or (
+                    output.exists() and canonical_output.exists() and output.samefile(canonical_output))):
+                raise ValueError(f"Preview output aliases a canonical deck: {output}")
+            if output.exists() and not args.overwrite:
+                replacement_refused = True
+                raise FileExistsError(f"Review the existing deck before passing --overwrite: {output}")
+            jobs.append((plan, output))
 
-    font = metric_font(args.font_file)
-    for plan, output in jobs:
-        count = build_deck(plan, font, output)
-        print(f"Created {output} with {count + 1} slides ({count} speaking)")
+        font = metric_font(args.font_file)
+        with tempfile.TemporaryDirectory(prefix="studio-cue-cards-") as temporary:
+            staged = []
+            for plan, output in jobs:
+                candidate = Path(temporary) / output.name
+                count = build_deck(plan, font, candidate)
+                content = candidate.read_bytes()
+                if not content:
+                    raise ValueError(f"Renderer produced an empty deck: {output.name}")
+                staged.append((content, output, count))
+            if canonical:
+                prepare_regeneration(project, ROOT, "1.2", [output for _, output, _ in staged if output.exists()],
+                                     "Publishing rendered cue-card decks")
+            destination.mkdir(parents=True, exist_ok=True)
+            for content, output, count in staged:
+                if canonical or not args.overwrite:
+                    with output.open("xb") as stream:
+                        stream.write(content)
+                else:
+                    temporary_output = None
+                    try:
+                        with tempfile.NamedTemporaryFile(dir=destination, prefix=".cue-preview-", delete=False) as stream:
+                            temporary_output = Path(stream.name)
+                            stream.write(content)
+                            stream.flush()
+                            os.fsync(stream.fileno())
+                        os.replace(temporary_output, output)
+                    finally:
+                        if temporary_output is not None:
+                            temporary_output.unlink(missing_ok=True)
+                print(f"Created {output} with {count + 1} slides ({count} speaking)")
+    except Exception as error:
+        if canonical and not replacement_refused:
+            invalidate(project, ROOT, "1.2", f"Cue-card rendering failed: {error}")
+        raise
 
 
 if __name__ == "__main__":

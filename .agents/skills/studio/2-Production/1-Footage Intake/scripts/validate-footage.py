@@ -3,6 +3,13 @@
 from argparse import ArgumentParser
 from pathlib import Path
 import re
+import sys
+
+ROOT = next(p for p in Path(__file__).resolve().parents if (p / "studio/fingerprints.py").is_file())
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+from scripts.validation import require_prerequisites
+from scripts.stage_invalidation import invalidate
 
 
 APPROVED_PARTS = ("1-Pre Production", "1-Script Review", "Approved")
@@ -61,19 +68,25 @@ def main() -> None:
     args = parser.parse_args()
 
     project = args.project.resolve(strict=True)
+    require_prerequisites(project, ROOT, "2.1")
     approved_dir = project.joinpath(*APPROVED_PARTS)
     footage_dir = project.joinpath(*FOOTAGE_PARTS)
 
     if not approved_dir.is_dir():
         parser.error(f"Approved script folder does not exist: {approved_dir}")
     if not footage_dir.is_dir():
+        invalidate(project, ROOT, "2.1", f"Footage inspection failed: folder does not exist: {footage_dir}")
         parser.error(f"Footage folder does not exist: {footage_dir}")
 
     approved = sorted(path.stem for path in approved_dir.glob("*.docx"))
     if not approved:
         parser.error(f"No approved scripts found in {approved_dir}")
 
-    complete, problems = inspect_footage(footage_dir)
+    try:
+        complete, problems = inspect_footage(footage_dir)
+    except Exception as error:
+        invalidate(project, ROOT, "2.1", f"Footage inspection failed: {error}")
+        raise
     missing = [script for script in approved if script not in complete]
 
     print(f"Footage Intake - {project.name}")
@@ -82,6 +95,8 @@ def main() -> None:
         print(f"  {'OK' if clips else 'MISSING'}  {script}{f' ({clips})' if clips else ''}")
 
     if missing or problems:
+        invalidate(project, ROOT, "2.1", "Footage inspection failed: " + "; ".join(
+            [f"Missing complete footage set: {script}" for script in missing] + problems))
         print("\nFAIL - footage validation found problems")
         for problem in problems:
             print(f"  - {problem}")

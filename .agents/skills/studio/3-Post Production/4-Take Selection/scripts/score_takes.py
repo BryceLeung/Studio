@@ -19,6 +19,8 @@ FIND_SCRIPT = ROOT / ".agents/skills/studio/3-Post Production/3-Find Takes/scrip
 spec = importlib.util.spec_from_file_location("studio_find_takes_for_selection", FIND_SCRIPT)
 find = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(find)
+from scripts.stage_completion import record_done, same_manifest  # noqa: E402
+from scripts.validation import require_prerequisites  # noqa: E402
 
 
 def fingerprint(path: Path, root: Path, scope: str) -> dict:
@@ -152,28 +154,24 @@ def validate_manifest(project: Path, path: Path) -> None:
                 raise ValueError(f"Stale completion dependency: {target}")
 
 
-def run_stage(project: Path, inputs: list[Path], output_dir: Path | None = None) -> dict:
+def run_stage(project: Path, inputs: list[Path], output_dir: Path | None = None, regenerate=False) -> dict:
     project = project.resolve(strict=True)
     directory = output_dir.resolve() if output_dir else project / STAGE
     isolated = directory != project / STAGE
+    if regenerate and isolated:
+        raise ValueError("Regeneration is only supported for project stage outputs, not isolated trials.")
     for upstream in (project / find.APPROVED.parent, project / find.TRANSCRIBED,
                      project / find.OUTPUT):
         if directory == upstream or upstream in directory.parents:
             raise ValueError("Output directory cannot be inside an upstream input folder.")
+    if not isolated:
+        require_prerequisites(project, ROOT, "3.4")
     find.append_log(directory, "Take Selection started", [
         f"UTC: {datetime.now(timezone.utc).isoformat()}; isolated: {isolated}.",
         "Rules: " + json.dumps(provenance()),
     ])
     failed = (3, 4)
     try:
-        if not isolated:
-            failed = (1, 1)
-            find.validate_approved(project)
-            failed = (3, 3)
-            marker = project / find.OUTPUT / "DONE"
-            if not marker.is_file():
-                raise ValueError("Find Takes 3.3 DONE is required before project scoring.")
-            validate_manifest(project, marker)
         inventory = find.discover(project)
         expected, sources = [], []
         for script_path, transcript_paths in inventory:
@@ -198,17 +196,28 @@ def run_stage(project: Path, inputs: list[Path], output_dir: Path | None = None)
             document = load_mapping(project, path)
             reference = fingerprint(path, project, "project")
             target = directory / (script_path.stem + "__Scores.v1.json")
-            if target.exists():
+            if target.exists() and not regenerate:
                 previous = json.loads(target.read_text(encoding="utf-8-sig"))
                 reference = checked_reference(project, path, previous["source_mapping"])
             result = score_document(document, reference)
             planned.append((target, result))
         failed = (3, 4)
         # Check all existing results before writing any. Preserve edits/stale results.
+        changed = False
         for target, result in planned:
-            if target.exists() and json.loads(target.read_text(encoding="utf-8-sig")) != result:
+            try:
+                differs = not target.exists() or json.loads(target.read_text(encoding="utf-8-sig")) != result
+            except (ValueError, TypeError):
+                if not regenerate:
+                    raise
+                differs = True
+            changed = changed or differs
+            if not regenerate and target.exists() and differs:
                 raise ValueError(f"Existing scores differ; inspect before replacing: {target}")
         dependencies = [Path(__file__), Path(__file__).parents[1] / "SKILL.md", FIND_SCRIPT,
+                         Path(__file__).parents[1] / "dependencies.json",
+                         Path(__file__).with_name("validation.py"), ROOT / "scripts/validation.py",
+                         ROOT / "scripts/stage_completion.py", ROOT / "scripts/stage_invalidation.py",
                          ROOT / "scripts/append-log.py", ROOT / "studio/fingerprints.py"]
         dependencies.extend(ROOT / "studio/tools/line" / name for name in
                             ("mapping.py", "sources.py", "combined.py", "quality.py", "actions.py", "boundaries.py"))
@@ -219,13 +228,18 @@ def run_stage(project: Path, inputs: list[Path], output_dir: Path | None = None)
                                    "every_take_scored": True,
                                    "take_count": sum(r["take_count"] for _, r in planned)}}
         marker = directory / "DONE"
-        if not isolated and marker.exists():
+        if not isolated and marker.exists() and not (regenerate and changed):
             old = json.loads(marker.read_text(encoding="utf-8-sig"))
             comparable = {k: v for k, v in old.items() if k not in ("outputs", "completed_at")}
-            if comparable != manifest:
+            if comparable != manifest and not same_manifest(comparable, manifest, project, ROOT,
+                                                             sections=("dependencies", "inputs")):
                 find.invalidate(project, (3, 4), "Take Selection inputs or scoring rules changed.")
             else:
                 validate_manifest(project, marker)
+        if regenerate and changed:
+            from scripts.stage_invalidation import prepare_regeneration
+            prepare_regeneration(project, ROOT, "3.4", [p for p, _ in planned if p.exists()],
+                                 "Explicit Take Selection regeneration.", append_log=find.append_log)
         for target, result in planned:
             if not target.exists():
                 find.write_json(target, result)
@@ -235,7 +249,7 @@ def run_stage(project: Path, inputs: list[Path], output_dir: Path | None = None)
         if not isolated:
             manifest["outputs"] = [fingerprint(p, project, "project") for p, _ in planned]
             manifest["completed_at"] = datetime.now(timezone.utc).isoformat()
-            find.write_json(marker, manifest, overwrite=True)
+            record_done(project, ROOT, "3.4", manifest)
         report = {"complete": True, "done_written": not isolated,
                   "take_count": manifest["conditions"]["take_count"],
                   "outputs": [str(p) for p, _ in planned]}
@@ -255,9 +269,10 @@ def main() -> int:
     parser.add_argument("inputs", nargs="+", type=Path, help="Latest Takes JSON files, relative to project or absolute")
     parser.add_argument("--project-root", required=True, type=Path)
     parser.add_argument("--output-dir", type=Path, help="Isolated trial; no project DONE changes")
+    parser.add_argument("--regenerate", action="store_true", help="Archive selected generated scores before replacing")
     args = parser.parse_args()
     try:
-        print(json.dumps(run_stage(args.project_root, args.inputs, args.output_dir), indent=2))
+        print(json.dumps(run_stage(args.project_root, args.inputs, args.output_dir, args.regenerate), indent=2))
     except (OSError, ValueError, TypeError, KeyError) as error:
         parser.exit(1, f"Take Selection failed: {error}\n")
     return 0

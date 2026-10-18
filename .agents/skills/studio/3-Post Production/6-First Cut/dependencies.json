@@ -1,0 +1,50 @@
+{
+  "schema": "studio.stage",
+  "schema_version": 1,
+  "step": "3.6",
+  "workflow_dependencies": [
+    ".agents/skills/studio/3-Post Production/6-First Cut/scripts/first_cut.py",
+    ".agents/skills/studio/3-Post Production/6-First Cut/scripts/extracts.py",
+    ".agents/skills/studio/3-Post Production/4-Take Selection/scripts/score_takes.py",
+    ".agents/skills/studio/3-Post Production/3-Find Takes/scripts/find_takes.py",
+    "scripts/append-log.py",
+    "studio/tools/line/sources.py",
+    "studio/tools/line/mapping.py",
+    "studio/tools/line/actions.py",
+    "studio/tools/line/quality.py",
+    "studio/tools/line/combined.py",
+    "studio/tools/line/boundaries.py"
+  ],
+  "validation": {"script": "scripts/validation.py"},
+  "folder": "3-Post Production/6-First Cut",
+  "generated": [
+    {"folder": "3-Post Production/6-First Cut", "filename_regex": "^.+\\.FCPXML$"},
+    {"folder": "3-Post Production/6-First Cut", "filename_regex": "^REVIEW\\.json$"},
+    {"folder": "3-Post Production/6-First Cut/Extracts", "filename_regex": "^.+\\.FCPXML$"},
+    {"folder": "3-Post Production/6-First Cut/Extracts", "filename_regex": "^Extract Mappings\\.json$"}
+  ],
+  "prerequisites": [
+    {"step": "1.1", "folder": "1-Pre Production/1-Script Review"},
+    {"step": "1.3", "folder": "1-Pre Production/3-Extracts"},
+    {"step": "2.1", "folder": "2-Production/1-Footage Intake"},
+    {"step": "3.1", "folder": "3-Post Production/1-Sync"},
+    {"step": "3.3", "folder": "3-Post Production/3-Find Takes"},
+    {"step": "3.4", "folder": "3-Post Production/4-Take Selection"},
+    {"step": "3.5", "folder": "3-Post Production/5-Face Tracking"}
+  ],
+  "inputs": [
+    {"folder": "3-Post Production/4-Take Selection", "filename_regex": "^.+__Scores\\.v1\\.json$", "minimum": 1, "complete_set": true},
+    {"folder": "3-Post Production/6-First Cut", "filename_regex": "^.+\\.FCPXML$", "minimum": 0, "complete_set": true, "role": "project"},
+    {"folder": "3-Post Production/6-First Cut/Extracts", "filename_regex": "^.+\\.FCPXML$", "minimum": 0, "complete_set": true, "role": "project"},
+    {"folder": "1-Pre Production/1-Script Review/Approved", "filename_regex": "^.+\\.docx$", "minimum": 1, "complete_set": true},
+    {"folder": "1-Pre Production/3-Extracts/APPROVED", "filename_regex": "^Short-Form Excerpt Shortlist\\.md$", "minimum": 1, "maximum": 1, "complete_set": true},
+    {"folder": "2-Production/1-Footage Intake", "filename_regex": "^.+__C\\d{2}__(?:cam[AB]\\.(?:mov|mp4)|lav\\.wav)$", "minimum": 3, "complete_set": true},
+    {"folder": "3-Post Production/1-Sync", "filename_regex": "^.+__C\\d{2}\\.json$", "minimum": 1, "complete_set": true},
+    {"folder": "3-Post Production/2-Transcribe", "filename_regex": "^.+__C\\d{2}__lav\\.json$", "minimum": 1, "complete_set": true},
+    {"folder": "3-Post Production/3-Find Takes", "filename_regex": "^.+__Takes\\.v[1-9]\\d*\\.json$", "minimum": 1, "complete_set": true},
+    {"folder": "3-Post Production/5-Face Tracking", "filename_regex": "^(?:Face Paths|.+__C\\d{2}__cam[AB]__FacePath\\.v1)\\.json$", "minimum": 1, "complete_set": true}
+  ],
+  "outputs": [
+    {"folder": "3-Post Production/6-First Cut/APPROVED", "filename_regex": "^.+\\.(?:mov|mp4|m4v|mkv|avi|webm|mxf)$", "minimum": 1, "complete_set": true}
+  ]
+}

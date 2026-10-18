@@ -136,6 +136,8 @@ Do not use an upstream input directory as the output directory.
 
 ## Completion and reruns
 
+Normal project execution validates prerequisites through the shared JSON graph, then submits the stage-owned manifest to the common `record_done` API after checking persisted scores. Do not write `DONE` by hand. Isolated output trials keep their existing trial semantics and never record project completion.
+
 **Done means every take identified by 3.3 has exactly one finite numerical
 score associated with its original source and word ranges**, including Flubs.
 An empty or partially scored input set fails. The script verifies the persisted
@@ -144,10 +146,14 @@ discarded script passages are not invented as takes.
 
 The script handles append-only logging through Studio's log helper, fingerprints
 the exact selected mappings, sources, scoring implementation and skill, and
-invalidates failed/stale completion markers using Studio's existing helper.
+archives failed/stale completion markers using Studio's common graph helper.
 It does not fingerprint the shared Studio root skill. Matching output files are
 preserved on rerun. If an existing output differs, the script fails and preserves
 it for inspection before replacement; do not silently overwrite human edits.
+After a deliberate replacement decision, `--regenerate` computes the complete
+replacement set first, archives selected old score JSON into the pending
+`STALE/N/` slot, then publishes and verifies the new scores. It never moves Takes
+mappings or source inputs. Isolated trials do not mutate canonical archives.
 This stage produces scores, not an editing timeline, and does not imply 3.2
 completion.
 

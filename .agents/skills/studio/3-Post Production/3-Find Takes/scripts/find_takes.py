@@ -27,6 +27,8 @@ sys.path.insert(0, str(ROOT))
 from studio import fingerprints  # noqa: E402
 from studio.tools.line import boundaries, combined, mapping, sources, quality  # noqa: E402
 from studio.tools.line.actions import infer_classification  # noqa: E402
+from scripts.stage_completion import record_done, same_manifest  # noqa: E402
+from scripts.validation import require_current, require_prerequisites  # noqa: E402
 
 SCHEMA = "studio.find-takes"
 VERSION = 1
@@ -412,79 +414,27 @@ def append_log(directory: Path, title: str, items: list[str]) -> None:
 
 
 def invalidate(project: Path, failed: tuple[int, int], reason: str) -> list[str]:
-    """Invalidate dependent steps conservatively, retaining declared independent work."""
-    deleted, folders = [], []
-    for stage in sorted(project.iterdir()):
-        match = re.match(r"^(\d+)-", stage.name)
-        if not stage.is_dir() or not match:
-            continue
-        major = int(match[1])
-        folders.append((stage, (major, 0)))
-        for substage in sorted(stage.iterdir()):
-            match = re.match(r"^(\d+)-", substage.name)
-            if substage.is_dir() and match:
-                folders.append((substage, (major, int(match[1]))))
-    affected = [directory.relative_to(project).as_posix() for directory, step in folders if step == failed]
-    # Visit substages before their containing stage marker, and propagate transitively.
-    for directory, step in sorted(folders, key=lambda item: (item[1][0], item[1][1] or float("inf"))):
-        if step < failed and step != (failed[0], 0):
-            continue
-        marker = directory / "DONE"
-        relative = directory.relative_to(project).as_posix()
-        references = []
-        try:
-            manifest = json.loads(marker.read_text(encoding="utf-8-sig"))
-            for entry in manifest.get("inputs", []) + manifest.get("dependencies", []):
-                path = entry.get("path", "").replace("\\", "/")
-                if f"/{project.name}/" in path:
-                    path = path.split(f"/{project.name}/", 1)[1]
-                if entry.get("scope") == "project" or re.match(r"^\d+-", path):
-                    references.append(path)
-        except (OSError, ValueError, TypeError, AttributeError):
-            pass
-        depends = any(path == parent or path.startswith(parent + "/")
-                      for path in references for parent in affected)
-        contains_failed = step[1] == 0 and any(parent.startswith(relative + "/") for parent in affected)
-        if step != failed and not contains_failed and references and not depends:
-            continue
-        affected.append(relative if step[1] else relative + "/DONE")
-        if marker.exists():
-            marker.unlink()
-            deleted.append(marker.relative_to(project).as_posix())
-            append_log(directory, "Completion invalidated", [reason, "Deleted DONE outright; work files preserved."])
-    return deleted
+    """Keep the historical list result while the shared engine archives markers."""
+    from scripts.stage_invalidation import invalidate as invalidate_stage
+    step = f"{failed[0]}.{failed[1]}" if failed[1] else f"stage:{failed[0]}"
+    slots = invalidate_stage(project, ROOT, step, reason, append_log=append_log)
+    return [(slot / "DONE").relative_to(project).as_posix()
+            for slot in slots.values() if (slot / "DONE").is_file()]
 
 
 def validate_approved(project: Path) -> None:
-    """Check the approved-output gate declared by 1.1, including legacy path spelling."""
-    review = project / APPROVED.parent
-    marker = review / "DONE"
-    if not marker.is_file():
-        raise ValueError("Script Review 1.1 DONE is missing; approve the scripts before running 3.3.")
-    manifest = json.loads(marker.read_text(encoding="utf-8-sig"))
-    conditions = manifest["conditions"]
-    approved_names = sorted(path.name for path in (project / APPROVED).iterdir()
-                            if path.is_file() and path.suffix.lower() in (".docx", ".txt", ".json"))
-    if not approved_names or approved_names != sorted(conditions["approved_docx_names"]):
-        raise ValueError("Approved script inventory differs from 1.1 DONE.")
-    candidates = sum(path.is_file() for path in review.glob("*.docx"))
-    if candidates != conditions["root_candidate_docx_count"] or candidates:
-        raise ValueError("Script Review 1.1 still has unapproved candidate scripts.")
-    seen = set()
-    for entry in manifest["outputs"]:
-        name = entry["path"].replace("\\", "/").rsplit("/", 1)[-1]
-        path = project / APPROVED / name
-        if name in seen or name not in approved_names or not fingerprints.matches(path, entry["sha256"]):
-            raise ValueError(f"Approved script fingerprint differs from 1.1 DONE: {name}")
-        seen.add(name)
-    if seen != set(approved_names):
-        raise ValueError("Script Review 1.1 DONE must fingerprint every approved script.")
+    """Keep the isolated-trial approval gate limited to Script Review."""
+    require_current(project, ROOT, "1.1")
 
 
 def completion_manifest(project: Path, result: dict) -> dict:
     inventory = discover(project)
     dependencies = [Path(__file__).relative_to(ROOT),
                     Path(__file__).parents[1].relative_to(ROOT) / "SKILL.md",
+                    Path(__file__).parents[1].relative_to(ROOT) / "dependencies.json",
+                    Path(__file__).with_name("validation.py").relative_to(ROOT),
+                    Path("scripts/validation.py"), Path("scripts/stage_completion.py"),
+                    Path("scripts/stage_invalidation.py"),
                     Path("scripts/append-log.py"), Path("studio/fingerprints.py")]
     dependencies.extend(Path("studio/tools/line") / name for name in
                         ("sources.py", "mapping.py", "actions.py", "quality.py", "combined.py", "boundaries.py"))
@@ -514,14 +464,16 @@ def run_stage(project: Path, output_dir: Path | None = None) -> dict:
         if directory == upstream or upstream in directory.parents:
             raise ValueError("The output directory cannot be inside an upstream input folder.")
     isolated = directory != project / OUTPUT
+    if not isolated:
+        require_prerequisites(project, ROOT, "3.3")
     append_log(directory, "Find Takes run started", [
         f"UTC: {datetime.now(timezone.utc).isoformat()}; project: {project.name}; isolated: {isolated}.",
         "Validate 1.1 approved outputs, generate missing v1 files, then check latest numbered mappings.",
     ])
-    failed = (1, 1)
+    failed = (3, 3)
     try:
-        validate_approved(project)
-        failed = (3, 3)
+        if isolated:
+            validate_approved(project)
         inventory = discover(project)
         append_log(directory, "Find Takes inputs validated", [
             "Approved inventory and contents match 1.1 DONE; no unapproved candidates remain.",
@@ -556,10 +508,10 @@ def run_stage(project: Path, output_dir: Path | None = None) -> dict:
                         entries.append("Migrated legacy Studio root skill dependency out of DONE validation.")
                 except (ValueError, TypeError, KeyError, AttributeError):
                     previous = None
-                if previous != manifest:
+                if previous != manifest and not same_manifest(previous, manifest, project, ROOT):
                     result["invalidated_markers"] = invalidate(project, failed, "Find Takes completion dependencies, outputs, or latest version selection changed.")
             manifest["completed_at"] = datetime.now(timezone.utc).isoformat()
-            write_json(marker, manifest, overwrite=True)
+            record_done(project, ROOT, "3.3", manifest)
             entries.append("Wrote DONE with exact input/output fingerprints and latest version selections.")
         entries.append("Invalidated markers: " + json.dumps(result["invalidated_markers"]))
         entries.append("Find Takes does not replace the independent 3.2 transcript inventory completion check.")

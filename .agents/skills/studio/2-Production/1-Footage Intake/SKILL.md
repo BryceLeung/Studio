@@ -5,11 +5,13 @@ description: Run or resume Studio substage 2.1 by checking that every approved s
 
 # 2.1 — Footage Intake
 
+Use the root skill's shared prerequisite check for normal execution. After the footage validator succeeds, invoke the shared completion recorder with `--stage 2.1`; it rechecks the complete footage groups and records the declared inventories. Do not write `DONE` by hand.
+
 Read the Studio root skill at `.agents/skills/studio/SKILL.md` (relative to the repository root) for project resolution, logging, completion manifests, and invalidation. Run after substage 1.3 in workflow order.
 
 ## Purpose and inputs
 
-This step checks the footage dropped directly into the project's `2-Production/1-Footage Intake/` folder. It does not inspect media contents or rename, move, hash, or delete files.
+This step checks the footage dropped directly into the project's `2-Production/1-Footage Intake/` folder. It does not inspect media contents or rename, move, hash, or delete footage. Execution failures archive this step's and its dependents' completion markers using the shared graph helper; originals stay in place. The stage has no generator-owned outputs eligible for regeneration archiving.
 
 The approved-script set is the stems of the `.docx` files in `1-Pre Production/1-Script Review/Approved/`, including CTA pickups.
 
@@ -45,6 +47,6 @@ Treat the validator as the stage's source of truth:
 
 ## Completion and reruns
 
-Completion requires a successful validator run: every approved script has a non-empty `C<nn>` camA/camB/lav set, and no file has a reported validation problem. Append the validator's pass/fail result and its messages to the step's `LOG.md`. After a passing validation, write `DONE` according to the Studio root skill, recording the `C<nn>` filename convention, the approved scripts, this skill and validator script, and the three files in at least one complete set per script. On failure, do not write `DONE`; report the listed corrections and stop. The validator itself does not write `DONE`.
+Completion requires a successful validator run: every approved script has a non-empty `C<nn>` camA/camB/lav set, and no file has a reported validation problem. Append the validator's pass/fail result and its messages to the step's `LOG.md`. After passing validation, use the shared recorder to fingerprint the approved scripts, stage implementation, and all recognized intake media, not just one representative set per script. On failure, do not record completion; report the listed corrections and stop. The footage validator itself does not write `DONE`.
 
 On rerun, validate upstream markers first, rerun the validator, and compare the approved-script set, naming convention, stage-specific skill and validator revisions, and recorded files with `DONE`. Invalidate this and later completion markers when those dependencies change or validation fails. Preserve all footage files.

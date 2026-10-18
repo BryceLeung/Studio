@@ -51,6 +51,8 @@ sources before treating these paths as approved portrait crops.
 
 ## Outputs and completion
 
+Normal project execution validates prerequisites through the shared JSON graph and submits its path/index manifest to the common `record_done` API. The stage retains its required-range and saved-path checks, including the approved no-extract case. Do not write `DONE` by hand.
+
 Write one `<Script>__C<nn>__camA__FacePath.v1.json` and corresponding camB JSON
 for each camera source used by an approved extract, in the project's OneDrive
 `3-Post Production/5-Face Tracking/`. Every JSON records source-second ranges
@@ -67,10 +69,16 @@ completion; they require review when constructing the portrait edit. A missing
 model, invalid input, or unreadable required frames prevents completion.
 The script reuses unchanged existing path files, refuses changed files instead
 of overwriting them, checks exact input/source/dependency fingerprints, and
-invalidates dependent `DONE` markers on changed completion or failure. The
+archives dependent `DONE` markers through the shared graph on changed completion or failure. The
 no-extract condition writes an index and `DONE` without a detector download.
 Validate this stage's `DONE` before starting 3.6 First Cut. Face framing is
 independent of 3.4 take selection.
+
+Use `--regenerate` only after deliberately choosing replacement of stale saved
+paths. Required analysis is prepared before archiving the selected old path/index
+files into the pending `STALE/N/` slot. Valid unchanged paths remain in place;
+camera originals, approved shortlist, Takes reviews, and approved movies are
+never moved. Failure alone invalidates markers, not work files.
 
 Tests:
 

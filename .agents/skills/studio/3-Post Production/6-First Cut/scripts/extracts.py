@@ -125,16 +125,15 @@ def map_all(project, shortlist, score_paths):
             "shortlist": cut.scoring.fingerprint(shortlist, project, "project"), "extracts": result}
 
 
-def generate(project, shortlist, score_paths, padding_ms, omit_discarded):
+def generate(project, shortlist, score_paths, padding_ms, omit_discarded, regenerate=False):
+    approved_shortlist = project / cut.EXTRACTS / "APPROVED" / "Short-Form Excerpt Shortlist.md"
+    if shortlist.resolve() != approved_shortlist.resolve():
+        raise ValueError(f"Extract generation requires the approved shortlist: {approved_shortlist}")
+    cut.require_prerequisites(project, cut.ROOT, "3.6")
     directory = project / cut.STAGE / "Extracts"
     cut.find.append_log(project / cut.STAGE, "Extract projects started", [
         f"Shortlist: {shortlist}; padding_ms={padding_ms}; omit_discarded={omit_discarded}."])
     try:
-        # Read-only validation: an extract run must not alter upstream completion.
-        for folder in (cut.find.APPROVED.parent, cut.EXTRACTS, cut.INTAKE, cut.SYNC, cut.find.OUTPUT,
-                       cut.scoring.STAGE, cut.FACE):
-            cut.validate_done(project, folder)
-        cut.find.validate_approved(project)
         mappings = map_all(project, shortlist, score_paths)
         planned, reports, inputs, contexts = [], [], [], {}
         for mapped in mappings["extracts"]:
@@ -195,13 +194,18 @@ def generate(project, shortlist, score_paths, padding_ms, omit_discarded):
         mappings["dependencies"] = [cut.scoring.fingerprint(p, cut.ROOT, "workflow") for p in
                                     (Path(__file__), Path(cut.__file__), Path(__file__).parents[1] / "SKILL.md",
                                      cut.ROOT / "studio/fingerprints.py")]
-        mappings["review_required"] = "Import and review all six extract projects in Final Cut."
+        mappings["review_required"] = "Edit and render extract projects; move same-stem movie files into this stage's APPROVED folder."
         mapping_path = directory / "Extract Mappings.json"
         mapping_bytes = (json.dumps(mappings, ensure_ascii=False, indent=2, allow_nan=False) + "\n").encode("utf-8")
         planned.append((mapping_path, mapping_bytes))
         for path, content in planned:
-            if path.exists() and path.read_bytes() != content:
+            if not regenerate and path.exists() and path.read_bytes() != content:
                 raise ValueError(f"Existing extract output differs; inspect before replacing: {path}")
+        changed = any(not path.exists() or path.read_bytes() != content for path, content in planned)
+        if regenerate and changed:
+            from scripts.stage_invalidation import prepare_regeneration
+            prepare_regeneration(project, cut.ROOT, "3.6", [p for p, _ in planned if p.exists()],
+                                 "Explicit extract project regeneration.", append_log=cut.find.append_log)
         directory.mkdir(parents=True, exist_ok=True)
         for path, content in planned:
             if not path.exists():
@@ -209,13 +213,16 @@ def generate(project, shortlist, score_paths, padding_ms, omit_discarded):
                     stream.write(content)
             if path.read_bytes() != content:
                 raise ValueError(f"Persisted output mismatch: {path}")
+        if changed:
+            cut.find.invalidate(project, (3, 6), "Extract projects changed; edited renders require review.")
         cut.find.append_log(project / cut.STAGE, "Extract projects ready for review", [
             "Outputs: " + json.dumps([cut.scoring.fingerprint(p, project, "project") for p, _ in planned]),
             "Extract 6 omits previously discarded script sentence 109 with user's explicit authorization; shortlist and source mappings preserved.",
             "All extract sentences matched verbatim, in unique source order, to reviewed script group ranges and scored takes.",
-            "No DONE written; import/playback review pending."])
+            "No DONE written; edit and render extract projects, then move the rendered movies into APPROVED."])
         return reports
-    except (OSError, ValueError, TypeError, KeyError) as error:
+    except (OSError, ValueError, TypeError, KeyError, cut.subprocess.SubprocessError) as error:
+        cut.find.invalidate(project, (3, 6), f"Extract projects failed: {error}")
         cut.find.append_log(project / cut.STAGE, "Extract projects failed", [str(error), "Existing source files preserved."])
         raise
 
@@ -226,21 +233,23 @@ def main():
     parser.add_argument("--shortlist", required=True, type=Path)
     parser.add_argument("--scores", required=True, nargs="+", type=Path)
     parser.add_argument("--generate", action="store_true", help="Write separate FCPXML projects and exact sentence/take mapping JSON")
+    parser.add_argument("--regenerate", action="store_true", help="Archive selected generated extract outputs before replacing")
     parser.add_argument("--padding-ms", type=int, default=50)
     parser.add_argument("--omit-discarded", action="store_true", help="Explicitly authorize omission of already discarded script groups")
     args = parser.parse_args()
     project = args.project_root.resolve(strict=True)
-    report = map_all(project, (project / args.shortlist).resolve(strict=True), args.scores)
-    for extract in report["extracts"]:
-        print(json.dumps({"number": extract["number"], "title": extract["title"],
-                          "sentences": len(extract["groups"]), "take_alternatives": sum(len(g["takes"]) for g in extract["groups"]),
-                          "issues": extract["issues"]}, ensure_ascii=False))
     if args.generate:
         if args.padding_ms < 0:
             parser.error("Padding must be nonnegative.")
         generated = generate(project, (project / args.shortlist).resolve(strict=True), args.scores,
-                             args.padding_ms, args.omit_discarded)
+                             args.padding_ms, args.omit_discarded, args.regenerate)
         print(json.dumps([{k: v for k, v in p.items() if k != "selected"} for p in generated], indent=2))
+    else:
+        report = map_all(project, (project / args.shortlist).resolve(strict=True), args.scores)
+        for extract in report["extracts"]:
+            print(json.dumps({"number": extract["number"], "title": extract["title"],
+                              "sentences": len(extract["groups"]), "take_alternatives": sum(len(g["takes"]) for g in extract["groups"]),
+                              "issues": extract["issues"]}, ensure_ascii=False))
 
 
 if __name__ == "__main__":

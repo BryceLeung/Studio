@@ -1,0 +1,23 @@
+{
+  "schema": "studio.stage",
+  "schema_version": 1,
+  "step": "3.1",
+  "workflow_dependencies": [
+    ".agents/skills/studio/3-Post Production/1-Sync/scripts/generate_offsets.py",
+    ".agents/skills/studio/3-Post Production/1-Sync/scripts/install_dependencies.py"
+  ],
+  "validation": {"script": "scripts/validation.py"},
+  "folder": "3-Post Production/1-Sync",
+  "generated": [
+    {"folder": "3-Post Production/1-Sync", "filename_regex": "^.+__C\\d{2}\\.json$"}
+  ],
+  "prerequisites": [
+    {"step": "2.1", "folder": "2-Production/1-Footage Intake"}
+  ],
+  "inputs": [
+    {"folder": "2-Production/1-Footage Intake", "filename_regex": "^.+__C\\d{2}__(?:cam[AB]\\.(?:mov|mp4)|lav\\.wav)$", "minimum": 3}
+  ],
+  "outputs": [
+    {"folder": "3-Post Production/1-Sync", "filename_regex": "^.+__C\\d{2}\\.json$", "minimum": 1}
+  ]
+}

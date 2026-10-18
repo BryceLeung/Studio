@@ -46,11 +46,45 @@ class FirstCutTests(unittest.TestCase):
         self.assertEqual(cut.STAGE, Path("3-Post Production/6-First Cut"))
         with TemporaryDirectory() as directory:
             project = Path(directory).resolve()
-            with patch.object(cut.find, "append_log"), patch.object(cut, "validate_done", side_effect=TypeError("invalid input")):
+            score = project / cut.scoring.STAGE / "A__Scores.v1.json"
+            score.parent.mkdir(parents=True)
+            score.write_text("{}")
+            with patch.object(cut.find, "append_log"), patch.object(cut, "require_prerequisites") as prerequisites, \
+                    patch.object(cut.find, "discover", return_value=[(project / "A.docx", [])]), \
+                    patch.object(cut, "read_json", side_effect=TypeError("invalid input")):
                 with patch.object(cut.find, "invalidate") as invalidate:
                     with self.assertRaisesRegex(TypeError, "invalid input"):
-                        cut.run(project, [])
+                        cut.run(project, [score])
                     self.assertEqual(invalidate.call_args.args[:2], (project, (3, 6)))
+                prerequisites.assert_called_once_with(project, cut.ROOT, "3.6")
+
+    def test_bad_arguments_do_not_invalidate_or_log_current_completion(self):
+        with TemporaryDirectory() as directory:
+            project = Path(directory).resolve()
+            with patch.object(cut, "require_prerequisites"), \
+                    patch.object(cut.find, "discover", return_value=[(project / "A.docx", [])]), \
+                    patch.object(cut.find, "invalidate") as invalidate, patch.object(cut.find, "append_log") as log:
+                with self.assertRaisesRegex(ValueError, "score file"):
+                    cut.run(project, [])
+                with self.assertRaisesRegex(ValueError, "nonnegative"):
+                    cut.run(project, [], padding_ms=-1)
+                invalidate.assert_not_called()
+                log.assert_not_called()
+
+    def test_prerequisite_failure_is_read_only(self):
+        with TemporaryDirectory() as directory:
+            project = Path(directory).resolve()
+            with patch.object(cut, "require_prerequisites", side_effect=ValueError("stale ancestor")) as prerequisites, \
+                    patch.object(cut.find, "invalidate") as invalidate, \
+                    patch.object(cut.find, "append_log") as log, \
+                    patch.object(cut, "validate_done") as legacy:
+                with self.assertRaisesRegex(ValueError, "stale ancestor"):
+                    cut.run(project, [])
+                prerequisites.assert_called_once_with(project, cut.ROOT, "3.6")
+                invalidate.assert_not_called()
+                log.assert_not_called()
+                legacy.assert_not_called()
+            self.assertEqual(list(project.iterdir()), [])
 
     def test_legacy_nested_manifest_fingerprints_are_validated(self):
         with TemporaryDirectory() as directory:
@@ -69,6 +103,60 @@ class FirstCutTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "fingerprint"):
                 cut.validate_done(project, Path("legacy"))
             self.assertTrue((folder / "DONE").exists())
+
+    def test_regeneration_archives_whole_selected_set_and_unchanged_run_keeps_done(self):
+        from scripts.stage_invalidation import prepare_regeneration
+        with TemporaryDirectory() as directory:
+            project = Path(directory).resolve()
+            script = project / "A.txt"
+            script.write_text("Example.")
+            mapping = project / "A__Takes.v1.json"
+            mapping.write_text("{}")
+            score = project / cut.scoring.STAGE / "A__Scores.v1.json"
+            score.parent.mkdir(parents=True)
+            scores = {"source_mapping": cut.scoring.fingerprint(mapping, project, "project")}
+            score.write_text(json.dumps(scores))
+            (project / cut.EXTRACTS / "APPROVED").mkdir(parents=True)
+            output = project / cut.STAGE / "A.FCPXML"
+            output.parent.mkdir(parents=True)
+            approved = output.parent / "APPROVED/A.mov"
+            approved.parent.mkdir()
+            approved.write_bytes(b"approved movie")
+            with patch.object(cut, "require_prerequisites"), patch.object(cut.find, "append_log"), \
+                    patch.object(cut.find, "discover", return_value=[(script, [])]), \
+                    patch.object(cut.find.mapping, "takes_versions", return_value=[(1, mapping)]), \
+                    patch.object(cut.scoring, "load_mapping", return_value={"recordings": []}), \
+                    patch.object(cut.scoring, "score_document", return_value=scores), \
+                    patch.object(cut.find, "check_mapping", return_value={"coverage": {"complete": True}}), \
+                    patch.object(cut, "build_xml", return_value=(b"<fcpxml/>", {"name": "A"})), \
+                    patch.object(cut, "validate_xml"):
+                cut.run(project, [score])
+                marker = output.parent / "DONE"
+                marker.write_text("approved completion")
+                before = marker.read_bytes(), marker.stat().st_mtime_ns
+                with patch.object(cut.find, "invalidate") as invalidate:
+                    cut.run(project, [score])
+                    invalidate.assert_not_called()
+                self.assertEqual((marker.read_bytes(), marker.stat().st_mtime_ns), before)
+                review = output.parent / "REVIEW.json"
+                review_bytes = review.read_bytes()
+                output.write_bytes(b"human edited XML")
+                with self.assertRaisesRegex(ValueError, "inspect before replacing"):
+                    cut.run(project, [score])
+                self.assertEqual(output.read_bytes(), b"human edited XML")
+                self.assertEqual(review.read_bytes(), review_bytes)
+                with patch("scripts.stage_invalidation.prepare_regeneration", wraps=prepare_regeneration) as prepare:
+                    cut.run(project, [score], regenerate=True)
+                    prepare.assert_called_once()
+                    self.assertEqual(set(prepare.call_args.args[3]), {output, review})
+                archived = list(output.parent.glob("STALE/*/A.FCPXML"))
+                self.assertEqual(len(archived), 1)
+                self.assertEqual(archived[0].read_bytes(), b"human edited XML")
+                self.assertEqual(archived[0].with_name("REVIEW.json").read_bytes(), review_bytes)
+                self.assertEqual(archived[0].with_name("DONE").read_bytes(), before[0])
+                self.assertEqual(output.read_bytes(), b"<fcpxml/>")
+                self.assertEqual(approved.read_bytes(), b"approved movie")
+                self.assertTrue(mapping.is_file())
 
     def test_midpoints_keep_auditions_separate_and_flip_only_at_jump(self):
         with TemporaryDirectory() as directory:

@@ -64,8 +64,8 @@ The command initializes `LOG.md` when absent, validates the 1.1 approved-output
 inventory, fingerprints, and empty-candidate condition against its DONE,
 validates actual transcript inputs, generates only missing v1 files, checks
 latest versions, logs the result, and manages completion markers. Missing or
-changed approved outputs fail the prerequisite check before generation and
-invalidate 1.1 and dependent completion. This stage checks the declared approved
+changed approved outputs fail the prerequisite check before any project mutation.
+Resume the failed prerequisite through the root workflow. This stage checks the declared approved
 outputs; it does not rerun the interactive Script Review workflow.
 
 The script uses RapidFuzz (`RapidFuzz>=3,<4`), num2words (`num2words>=0.5.14,<0.6`),
@@ -183,6 +183,8 @@ without changing frozen mappings to manufacture agreement.
 
 ## Reruns, logs, and completion
 
+Normal project execution validates prerequisites through the shared JSON graph, then submits the stage-owned manifest to the common `record_done` API. The stage retains its mapping/coverage success condition; do not write `DONE` by hand. Isolated output trials never record project completion.
+
 For each approved script, find numbered `<Script>__Takes.v<N>.json` files and
 select the highest numeric version, not the newest timestamp or alphabetically
 last filename. If any version exists, skip generation entirely, even if v1 is
@@ -203,14 +205,15 @@ quality and checks the success condition below. Valid human grouping edits and
 script discards are accepted. Old generator metadata alone does not fail a
 review. Invalid latest files fail the check and remain preserved for inspection.
 
-The command creates the stage folder and initial `LOG.md`, then uses the root
+After shared prerequisite validation succeeds, the command creates the stage folder and initial `LOG.md`, then uses the root
 skill's `scripts/append-log.py` helper's `append_entry` function for append-only
 run, input-validation, result, and invalidation entries. It records UTC times,
 input/output inventories and fingerprints, algorithm metadata, generation/skip
-decisions, selected versions, blocking lines, and the next action. On failure
-it deletes the failed step's DONE, dependent future DONE markers, and containing
-stage-level completion; it never archives markers or deletes work files.
-Invalidation follows declared project inputs/dependencies transitively,
+decisions, selected versions, blocking lines, and the next action. A rejected
+prerequisite returns without changing project files or markers. On execution failure
+the shared invalidator archives the failed step's DONE, dependent future DONE markers, and containing
+stage-level completion under each folder's `STALE/N/`, without moving work files.
+Invalidation follows the JSON prerequisite graph transitively,
 preserves demonstrably independent steps, and treats subsequent steps with
 unknown dependencies conservatively as dependent. Extra human handoffs and
 requested benchmark runs can use the existing logging helper directly.

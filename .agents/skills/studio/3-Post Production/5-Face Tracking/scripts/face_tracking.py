@@ -20,9 +20,11 @@ FIND_SCRIPT = ROOT / ".agents/skills/studio/3-Post Production/3-Find Takes/scrip
 spec = importlib.util.spec_from_file_location("studio_find_takes_for_face_tracking", FIND_SCRIPT)
 find = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(find)
+from scripts.stage_completion import record_done  # noqa: E402
+from scripts.validation import require_prerequisites  # noqa: E402
 
 STAGE = Path("3-Post Production/5-Face Tracking")
-SHORTLIST = Path("1-Pre Production/3-Extracts/Short-Form Excerpt Shortlist.md")
+SHORTLIST = Path("1-Pre Production/3-Extracts/APPROVED/Short-Form Excerpt Shortlist.md")
 SYNC = Path("3-Post Production/1-Sync")
 INTAKE = Path("2-Production/1-Footage Intake")
 MODEL_URL = ("https://media.githubusercontent.com/media/opencv/opencv_zoo/"
@@ -176,7 +178,10 @@ def required_ranges(project, extracts):
         return {}, []
     contexts = {}
     completed = json.loads((project / find.OUTPUT / "DONE").read_text(encoding="utf-8-sig"))
-    approved_versions = {item["path"] for item in completed["conditions"]["latest_versions"]}
+    if completed.get("completion_mode") == "manual-override":
+        approved_versions = {item["path"] for item in completed["outputs"] if item.get("scope") == "project"}
+    else:
+        approved_versions = {item["path"] for item in completed["conditions"]["latest_versions"]}
     for number, source, passages in extracts:
         if source not in contexts:
             versions = find.mapping.takes_versions(project, Path(source).stem + "__Takes")
@@ -382,15 +387,15 @@ def analyze_video(media, spans, model):
     return {"width": width, "height": height, "frames": frames, "warnings": warnings}
 
 
-def run(project, *, analyzer=analyze_video, get_model=model_path):
+def run(project, *, analyzer=analyze_video, get_model=model_path, regenerate=False):
     project = project.resolve(strict=True)
+    require_prerequisites(project, ROOT, "3.5")
     directory = project / STAGE
     find.append_log(directory, "Face Tracking started", ["Analyze only approved extract take ranges from 3.3."])
     try:
-        for folder in (Path("1-Pre Production/1-Script Review"), SHORTLIST.parent, INTAKE, SYNC, find.OUTPUT):
-            validate_done(project, folder)
-        find.validate_approved(project)
         shortlist = project / SHORTLIST
+        if not shortlist.is_file():
+            raise ValueError(f"Approved shortlist is missing: {SHORTLIST}")
         extracts = approved_passages(shortlist.read_text(encoding="utf-8-sig")) if shortlist.is_file() else []
         ranges, references = required_ranges(project, extracts)
         inputs = [fingerprint(shortlist, project)] if shortlist.is_file() else []
@@ -409,9 +414,9 @@ def run(project, *, analyzer=analyze_video, get_model=model_path):
             output = directory / (media.stem + "__FacePath.v1.json")
             header = dict(identity, media=media_fingerprint(media, project), role=role,
                           ranges_ms=[[round(float(a * 1000)), round(float(b * 1000))] for a, b in spans])
-            if output.exists():
-                current = json.loads(output.read_text(encoding="utf-8-sig"))
+            if output.exists() and not regenerate:
                 try:
+                    current = json.loads(output.read_text(encoding="utf-8-sig"))
                     validate_path(current, header)
                 except (ValueError, TypeError, KeyError) as error:
                     raise ValueError(f"Existing face path differs; inspect before replacing: {output}: {error}") from error
@@ -421,7 +426,10 @@ def run(project, *, analyzer=analyze_video, get_model=model_path):
                 model = get_model()
             result = dict(header, **analyzer(media, spans, model))
             validate_path(result, header)
-            planned.append((output, (json.dumps(result, ensure_ascii=False, indent=2, allow_nan=False) + "\n").encode()))
+            content = (json.dumps(result, ensure_ascii=False, indent=2, allow_nan=False) + "\n").encode()
+            if output.exists() and output.read_bytes() == content:
+                content = None
+            planned.append((output, content))
         path_outputs = [fingerprint(path, project) if content is None else
                         {"scope": "project", "path": path.relative_to(project).as_posix(),
                           "sha256": find.fingerprints.digest_bytes(content, text=True)}
@@ -431,8 +439,16 @@ def run(project, *, analyzer=analyze_video, get_model=model_path):
                      "dependencies": identity["dependencies"], "paths": path_outputs,
                      "no_extracts": not extracts}
         index_bytes = (json.dumps(inventory, indent=2) + "\n").encode()
-        if index.exists() and find.sha256(index) != find.fingerprints.digest_bytes(index_bytes, text=True):
+        if not regenerate and index.exists() and find.sha256(index) != find.fingerprints.digest_bytes(index_bytes, text=True):
             raise ValueError(f"Existing face path index differs; inspect before replacing: {index}")
+        if regenerate:
+            from scripts.stage_invalidation import prepare_regeneration
+            selected = [path for path, content in planned if content is not None and path.exists()]
+            if index.exists() and find.sha256(index) != find.fingerprints.digest_bytes(index_bytes, text=True):
+                selected.append(index)
+            if selected:
+                prepare_regeneration(project, ROOT, "3.5", selected,
+                                     "Explicit Face Tracking regeneration.", append_log=find.append_log)
         for path, content in planned:
             if content is not None:
                 directory.mkdir(parents=True, exist_ok=True)
@@ -443,14 +459,21 @@ def run(project, *, analyzer=analyze_video, get_model=model_path):
             with index.open("xb") as stream:
                 stream.write(index_bytes)
         outputs = path_outputs + [fingerprint(index, project)]
+        completion_dependencies = [Path(__file__).with_name("validation.py"),
+                                   Path(__file__).parents[1] / "dependencies.json",
+                                   ROOT / "scripts/validation.py", ROOT / "scripts/stage_completion.py",
+                                   ROOT / "scripts/stage_invalidation.py"]
+        completion_dependencies.extend(ROOT / "studio/tools/line" / name for name in
+                                       ("sources.py", "actions.py", "quality.py", "combined.py", "boundaries.py"))
         manifest = {"step": "3.5", "schema": "studio.face-tracking.done", "inputs": inputs,
-                    "dependencies": identity["dependencies"], "outputs": outputs,
+                    "dependencies": identity["dependencies"] + [
+                        {"scope": "workflow", "path": p.relative_to(ROOT).as_posix(), "sha256": find.sha256(p)}
+                        for p in completion_dependencies], "outputs": outputs,
                     "conditions": {"no_extracts": not extracts, "face_paths": [p["path"] for p in path_outputs]}}
         marker = directory / "DONE"
         if marker.exists() and json.loads(marker.read_text(encoding="utf-8-sig")) != manifest:
             find.invalidate(project, (3, 5), "Face Tracking completion changed; dependent stages need review.")
-        directory.mkdir(parents=True, exist_ok=True)
-        marker.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+        manifest = record_done(project, ROOT, "3.5", manifest)
         find.append_log(directory, "Face Tracking complete", [f"Paths: {len(path_outputs)}; approved extracts: {len(extracts)}.",
                             "Low-confidence, held, and centered frames require editorial review in First Cut."])
         return manifest
@@ -463,8 +486,9 @@ def run(project, *, analyzer=analyze_video, get_model=model_path):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--project-root", type=Path, required=True)
+    parser.add_argument("--regenerate", action="store_true", help="Archive stale generated face paths before replacing")
     args = parser.parse_args()
-    result = run(args.project_root)
+    result = run(args.project_root, regenerate=args.regenerate)
     print(json.dumps({"step": result["step"], "paths": len(result["conditions"]["face_paths"]),
                       "no_extracts": result["conditions"]["no_extracts"]}, indent=2))
 

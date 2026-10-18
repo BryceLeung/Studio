@@ -15,12 +15,16 @@ Approved `CTA Pickup -` documents are filming scripts: create a separate deck fo
 
 ## Shared generators
 
-With Python 3.10 or later, install [the Python dependencies](scripts/requirements.txt) in the active environment. Run [make-plans.py](scripts/make-plans.py) with the OneDrive project folder to prepare cue text, then [build-cue-cards.py](scripts/build-cue-cards.py) with the same project folder to create editable decks. Both scripts run on Windows, macOS, and Linux without PowerPoint. Generated plans stay in the project's `2-Cue Cards/working/` folder. The builder refuses to replace an existing deck unless `--overwrite` is supplied after reviewing it for human edits. Render and inspect every deck in an available presentation app before writing `DONE`; on macOS, Keynote or PowerPoint can display the `.pptx`. The Python builder does not render slides. Check and label CTA pickup decks according to their approved destination and attachment point.
+With Python 3.10 or later, install [the Python dependencies](scripts/requirements.txt) in the active environment. Run [make-plans.py](scripts/make-plans.py) with the OneDrive project folder to prepare cue text, then [build-cue-cards.py](scripts/build-cue-cards.py) with the same project folder to create editable decks. Both scripts run on Windows, macOS, and Linux without PowerPoint. Generated plans stay in the project's `2-Cue Cards/working/` folder. The builder refuses to replace an existing deck unless `--overwrite` is supplied after reviewing it for human edits. Visual inspection is optional, not a completion gate. The Python builder does not render slides. Check and label CTA pickup decks according to their approved destination and attachment point.
 
 ## Completion
 
-Success requires a verified deck for each approved script, readable slides, and complete script coverage. Record the full approved set and the produced decks in the step's `DONE` manifest. If an approved document changes, validation invalidates 1.1, 1.2, and later steps.
+Normal execution uses the root skill's shared prerequisite check. After producing the complete canonical deck set, invoke its shared completion recorder with `--stage 1.2`; do not write `DONE` by hand or record a preview output directory as canonical completion.
+
+Success requires the same-stem `.pptx` file to exist for each approved script; no human approval or slide-rendering check is required. Record fingerprints of the full approved input set and the produced decks in the step's `DONE` manifest. The shared validator and this step's `scripts/validation.py` check the file inventory and recorded fingerprints without opening PowerPoint. If an approved document changes, its saved input fingerprint no longer validates.
 
 ## Rerun
 
 Validate existing completion and compare the approved documents with the decks. Reuse valid decks. Review any human edits to an existing deck before changing it; do not discard them. Log the attempt, decisions, outputs, and any handoff or invalidation in `LOG.md`.
+
+Unchanged plans and decks are reused. Changed existing plans require `make-plans.py --overwrite`, and deck replacement requires `build-cue-cards.py --overwrite`. Canonical replacement uses the common regeneration helper to archive only selected `working/*.json` and deck files into the pending `STALE/N/` slot before publishing replacements; deck rendering is staged first. Redirected preview output does not invalidate or archive canonical work. Execution failures archive affected completion markers through the common graph helper, without moving work files merely because the run failed.

@@ -1,0 +1,16 @@
+{
+  "schema": "studio.stage",
+  "schema_version": 1,
+  "step": "1.1",
+  "folder": "1-Pre Production/1-Script Review",
+  "generated": [
+    {"folder": "1-Pre Production/1-Script Review", "filename_regex": "^.+\\.docx$"}
+  ],
+  "prerequisites": [],
+  "inputs": [
+    {"folder": "1-Pre Production/1-Script Review", "filename_regex": "^.+\\.docx$", "minimum": 0, "maximum": 0}
+  ],
+  "outputs": [
+    {"folder": "1-Pre Production/1-Script Review/Approved", "filename_regex": "^.+\\.docx$", "minimum": 1, "complete_set": true}
+  ]
+}

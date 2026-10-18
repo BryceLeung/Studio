@@ -1,0 +1,19 @@
+{
+  "schema": "studio.stage",
+  "schema_version": 1,
+  "step": "2.1",
+  "workflow_dependencies": [".agents/skills/studio/2-Production/1-Footage Intake/scripts/validate-footage.py"],
+  "validation": {"script": "scripts/validation.py"},
+  "folder": "2-Production/1-Footage Intake",
+  "generated": [],
+  "prerequisites": [
+    {"step": "1.3", "folder": "1-Pre Production/3-Extracts"}
+  ],
+  "inputs": [
+    {"folder": "1-Pre Production/1-Script Review/Approved", "filename_regex": "^.+\\.docx$", "minimum": 1}
+  ],
+  "outputs": [
+    {"folder": "2-Production/1-Footage Intake", "filename_regex": "^.+__C\\d{2}__cam[AB]\\.(?:mov|mp4)$", "minimum": 2},
+    {"folder": "2-Production/1-Footage Intake", "filename_regex": "^.+__C\\d{2}__lav\\.wav$", "minimum": 1}
+  ]
+}
