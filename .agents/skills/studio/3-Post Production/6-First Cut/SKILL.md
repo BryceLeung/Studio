@@ -40,23 +40,43 @@ untouched. Both camera angles are reframed inside the multicam, preserving all
 take auditions and camera switching. Original asset dimensions, media, audio,
 and synchronization remain unchanged.
 
-Portrait framing fills the canvas with the full camera height and follows the
-face horizontally using editable, frame-snapped linear position keyframes.
-The crop is clamped at source edges; it does not zoom or track vertically.
-Untracked gaps, including shared-midpoint pauses, hold the last sampled crop
-position until tracking resumes. The first sample supplies any leading trim;
-the last sample supplies any trailing trim. Holds are source-local and never
-carry across cameras or recordings. There is no pan toward the next range
-across a gap: a one-frame transition joins the held crop to the next sample,
-then normal tracked interpolation resumes. Stage 3.5 outputs remain unchanged.
-Held/centered samples and source-time `held_intervals_ms` (leading, gap, or
-trailing holds) are listed in each project's `portrait.warnings` for review.
+Portrait framing fills the canvas with the full camera height using explicit
+Fit plus a relative transform enlargement (316.0493827% for 16:9 to 9:16).
+This combination was verified in Final Cut; implicit Fill and native-pixel
+sizing with None did not work in the imported multicam structure. Camera
+asset-clips explicitly use the portrait format; original asset formats remain
+unchanged.
+
+The standard portrait workflow uses locked crops. The user approved this
+behavior in Final Cut on 2026-10-18. The generator explicitly selects locked
+motion and records `portrait.motion: "locked"` in its generation report; normal
+run/resume commands must not opt into tracked animation.
+Each extract locks one editable crop per camera and recording for its entire
+timeline. Stage 3.5 face detections choose a robust median horizontal center;
+they do not animate the crop. Use active takes as the framing reference, with
+all takes as fallback for a recording present only in alternatives. Deduplicate
+overlapping source samples and exclude unused source time. Short trims without
+a detector sample use the preceding source sample, or the first leading one.
+Prefer tracked detections to held boxes, then use the frame center if none are
+available. No per-word or per-sentence resets, pan keyframes, vertical tracking,
+or zoom animation are emitted. Different cameras and recordings retain their
+own positions. Camera-angle cut decisions are unchanged. Stage 3.5 outputs
+remain unchanged.
+
+The crop is clamped at source edges. Source-path held/centered samples and
+coverage holds remain listed in `portrait.warnings` for review; they describe
+the evidence used for framing, not camera animation. Takes with sampled face
+boxes outside the locked crop get `face_outside_locked_crop` warnings for
+manual review. Unusually large subject movement may require a deliberate
+reframe. The legacy tracked helper is available only through the Python
+`motion="tracked"` argument; it emits time/value-only position keyframes
+because FCP rejected explicit interpolation attributes on that parameter.
 Sparse/malformed paths, missing camera sources, stale media, rotated footage,
 non-square pixels, or dimension mismatches still stop generation.
 Portrait draft titles use smaller type, narrower margins, and a lower-frame
 position independently of camera motion.
 
-Review portrait framing, pan motion, edge holds, subtitle placement, both
+Review portrait framing, subject movement, subtitle placement, both
 camera angles, and alternate takes in Final Cut before accepting these edits.
 Automated XML checks do not establish visual framing or title-rendering quality.
 

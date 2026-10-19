@@ -287,9 +287,12 @@ def build_xml(project, output, name, document, scores, syncs, probes, padding_ms
                 key = ((project / sync["clips"][role]["path"]).resolve(strict=True), role)
                 if key not in face_paths:
                     raise ValueError(f"Missing stage 3.5 face path for {key}")
+                clip.set("format", project_format)
                 framing_warnings.extend(portrait.add_framing(
                     clip, face_paths[key], media["video"],
-                    [t for t in takes if t["recording_number"] == number], role, frame))
+                    [t for t in takes if t["recording_number"] == number], role, frame, motion="locked",
+                    reference_takes=[a["candidates"][0] for a in auditions
+                                     if a["candidates"][0]["recording_number"] == number]))
         multicams[number] = (identifier, angles)
     compounds = {}
     for index, take in enumerate(takes, 1):
@@ -345,7 +348,9 @@ def build_xml(project, output, name, document, scores, syncs, probes, padding_ms
                              "source_out": time(a["candidates"][0]["cut_out"])} for a in auditions]}
     if face_paths is not None:
         report["portrait"] = {"width": portrait.WIDTH, "height": portrait.HEIGHT,
-                              "framing": "horizontal face-centered fill", "warnings": framing_warnings}
+                              "motion": "locked",
+                              "framing": "locked per camera and recording; full-height fill",
+                              "warnings": framing_warnings}
     validate_xml(xml, output, report)
     return xml, report
 

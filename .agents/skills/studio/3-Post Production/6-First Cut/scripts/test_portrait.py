@@ -19,6 +19,50 @@ def face_path(center=0.7):
 
 
 class PortraitTests(unittest.TestCase):
+    def tracked_framing(self, *args):
+        return portrait.add_framing(*args, motion="tracked")
+
+    def test_locked_crop_ignores_unused_footage_and_resists_detector_outlier(self):
+        data = face_path(0.9)
+        for sample, center in zip(data["frames"], (0.49, 0.51, 0.5, 0.95, 0.5)):
+            sample["face"][0] = center
+        take = {"take_key": "used", "cut_in": Fraction(4, 5), "cut_out": Fraction(2),
+                "origins": {"camA": 0}}
+        original = json.dumps(data, sort_keys=True)
+        clip = ET.Element("asset-clip")
+        portrait.add_framing(clip, data, {"width": 3840, "height": 2160}, [take], "camA", Fraction(1, 30))
+        self.assertEqual(clip.find("adjust-transform").attrib["position"], "0.00000000 0")
+        self.assertIsNone(clip.find("adjust-transform/param"))
+        self.assertEqual(portrait.locked_center(data, [take] * 5, "camA"), 0.5)
+        self.assertEqual(json.dumps(data, sort_keys=True), original)
+
+    def test_locked_crop_uses_active_takes_and_holds_across_tiny_cuts(self):
+        data = face_path(0.8)
+        for sample in data["frames"][:3]:
+            sample["face"][0] = 0.45
+        active = [{"take_key": str(i), "cut_in": Fraction(ms, 1000),
+                   "cut_out": Fraction(ms + 30, 1000), "origins": {"camA": 5}}
+                  for i, ms in enumerate((5900, 6150, 6400))]
+        alternate = {"take_key": "alternate", "cut_in": Fraction(7), "cut_out": Fraction(9),
+                     "origins": {"camA": 5}}
+        clip = ET.Element("asset-clip")
+        portrait.add_framing(clip, data, {"width": 3840, "height": 2160}, [*active, alternate],
+                             "camA", Fraction(1, 30), reference_takes=active)
+        self.assertAlmostEqual(float(clip.find("adjust-transform").get("position").split()[0]), 80 / 9)
+        self.assertIsNone(clip.find("adjust-transform/param"))
+        self.assertEqual(portrait.locked_center(data, list(reversed(active)), "camA"), 0.45)
+
+    def test_locked_crop_prefers_detection_to_held_or_centered_samples(self):
+        data = face_path(0.8)
+        for sample in data["frames"]:
+            sample["status"] = "held"
+        data["frames"][2].update(face=[0.4, 0.3, 0.1, 0.2], status="tracked")
+        take = {"take_key": "all", "cut_in": Fraction(4, 5), "cut_out": Fraction(5), "origins": {"camA": 0}}
+        self.assertEqual(portrait.locked_center(data, [take], "camA"), 0.4)
+        data["frames"][2]["status"] = "centered"
+        data["frames"][2]["face"] = None
+        self.assertEqual(portrait.locked_center(data, [take], "camA"), 0.8)
+
     def test_gap_holds_until_next_range_and_preserves_tracked_motion(self):
         data = face_path()
         data["ranges_ms"] = [[1000, 2000], [3000, 4000]]
@@ -31,7 +75,7 @@ class PortraitTests(unittest.TestCase):
                   "cut_out": Fraction(end, 1000), "origins": {"camA": 0}}
                  for start, end in ((1000, 2300), (3000, 4000))]
         clip = ET.Element("asset-clip")
-        warnings = portrait.add_framing(clip, data, {"width": 3840, "height": 2160},
+        warnings = self.tracked_framing(clip, data, {"width": 3840, "height": 2160},
                                         takes, "camA", Fraction(1, 30))
         points = {cut.parse_time(k.attrib["time"]): k.attrib["value"]
                   for k in clip.findall("adjust-transform/param/keyframeAnimation/keyframe")}
@@ -45,7 +89,7 @@ class PortraitTests(unittest.TestCase):
         takes[0]["cut_out"] = Fraction(33, 10)
         # Overlapping audition trims share one source-time path, not conflicting holds.
         overlapping = ET.Element("asset-clip")
-        portrait.add_framing(overlapping, data, {"width": 3840, "height": 2160}, takes, "camA", Fraction(1, 30))
+        self.tracked_framing(overlapping, data, {"width": 3840, "height": 2160}, takes, "camA", Fraction(1, 30))
         self.assertEqual(ET.tostring(clip), ET.tostring(overlapping))
         self.assertEqual(json.dumps(data, sort_keys=True), original)
 
@@ -56,7 +100,7 @@ class PortraitTests(unittest.TestCase):
                           for t, center in ((0, 0.3), (2, 0.7))]
         take = {"take_key": "t", "cut_in": Fraction(0), "cut_out": Fraction(1), "origins": {"camA": 0}}
         clip = ET.Element("asset-clip")
-        portrait.add_framing(clip, data, {"width": 3840, "height": 2160}, [take], "camA", Fraction(1, 30))
+        self.tracked_framing(clip, data, {"width": 3840, "height": 2160}, [take], "camA", Fraction(1, 30))
         keys = clip.findall("adjust-transform/param/keyframeAnimation/keyframe")
         self.assertEqual(len(keys), 2)
         self.assertEqual(keys[0].attrib["time"], "0s")
@@ -71,7 +115,7 @@ class PortraitTests(unittest.TestCase):
         frame = Fraction(1001, 30000)
         take = {"take_key": "t", "cut_in": Fraction(0), "cut_out": Fraction(12), "origins": {"camA": 0}}
         clip = ET.Element("asset-clip")
-        portrait.add_framing(clip, data, {"width": 3840, "height": 2160}, [take], "camA", frame)
+        self.tracked_framing(clip, data, {"width": 3840, "height": 2160}, [take], "camA", frame)
         points = {cut.parse_time(k.attrib["time"]): k.attrib["value"]
                   for k in clip.findall("adjust-transform/param/keyframeAnimation/keyframe")}
         self.assertTrue(all((t / frame).denominator == 1 for t in points))
@@ -89,7 +133,7 @@ class PortraitTests(unittest.TestCase):
         takes = [{"take_key": str(start), "cut_in": Fraction(start), "cut_out": Fraction(end),
                   "origins": {"camA": 0}} for start, end in ((1, 6), (6, 11))]
         clip = ET.Element("asset-clip")
-        warnings = portrait.add_framing(clip, data, {"width": 3840, "height": 2160}, takes, "camA", Fraction(1, 30))
+        warnings = self.tracked_framing(clip, data, {"width": 3840, "height": 2160}, takes, "camA", Fraction(1, 30))
         keys = clip.findall("adjust-transform/param/keyframeAnimation/keyframe")
         points = {cut.parse_time(k.attrib["time"]): k.attrib["value"] for k in keys}
         self.assertEqual(points[Fraction(2)], points[Fraction(299, 30)])
@@ -109,7 +153,7 @@ class PortraitTests(unittest.TestCase):
                           "cut_out": origin + Fraction(end, 1000), "origins": {role: origin}}
                          for start, end in ((100, 700), (6000, 9000))]
                 clip = ET.Element("asset-clip")
-                warnings = portrait.add_framing(clip, data, {"width": 3840, "height": 2160}, takes, role, Fraction(1, 30))
+                warnings = self.tracked_framing(clip, data, {"width": 3840, "height": 2160}, takes, role, Fraction(1, 30))
                 keys = clip.findall("adjust-transform/param/keyframeAnimation/keyframe")
                 self.assertEqual(cut.parse_time(keys[0].attrib["time"]), Fraction(1, 10))
                 self.assertEqual(cut.parse_time(keys[-1].attrib["time"]), Fraction(9))
@@ -127,7 +171,7 @@ class PortraitTests(unittest.TestCase):
             sample.update(face=None, status="centered")
         take = {"take_key": "gap", "cut_in": Fraction(6), "cut_out": Fraction(7), "origins": {"camA": 0}}
         clip = ET.Element("asset-clip")
-        warnings = portrait.add_framing(clip, data, {"width": 3840, "height": 2160}, [take], "camA", Fraction(1, 30))
+        warnings = self.tracked_framing(clip, data, {"width": 3840, "height": 2160}, [take], "camA", Fraction(1, 30))
         self.assertEqual(warnings[0]["statuses"], ["centered", "trailing_hold"])
         self.assertTrue(all(k.attrib["value"] == "0.00000000 0" for k in
                             clip.findall("adjust-transform/param/keyframeAnimation/keyframe")))
@@ -146,6 +190,7 @@ class PortraitTests(unittest.TestCase):
             xml, report = cut.build_xml(project, project / cut.STAGE / "Extracts/Portrait/A.FCPXML",
                                         "A Portrait", doc, scores, syncs, probes, 50, face_paths=paths)
             root = ET.fromstring(xml)
+            self.assertEqual(report["portrait"]["motion"], "locked")
             formats = {f.attrib["id"]: f.attrib for f in root.findall("resources/format")}
             sequence = root.find("library/event/project/sequence")
             self.assertEqual((formats[sequence.attrib["format"]]["width"],
@@ -155,11 +200,12 @@ class PortraitTests(unittest.TestCase):
             angles = root.findall("resources/media/multicam/mc-angle")
             for angle, sign in zip(angles[:2], (-1, 1)):
                 clip = angle.find("asset-clip")
-                self.assertEqual(clip.find("adjust-conform").attrib["type"], "fill")
-                keys = clip.findall("adjust-transform/param/keyframeAnimation/keyframe")
-                self.assertAlmostEqual(float(keys[0].attrib["value"].split()[0]), sign * 35.55555556)
-                # Keyframes are camera SOURCE time, unaffected by lav/camera sync shifts.
-                self.assertEqual(keys[0].attrib["time"], "4/5s")
+                self.assertEqual(clip.find("adjust-conform").attrib["type"], "fit")
+                transform = clip.find("adjust-transform")
+                self.assertEqual(clip.attrib["format"], sequence.attrib["format"])
+                self.assertEqual(transform.attrib["scale"], "3.1604938272 3.1604938272")
+                self.assertEqual(len(transform), 0)
+                self.assertAlmostEqual(float(transform.attrib["position"].split()[0]), sign * 35.55555556)
             self.assertIsNone(angles[2].find("asset-clip/adjust-transform"))
             self.assertEqual(report["takes"], 4)
             self.assertEqual([(w["camera"], w["take_key"], w["statuses"]) for w in report["portrait"]["warnings"]],

@@ -1,7 +1,8 @@
 """Consume stage 3.5 paths for editable, horizontal-only 9:16 reframing."""
 from fractions import Fraction
-from bisect import bisect_left
+from bisect import bisect_left, bisect_right
 import math
+from statistics import median
 import xml.etree.ElementTree as ET
 
 import subtitles
@@ -84,7 +85,30 @@ def validate_path(data):
             raise ValueError("Incomplete face-path sample coverage; rerun stage 3.5.")
 
 
-def add_framing(clip, data, video, takes, role, frame):
+def locked_center(data, takes, role):
+    """Choose one robust center from used source time, counting overlaps once."""
+    chosen = {}
+    times = [sample["time_ms"] for sample in data["frames"]]
+    for take in takes:
+        start = (take["cut_in"] - take["origins"][role]) * 1000
+        end = (take["cut_out"] - take["origins"][role]) * 1000
+        if not 0 <= start < end:
+            raise ValueError(f"Invalid portrait source trim: {take['take_key']}")
+        samples = [s for s in data["frames"] if start <= s["time_ms"] < end]
+        if not samples:
+            # A word can be shorter than the detector sampling interval. Use
+            # the last observation at its midpoint, or the first leading one.
+            index = max(0, bisect_right(times, (start + end) / 2) - 1)
+            samples = [data["frames"][index]]
+        chosen.update((s["time_ms"], s) for s in samples)
+    for status in ("tracked", "held"):
+        centers = [s["face"][0] for s in chosen.values() if s["status"] == status and s["face"] is not None]
+        if centers:
+            return median(centers)
+    return 0.5
+
+
+def add_framing(clip, data, video, takes, role, frame, *, motion="locked", reference_takes=None):
     validate_path(data)
     if (data["width"], data["height"]) != (video["width"], video["height"]):
         raise ValueError("Face-path dimensions differ from camera media.")
@@ -97,6 +121,8 @@ def add_framing(clip, data, video, takes, role, frame):
         raise ValueError("Camera is narrower than the portrait canvas.")
     if not takes:
         raise ValueError("Portrait framing requires at least one used take.")
+    if motion not in ("locked", "tracked"):
+        raise ValueError("Unknown portrait motion mode.")
     # Fill preserves the full camera height. FCP position units are percent of
     # sequence height; clamp the crop center so neither side exposes black.
     half_crop = (WIDTH / HEIGHT) / aspect / 2
@@ -148,11 +174,40 @@ def add_framing(clip, data, video, takes, role, frame):
             points[low] = position(first)
         if high > max(points):
             points[high] = position(last)
-    ET.SubElement(clip, "adjust-conform", {"type": "fill"})
-    transform = ET.SubElement(clip, "adjust-transform", {"position": points[min(points)]})
+    # FCP import trials verified this Fit + relative enlargement combination.
+    # Native-pixel sizing with None and an implicit Fill did not fill the frame.
+    scale = aspect / (WIDTH / HEIGHT)
+    ET.SubElement(clip, "adjust-conform", {"type": "fit"})
+    if motion == "locked":
+        center = locked_center(data, reference_takes or takes, role)
+        value = position({"face": [center]})
+    else:
+        value = points[min(points)]
+    transform = ET.SubElement(clip, "adjust-transform", {"position": value,
+                                                       "scale": f"{scale:.10f} {scale:.10f}"})
+    if motion == "locked":
+        # This lives once in the source angle, shared by every sentence and
+        # audition. No per-word/per-take reset or pan keyframes are emitted.
+        center = min(1 - half_crop, max(half_crop, center))
+        for take in takes:
+            start = (take["cut_in"] - take["origins"][role]) * 1000
+            end = (take["cut_out"] - take["origins"][role]) * 1000
+            if any(start <= s["time_ms"] < end and s["face"] is not None
+                   and (s["face"][0] - s["face"][2] / 2 < center - half_crop
+                        or s["face"][0] + s["face"][2] / 2 > center + half_crop)
+                   for s in data["frames"]):
+                warning = next((w for w in warnings if w["take_key"] == take["take_key"]), None)
+                if warning is None:
+                    warning = {"take_key": take["take_key"], "camera": role, "statuses": [],
+                               "held_intervals_ms": []}
+                    warnings.append(warning)
+                warning["statuses"] = sorted(set(warning["statuses"]) | {"face_outside_locked_crop"})
+        return warnings
     param = ET.SubElement(transform, "param", {"name": "position"})
     animation = ET.SubElement(param, "keyframeAnimation")
     for timestamp, value in sorted(points.items()):
-        ET.SubElement(animation, "keyframe", {"time": subtitles.time(timestamp), "value": value,
-                                               "interp": "linear", "curve": "linear"})
+        # FCP rejects interpolation attributes for compound position values,
+        # even though the generic FCPXML keyframe DTD permits them. Use the
+        # time/value-only representation in Apple's position animation example.
+        ET.SubElement(animation, "keyframe", {"time": subtitles.time(timestamp), "value": value})
     return warnings
