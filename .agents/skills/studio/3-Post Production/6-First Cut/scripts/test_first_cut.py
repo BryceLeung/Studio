@@ -314,22 +314,22 @@ class FirstCutTests(unittest.TestCase):
     def test_collapsed_subtitle_words_share_adjacent_highlights_without_losing_text(self):
         cases = [
             ("preceding", [("He", 0, 200), ("wanted", 200, 500), ("a", 506, 514)],
-             [(0, 6, ["He"]), (6, 15, ["wanted", "a"])]),
-            ("following", [("a", 6, 14), ("friend", 100, 500)], [(3, 15, ["a", "friend"])]),
+             [(0, 6, ["He"]), (6, 30, ["wanted", "a"])]),
+            ("following", [("a", 6, 14), ("friend", 100, 500)], [(3, 30, ["a", "friend"])]),
             ("middle_prefers_preceding", [("give", 0, 200), ("a", 206, 214), ("hug", 300, 500)],
-             [(0, 9, ["give", "a"]), (9, 15, ["hug"])]),
-            ("alone", [("a", 6, 14)], [(0, 1, ["a"])]),
+             [(0, 9, ["give", "a"]), (9, 30, ["hug"])]),
+            ("alone", [("a", 6, 14)], [(0, 30, ["a"])]),
             ("alone_at_cut_end", [("a", 986, 994)], [(29, 30, ["a"])]),
-            ("short_second_same_start", [("one", 0, 400), ("a", 6, 14)], [(0, 12, ["one", "a"])]),
-            ("all_short", [("a", 6, 10), ("b", 11, 14)], [(0, 1, ["a", "b"])]),
+            ("short_second_same_start", [("one", 0, 400), ("a", 6, 14)], [(0, 30, ["one", "a"])]),
+            ("all_short", [("a", 6, 10), ("b", 11, 14)], [(0, 30, ["a", "b"])]),
             ("consecutive_short", [("He", 0, 200), ("a", 206, 214), ("b", 207, 215), ("gift", 300, 500)],
-             [(0, 6, ["He", "a", "b"]), (9, 15, ["gift"])]),
+             [(0, 9, ["He", "a", "b"]), (9, 30, ["gift"])]),
             ("same_start_with_preceding", [("keep", 0, 200), ("this", 206, 400), ("word", 214, 500)],
-             [(0, 6, ["keep", "this"]), (6, 15, ["word"])]),
-            ("same_start_without_preceding", [("we", 0, 20), ("go", 6, 200)], [(0, 6, ["we", "go"])]),
+             [(0, 6, ["keep", "this"]), (6, 30, ["word"])]),
+            ("same_start_without_preceding", [("we", 0, 20), ("go", 6, 200)], [(0, 30, ["we", "go"])]),
             ("phrase_boundary", [("one", 0, 200), ("two", 200, 400), ("three", 400, 600),
                                   ("a", 606, 614), ("four", 700, 900)],
-             [(0, 6, ["one"]), (6, 12, ["two"]), (12, 21, ["three", "a"]), (21, 27, ["four"])])]
+             [(0, 6, ["one"]), (6, 12, ["two"]), (12, 21, ["three", "a"]), (21, 30, ["four"])])]
         frame = Fraction(1, 30)
         for name, rows, expected in cases:
             with self.subTest(name=name):
@@ -354,6 +354,30 @@ class FirstCutTests(unittest.TestCase):
                 if name == "phrase_boundary":
                     self.assertEqual(clip.findall("title")[2].attrib["name"], "three a four")
 
+    def test_subtitle_phrases_hold_until_next_phrase_without_gaps_or_overlaps(self):
+        frame = Fraction(1, 30)
+        for portrait in (False, True):
+            for third_word_end in (600, 1000):
+                with self.subTest(portrait=portrait, third_word_end=third_word_end):
+                    take = {"take_key": "hold", "transcript": {"word_start": 0, "word_end": 3},
+                            "origins": {"lav": Fraction(1, 5)}, "cut_in": Fraction(1, 5),
+                            "cut_out": Fraction(7, 5)}
+                    words = [{"text": label, "start_ms": start, "end_ms": end}
+                             for label, start, end in (("one", 100, 200), ("two", 300, 400),
+                                                       ("three", 500, third_word_end), ("four", 900, 1000))]
+                    clip = ET.Element("mc-clip")
+                    cut.subtitles.add_titles(clip, take, words, frame, "r1", portrait=portrait)
+                    titles = clip.findall("title")
+                    self.assertEqual([title.attrib["name"] for title in titles],
+                                     ["one two three"] * 3 + ["four"])
+                    starts = [cut.parse_time(title.attrib["offset"]) for title in titles]
+                    ends = [start + cut.parse_time(title.attrib["duration"])
+                            for start, title in zip(starts, titles)]
+                    self.assertEqual(starts, [Fraction(3, 10), Fraction(1, 2),
+                                              Fraction(7, 10), Fraction(11, 10)])
+                    self.assertEqual(ends, starts[1:] + [take["cut_out"]])
+                    self.assertTrue(titles[2].findall("text/text-style")[-1].attrib["ref"].endswith("h"))
+
     def test_one_frame_subtitle_fallback_handles_fractional_rate_and_take_limits(self):
         frame = Fraction(1001, 30000)
         take = {"take_key": "single", "transcript": {"word_start": 0, "word_end": 0},
@@ -361,7 +385,7 @@ class FirstCutTests(unittest.TestCase):
         words = [{"text": "a", "start_ms": 6, "end_ms": 14}]
         clip = ET.Element("mc-clip")
         cut.subtitles.add_titles(clip, take, words, frame, "r1", portrait=True)
-        self.assertEqual(cut.parse_time(clip.find("title").attrib["duration"]), frame)
+        self.assertEqual(cut.parse_time(clip.find("title").attrib["duration"]), take["cut_out"])
         self.assertEqual(clip.find("title/adjust-transform").attrib["position"], "0 -28")
         take["cut_out"] = Fraction(1, 100)
         with self.assertRaisesRegex(ValueError, "No subtitle frame fits"):

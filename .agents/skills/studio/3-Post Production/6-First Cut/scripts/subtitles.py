@@ -79,14 +79,15 @@ def add_titles(clip, take, words, frame, effect_id, id_start=0, portrait=False):
         phrase.append(event)
     if phrase:
         groups.append(phrase)
-    for group in groups:
+    for group_index, group in enumerate(groups):
         display = [(word, index) for index, (labels, _, _) in enumerate(group) for word in labels]
         font_size = min(FONT_SIZE, FONT_SIZE * LINE_LENGTH // max(len(word) for word, _ in display))
         if portrait:
             font_size //= 2
-        for index, (_, start, end) in enumerate(group):
-            next_start = group[index + 1][1] if index + 1 < len(group) else end
-            finish = min(take["cut_out"], max(end, next_start)) if index + 1 == len(group) else next_start
+        # Hold the final highlight until the next phrase, or the end of this take.
+        group_end = groups[group_index + 1][0][1] if group_index + 1 < len(groups) else take["cut_out"]
+        for index, (_, start, _) in enumerate(group):
+            finish = group[index + 1][1] if index + 1 < len(group) else group_end
             if finish <= start:
                 raise ValueError(f"Subtitle words collide on one frame: {take['take_key']}")
             title = ET.SubElement(clip, "title", {"ref": effect_id, "lane": "1", "offset": time(start),
