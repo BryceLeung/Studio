@@ -11,13 +11,14 @@ from scripts import stage_status
 class StageStatusTests(unittest.TestCase):
     def test_all_definitions_resolve_and_preserve_independent_branches(self):
         stages = stage_status.load_stages()
-        self.assertEqual(len(stages), 10)
+        self.assertEqual(len(stages), 11)
         self.assertEqual(set(stages["3.2"]["prerequisites"][0].values()),
                          {"2.1", "2-Production/1-Footage Intake"})
         self.assertNotIn("3.1", [item["step"] for item in stages["3.2"]["prerequisites"]])
         self.assertNotIn("3.4", [item["step"] for item in stages["3.5"]["prerequisites"]])
         order = stage_status.order_stages(stages, "3.6")
-        self.assertEqual(set(order), set(stages))
+        self.assertEqual(set(order), set(stages) - {"1.4"})
+        self.assertEqual({item["step"] for item in stages["1.4"]["prerequisites"]}, {"1.1", "1.3"})
         self.assertLess(order.index("3.3"), order.index("3.5"))
         self.assertLess(order.index("3.4"), order.index("3.6"))
 

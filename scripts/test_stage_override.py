@@ -51,6 +51,7 @@ class OverrideTests(unittest.TestCase):
         names = {
             "1.1": ["Approved/A.docx"], "1.2": ["A.pptx"],
             "1.3": ["APPROVED/Short-Form Excerpt Shortlist.md"],
+            "1.4": ["Asset Registry.md", "Asset Registry.json"],
             "2.1": ["A__C01__camA.mov", "A__C01__camB.mp4", "A__C01__lav.wav"],
             "3.1": ["A__C01.json"], "3.2": ["A__C01__lav.json"],
             "3.3": ["A__Takes.v1.json"], "3.4": ["A__Scores.v1.json"],
@@ -106,7 +107,7 @@ class OverrideTests(unittest.TestCase):
         self.assertTrue(plan["can_apply"], plan["blocked"])
         self.assertEqual(plan["stages"], validation.order_stages(self.stages))
         self.assertIn("without rerunning", plan["warning"])
-        self.assertEqual(len(plan["impacts"]), 10)
+        self.assertEqual(len(plan["impacts"]), len(self.stages))
         self.assertEqual(tree(self.project), before)
         self.assertEqual(plan["plan_id"], self.plan()["plan_id"])
 
@@ -122,7 +123,7 @@ class OverrideTests(unittest.TestCase):
         with patch.object(importlib.util, "spec_from_file_location", side_effect=no_stage_plugins):
             result = self.apply(self.plan())
             report = validation.audit(self.project, self.workflow)
-        self.assertEqual(len(result["applied"]), 10)
+        self.assertEqual(len(result["applied"]), len(self.stages))
         self.assertTrue(all(item["status"] == "current" for item in report.values()), report)
         for step in self.stages:
             manifest = json.loads(self.marker(step).read_text())

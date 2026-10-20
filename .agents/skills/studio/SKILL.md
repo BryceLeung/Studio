@@ -9,7 +9,7 @@ Use this skill for chat requests beginning with `studio` and for clear requests 
 
 ## Roots and project identity
 
-- Treat the repository containing this skill as the workflow root. Find the separate OneDrive project root among the workspace folders or from the targets of connected project links in the workflow root's `Connected Projects` subdirectory. Resolve connected projects to their real OneDrive paths before running stages. If the project root cannot be found or its identity is ambiguous, ask for its location before creating or changing project data. Do not substitute a directory inside Git.
+- Treat the repository containing this skill as the workflow root. Find the separate OneDrive project root among the workspace folders or from the targets of connected project links in the workflow root's `Connected Projects` subdirectory. Resolve connected projects to their real OneDrive paths before running stages by calling `python "<workflow-root>/scripts/resolve_project.py" "<workflow-root>/Connected Projects/<exact-project-folder>"`; for a project supplied directly as a workspace folder, pass that directory instead. Use this read-only helper rather than ad hoc inline Python to resolve paths. It prints the resolved directory and fails for missing paths, broken links, or non-directories. If the project root cannot be found or its identity is ambiguous, ask for its location before creating or changing project data. Do not substitute a directory inside Git.
 - Name primary project folders with sequential, stable two-digit IDs: `01-<Name>`, `02-<Name>`, and so on. A pickup or revision of an existing idea is a separate child project beside its parent, named `<parent ID>.<next child number>-<parent name> <purpose>`; for example, `01.1-Love Compounds Too Pickup`. Use `01.2` for the next child of `01`, regardless of later primary projects. Check the OneDrive project root before assigning either number; do not reuse an ID or renumber an existing project. An explicitly requested available ID takes precedence over automatic numbering. A child requires an existing parent.
 - Keep project folders only in OneDrive. Add stage and substage directories only when their workflow is defined or run; do not scaffold future stages.
 - The stage order is `1-Pre Production`, `2-Production`, `3-Post Production`, `4-Publish`, `5-Analyze`. Substages are numbered within their stage, such as `1-Pre Production/1-Script Review` and `1-Pre Production/2-Cue Cards`. A one-digit prefix such as `1.2` is a stage/substage; a two-digit prefix such as `01.1` is a child project ID.
@@ -49,6 +49,8 @@ All substage completion recording uses `scripts/stage_completion.py`, never agen
 The writer reuses unchanged evidence without rewriting the marker, and writes changed evidence atomically while preserving the previous active marker in `STALE/N/DONE`. Changed/new completion also archives dependent completion through the common graph invalidator, even when the target previously had no active marker. Recording is serialized by a per-stage `.DONE.lock`; an existing lock causes a clear failure and is never automatically removed. If recording was interrupted, inspect its lock and temporary file before retrying. The previous active marker remains visible until its replacement is published. Recording clears its own pending invalidation pointer only after successful completion. It never generates or moves outputs and is not a manual override.
 
 Definitions declare required implementation files in `workflow_dependencies`, using workflow-root-relative paths. New evidence cannot omit those fingerprints. Rich-manifest stages declare `completion.stage_owned` so generic inventory-only recording is refused; their normal checker/generator or explicitly supplied, fully validated evidence is required.
+
+Stage 1.4 also uses the generic shared `record --stage 1.4` command after its registry validator passes. Its canonical pair is human-only compact `Asset Registry.md` cards plus machine-maintained `Asset Registry.json` evidence. Both are required, fingerprinted, protected outputs, never disposable generator-owned artifacts. Its human gate is each asset's in-place Review field, not an approval-folder move; empty/all-rejected slates require recorded explicit human confirmation. Only the current plain-newline card format is supported. Historical backups and opaque JSON migration evidence remain passive history, not active registry formats. This independent branch does not add a prerequisite to presenter production or postproduction stages.
 
 ## Parallel work within a substage
 
@@ -95,6 +97,7 @@ Stages with supported independent jobs may use the common archive helpers' `job_
 - `1.1` — [Script Review](1-Pre%20Production/1-Script%20Review/SKILL.md)
 - `1.2` — [Cue Cards](1-Pre%20Production/2-Cue%20Cards/SKILL.md)
 - `1.3` — [Extracts](1-Pre%20Production/3-Extracts/SKILL.md)
+- `1.4` - [Asset Breakdown](1-Pre%20Production/4-Asset%20Breakdown/SKILL.md)
 - `2.1` — [Footage Intake](2-Production/1-Footage%20Intake/SKILL.md)
 - `3.1` — [Sync](3-Post%20Production/1-Sync/SKILL.md)
 - `3.2` — [Transcribe](3-Post%20Production/2-Transcribe/SKILL.md)
