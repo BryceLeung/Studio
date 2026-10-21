@@ -52,6 +52,8 @@ Definitions declare required implementation files in `workflow_dependencies`, us
 
 Stage 1.4 also uses the generic shared `record --stage 1.4` command after its registry validator passes. Its canonical pair is human-only compact `Asset Registry.md` cards plus machine-maintained `Asset Registry.json` evidence. Both are required, fingerprinted, protected outputs, never disposable generator-owned artifacts. Its human gate is each asset's in-place Review field, not an approval-folder move; empty/all-rejected slates require recorded explicit human confirmation. Only the current plain-newline card format is supported. Historical backups and opaque JSON migration evidence remain passive history, not active registry formats. This independent branch does not add a prerequisite to presenter production or postproduction stages.
 
+Stage 2.2 uses `broll.py complete --project-root "<real-project-root>"` from its own skill's scripts directory to supply nested, stage-owned evidence to the shared recorder. Generic inventory-only recording is refused. Its collection gate is at least three distinct usable video candidates per current approved B-roll asset, assessed against the latest logical brief revision and required shot coverage; there is no separate human clip-selection gate. Each asset has one append-only `request.md` containing the initial verbatim registry brief, later creative revisions and chronological search attempts/outcomes. Actual searches use `broll.py search`; `search-note` appends review outcomes and next-term rationale. Search-only entries do not change brief applicability or invalidate candidate suitability. The schema-2 ledger checks exact journal bytes and event offsets; completion watches journals, candidate ledgers and videos. This actively developed format has no automatic migration from earlier versioned-request schemas. Manual family footage may remain pending. This independent branch depends on 1.4 and does not block existing presenter filming or postproduction. Preserve journal history, candidate records and footage across ordinary refinements; they are not generator-owned outputs.
+
 ## Parallel work within a substage
 
 Keep the existing substage prerequisite and completion gates. Within the selected substage, use available agents for independent work when it will help. This instruction authorizes delegation during normal Studio execution; no separate user request for agents is needed. If agents are unavailable or the work is too small to benefit, execute it directly.
@@ -99,6 +101,7 @@ Stages with supported independent jobs may use the common archive helpers' `job_
 - `1.3` — [Extracts](1-Pre%20Production/3-Extracts/SKILL.md)
 - `1.4` - [Asset Breakdown](1-Pre%20Production/4-Asset%20Breakdown/SKILL.md)
 - `2.1` — [Footage Intake](2-Production/1-Footage%20Intake/SKILL.md)
+- `2.2` - [B-roll](2-Production/2-B-roll/SKILL.md)
 - `3.1` — [Sync](3-Post%20Production/1-Sync/SKILL.md)
 - `3.2` — [Transcribe](3-Post%20Production/2-Transcribe/SKILL.md)
 - `3.3` — [Find Takes](3-Post%20Production/3-Find%20Takes/SKILL.md)
