@@ -26,6 +26,8 @@ REGISTRY = Path('1-Pre Production/4-Asset Breakdown')
 EXTENSIONS = {'.mp4', '.mov', '.m4v', '.mkv', '.avi', '.webm', '.mxf'}
 ID = re.compile(r'ASSET-\d{6}')
 MAX_SEARCH_REFINEMENTS = 5
+SCHEMA_VERSION = 3
+SCORE_WEIGHTS = {'subject_action': 40, 'context_tone': 25, 'editing_usefulness': 25, 'technical_quality': 10}
 
 
 def now():
@@ -113,45 +115,79 @@ def valid_plan(sourcing, shots):
             and len(shots) == len(set(shots)), 'Required shots must be unique nonempty strings')
 
 
+def journal_name(version):
+    require(type(version) is int and version > 0, 'Invalid search run number')
+    return f'search.{version:02d}.md'
+
+
+def attempt_relative(version, attempt):
+    require(type(attempt) is int and attempt > 0, 'Invalid search attempt number')
+    return f'search.{version:02d}/{attempt:02d}'
+
+
+def next_attempt(ledger):
+    version = ledger['requests'][-1]['version']
+    return 1 + sum(e['kind'] == 'search' and e['request_version'] == version for e in ledger['events'])
+
+
 def load(project, asset, *, allow_unregistered=False):
     directory = folder(project, asset)
     ledger = read_json(directory / 'Candidates.json')
-    require(ledger.get('schema') == 'studio.broll.candidates' and ledger.get('schema_version') == 2
-            and ledger.get('asset') == asset, 'Invalid candidate ledger identity/schema')
+    require(ledger.get('schema') == 'studio.broll.candidates' and ledger.get('schema_version') == SCHEMA_VERSION
+            and ledger.get('asset') == asset, 'Invalid candidate ledger identity/schema; expected search-run schema 3')
     requests = ledger['requests']
     require(isinstance(requests, list) and requests, 'Missing requests')
-    path = confined(project, (STAGE / asset / 'request.md').as_posix())
-    require(path.is_file(), 'Missing request.md journal')
-    content = path.read_bytes()
-    require(ledger.get('journal') == {'size': len(content), 'sha256': hashlib.sha256(content).hexdigest()},
-            'Changed or interrupted append-only request journal; inspect request.md and Candidates.json')
+    expected = {journal_name(v) for v in range(1, len(requests) + 1)}
+    require(isinstance(ledger.get('journals'), dict) and set(ledger['journals']) == expected,
+            'Missing or unexpected search journal evidence')
+    contents = {}
+    for name in expected:
+        path = confined(project, (STAGE / asset / name).as_posix())
+        require(path.is_file(), f'Missing {name} journal')
+        content = path.read_bytes()
+        require(ledger['journals'][name] == {'size': len(content), 'sha256': hashlib.sha256(content).hexdigest()},
+                f'Changed or interrupted append-only request journal; inspect {name} and Candidates.json')
+        contents[name] = content
     events = ledger.get('events')
     require(isinstance(events, list) and bool(events), 'Missing journal event evidence')
-    cursor = 0
+    cursors = dict.fromkeys(expected, 0)
+    searches, finished, attempts = {}, set(), {}
     for event in events:
-        require(type(event['offset']) is int and type(event['length']) is int and event['offset'] == cursor
-                and event['length'] > 0, 'Invalid journal event boundaries')
-        cursor += event['length']
-        require(hashlib.sha256(content[event['offset']:cursor]).hexdigest() == event['sha256'], 'Journal history changed')
-    require(cursor == len(content), 'Untracked appended journal content')
-    searches, finished = {}, set()
-    for event in events:
+        version = event['request_version']
         require(event['kind'] in ('request', 'search', 'search-result', 'search-note')
-                and type(event['request_version']) is int and 1 <= event['request_version'] <= len(requests),
+                and type(version) is int and 1 <= version <= len(requests),
                 'Invalid journal event kind or brief revision')
+        name = journal_name(version)
+        require(event.get('file') == name, 'Journal event points to a different search run')
+        require(type(event['offset']) is int and type(event['length']) is int
+                and event['offset'] == cursors[name] and event['length'] > 0, 'Invalid journal event boundaries')
+        cursors[name] += event['length']
+        require(hashlib.sha256(contents[name][event['offset']:cursors[name]]).hexdigest() == event['sha256'],
+                'Journal history changed')
         if event['kind'] == 'search':
             key = event['search_id']
+            number = attempts.get(version, 0) + 1
             require(type(key) is int and key == len(searches) + 1 and event['provider'] in ('pixabay', 'pexels')
                     and isinstance(event['query'], str) and event['query'].strip(), 'Invalid search attempt history')
-            searches[key] = event['request_version']
+            require(type(event.get('attempt')) is int and event['attempt'] == number
+                    and event.get('directory') == attempt_relative(version, number), 'Invalid search attempt directory')
+            target = confined(project, (STAGE / asset / event['directory']).as_posix())
+            require(target.is_dir(), 'Missing search attempt directory')
+            attempts[version] = number
+            searches[key] = version
         elif event['kind'] in ('search-result', 'search-note'):
             key = event['search_id']
-            require(key in searches and searches[key] == event['request_version'], 'Search event has no matching attempt')
+            require(key in searches and searches[key] == version, 'Search event has no matching attempt')
             if event['kind'] == 'search-result':
                 require(key not in finished and event['status'] in ('succeeded', 'failed'), 'Duplicate or invalid search outcome')
                 finished.add(key)
+            elif 'reviews' in event:
+                require(scored_results(event['reviews']) == event['reviews'], 'Invalid recorded search scores')
+    require(all(cursors[name] == len(contents[name]) for name in expected), 'Untracked appended journal content')
     for version, request in enumerate(requests, 1):
-        require(request['version'] == version and request['file'] == 'request.md', 'Nonsequential request revision history')
+        name = journal_name(version)
+        content = contents[name]
+        require(request['version'] == version and request['file'] == name, 'Nonsequential request revision history')
         start, length = request['text_start'], request['text_length']
         require(type(start) is int and type(length) is int and start >= 0 and length > 0
                 and start + length <= len(content), 'Invalid request text boundaries')
@@ -161,8 +197,19 @@ def load(project, asset, *, allow_unregistered=False):
                 and start + length <= matching[0]['offset'] + matching[0]['length'], 'Missing request revision event')
         valid_plan(request['sourcing'], request['shots'])
         require(request['registry']['ID'] == asset, 'Request registry identity mismatch')
-    actual = {p.name for p in directory.iterdir() if p.name.lower().startswith('request.')}
-    require(actual == {'request.md'}, 'Unexpected request files; this development format uses only request.md')
+        run = confined(project, (STAGE / asset / f'search.{version:02d}').as_posix())
+        require(run.is_dir(), 'Missing search run directory')
+        actual_attempts = set()
+        for child in run.iterdir():
+            confined(project, child.relative_to(project).as_posix())
+            require(child.is_dir(), 'Search run contains a file outside an attempt directory')
+            actual_attempts.add(child.name)
+        require(actual_attempts == {f'{n:02d}' for n in range(1, attempts.get(version, 0) + 1)},
+                'Unexpected or interrupted search attempt directory; inspect before retrying')
+    actual = {p.name for p in directory.iterdir()
+              if p.name.lower().startswith(('request.', 'requirements.', 'search.'))}
+    require(actual == expected | {f'search.{v:02d}' for v in range(1, len(requests) + 1)},
+            'Unexpected request files or search runs')
     candidates = ledger['candidates']
     require(isinstance(candidates, list), 'Invalid candidates list')
     seen = set()
@@ -187,7 +234,7 @@ def load(project, asset, *, allow_unregistered=False):
 def request_entry(project, asset, row, version, sourcing, shots, reason, text):
     valid_plan(sourcing, shots)
     require(isinstance(text, str) and text.strip(), 'Request text must be nonempty')
-    return {'version': version, 'file': 'request.md', 'sha256': hashlib.sha256(text.encode('utf-8')).hexdigest(),
+    return {'version': version, 'file': journal_name(version), 'sha256': hashlib.sha256(text.encode('utf-8')).hexdigest(),
             'registry': row, 'registry_inputs': [completion.fingerprint(p, project, 'project') for p in registry_paths(project)],
             'sourcing': sourcing, 'shots': shots, 'reason': reason, 'created_at': now()}
 
@@ -196,13 +243,15 @@ def append_journal(project, asset, ledger, text, kind, request_version, **metada
     """Append bytes first, then atomically publish their evidence. Interrupted pairs fail closed."""
     directory = folder(project, asset)
     directory.mkdir(parents=True, exist_ok=True)
-    path = directory / 'request.md'
+    name = journal_name(request_version)
+    path = confined(project, (STAGE / asset / name).as_posix())
     content = path.read_bytes() if path.exists() else b''
     if path.exists():
-        require(ledger.get('journal') == {'size': len(content), 'sha256': hashlib.sha256(content).hexdigest()},
+        require(ledger.get('journals', {}).get(name) == {'size': len(content), 'sha256': hashlib.sha256(content).hexdigest()},
                 'Changed or interrupted append-only request journal')
     else:
-        require(not ledger.get('journal') and not ledger.get('events'), 'Missing existing request journal')
+        require(name not in ledger.get('journals', {}) and not any(e.get('file') == name for e in ledger.get('events', [])),
+                'Missing existing request journal')
     body = text.encode('utf-8')
     require(bool(body), 'Empty journal event')
     flags = os.O_WRONLY | os.O_APPEND | getattr(os, 'O_BINARY', 0)
@@ -214,20 +263,31 @@ def append_journal(project, asset, ledger, text, kind, request_version, **metada
         os.fsync(descriptor)
     finally:
         os.close(descriptor)
-    ledger.setdefault('events', []).append({'kind': kind, 'request_version': request_version,
+    ledger.setdefault('events', []).append({'kind': kind, 'request_version': request_version, 'file': name,
         'created_at': now(), 'offset': len(content), 'length': len(body),
         'sha256': hashlib.sha256(body).hexdigest(), **metadata})
-    ledger['journal'] = {'size': len(content) + len(body), 'sha256': hashlib.sha256(content + body).hexdigest()}
+    ledger.setdefault('journals', {})[name] = {'size': len(content) + len(body), 'sha256': hashlib.sha256(content + body).hexdigest()}
     atomic_json(directory / 'Candidates.json', ledger)
 
 
 def write_request(project, asset, ledger, entry, text):
     require(entry['version'] == len(ledger['requests']) + 1, 'Nonsequential revision')
     prefix = '' if not ledger['requests'] else f'\n\n## Request revision {entry["version"]} | {now()}\n\nReason: {entry["reason"]}\n\n'
-    entry['text_start'] = ledger.get('journal', {}).get('size', 0) + len(prefix.encode('utf-8'))
+    directory = folder(project, asset)
+    run = confined(project, (STAGE / asset / f'search.{entry["version"]:02d}').as_posix())
+    require(not run.exists() and not (directory / entry['file']).exists(), 'Search run already exists')
+    run.mkdir(parents=True)
+    entry['text_start'] = len(prefix.encode('utf-8'))
     entry['text_length'] = len(text.encode('utf-8'))
     ledger['requests'].append(entry)
-    append_journal(project, asset, ledger, prefix + text, 'request', entry['version'])
+    settings = ('\n\n### Worker requirements\n\n'
+                f'- Asset: {asset}\n- Brief revision: {entry["version"]}\n- Sourcing: {entry["sourcing"]}\n'
+                f'- Required shots: {json.dumps(entry["shots"], ensure_ascii=False)}\n'
+                '- Ratings: 0–5; weights: subject/action 40%, context/tone 25%, editing usefulness 25%, technical quality 10%.\n'
+                '- Contact-sheet threshold: 65/100; closer-review threshold: 80/100.\n'
+                '- Target: 3 distinct usable candidates; initial search plus at most 5 refinements.\n'
+                '- Read this brief and its later revisions before working. Append search terms and inspected result scores below.\n')
+    append_journal(project, asset, ledger, prefix + text + settings, 'request', entry['version'])
 
 
 def initialize(project, plans, rows):
@@ -271,11 +331,21 @@ def record_search(project, asset, ledger, provider, query, reason):
     budget = refinement_budget(ledger, [query])
     search_id = max([event['search_id'] for event in ledger['events'] if event['kind'] == 'search'] + [0]) + 1
     revision = ledger['requests'][-1]['version']
+    attempt = next_attempt(ledger)
+    relative = attempt_relative(revision, attempt)
+    target = confined(project, (STAGE / asset / relative).as_posix())
+    require(not target.exists(), 'Search attempt directory already exists; inspect before retrying')
+    target.mkdir(parents=True)
+    atomic_json(target / 'attempt.json', {'search_id': search_id, 'request_version': revision,
+                'attempt': attempt, 'provider': provider, 'query': query, 'reason': reason.strip()})
     text = (f'\n\n## Search {search_id} | {now()}\n\n'
             f'- Provider: {provider}\n- Search term: {query}\n- Request revision: {revision}\n'
-            f'- Why this term: {reason.strip()}\n- Refinements used: {budget["refinements"]}/{MAX_SEARCH_REFINEMENTS}\n- Status: started\n')
+            f'- Results directory: [{relative}/]({relative}/)\n'
+            f'- Why this term: {reason.strip()}\n- Refinements used: {budget["refinements"]}/{MAX_SEARCH_REFINEMENTS}\n- Status: started\n'
+            f'\n```text\n{query}\n\tPending visual review\n```\n')
     append_journal(project, asset, ledger, text, 'search', revision,
-                   search_id=search_id, provider=provider, query=query, reason=reason.strip(), budget=budget)
+                   search_id=search_id, provider=provider, query=query, reason=reason.strip(), budget=budget,
+                   attempt=attempt, directory=relative)
     return search_id
 
 
@@ -293,33 +363,78 @@ def search_outcome(project, asset, ledger, search_id, status, *, count=None, res
                    search_id=search_id, status=status, count=count, result_file=result_file)
 
 
-def search_note(project, asset, ledger, search_id, reason):
+def scored_results(reviews):
+    """Validate inspected results and calculate totals; unknown evidence stays unscored."""
+    require(isinstance(reviews, list), 'reviews must be a list')
+    result = []
+    for review in reviews:
+        require(isinstance(review, dict), 'Each review must be an object')
+        for key in ('file', 'source_id', 'evidence', 'decision'):
+            require(isinstance(review.get(key), str) and review[key].strip(), f'Review {key} is required')
+        require(Path(review['file']).name == review['file'] and '/' not in review['file']
+                and '\\' not in review['file'] and Path(review['file']).suffix.lower() in EXTENSIONS,
+                'Review file must be a video filename, not a path')
+        require(review.get('stage') in ('thumbnail', 'contact-sheet', 'closer-review', 'full-resolution'),
+                'Unknown review stage')
+        ratings = review.get('ratings')
+        weights = review.get('weights', SCORE_WEIGHTS)
+        require(isinstance(weights, dict) and set(weights) == set(SCORE_WEIGHTS)
+                and all(type(v) in (int, float) and math.isfinite(v) and v >= 0 for v in weights.values())
+                and sum(weights.values()) == 100, 'Scoring weights must sum to 100')
+        require(isinstance(ratings, dict) and set(ratings) == set(weights)
+                and all(v is None or (type(v) in (int, float) and math.isfinite(v) and 0 <= v <= 5)
+                        for v in ratings.values()), 'Supply four ratings from 0 to 5, or null for unknown')
+        total = None if any(v is None for v in ratings.values()) else sum(weights[k] * ratings[k] / 5 for k in SCORE_WEIGHTS)
+        require('score' not in review or review['score'] == total, 'Supplied score differs from calculated total')
+        result.append(dict(review, weights=dict(weights), score=total))
+    return result
+
+
+def search_note(project, asset, ledger, search_id, reason, reviews=None):
     attempts = [event for event in ledger['events'] if event['kind'] == 'search' and event['search_id'] == search_id]
     require(len(attempts) == 1 and isinstance(reason, str) and reason.strip(), 'Supply an existing search ID and nonempty review note')
-    text = f'\n\n### Search {search_id} review | {now()}\n\n{reason.strip()}\n'
-    append_journal(project, asset, ledger, text, 'search-note', attempts[0]['request_version'],
-                   search_id=search_id, note=reason.strip())
+    attempt = attempts[0]
+    require(attempt['request_version'] == ledger['requests'][-1]['version'], 'Cannot review a superseded brief search')
+    results = scored_results(reviews) if reviews is not None else []
+    def line(value):
+        # Preserve the compact code-block format without allowing filenames/notes to break out.
+        return ' '.join(value.replace('`', "'").split())
+    lines = [line(attempt['query'])]
+    for review in results:
+        total = review['score']
+        score = 'Pending' if total is None else f'{int(total) if total == int(total) else total}/100'
+        lines.append(f'\t{line(review["file"])}: {score} ({review["stage"]}; {line(review["decision"])})')
+    if not results:
+        lines.append('\tNo scored results recorded')
+    text = (f'\n\n### Search {search_id} review | {now()}\n\n'
+            + '```text\n' + '\n'.join(lines) + '\n```\n\n' + reason.strip() + '\n')
+    append_journal(project, asset, ledger, text, 'search-note', attempt['request_version'],
+                   search_id=search_id, note=reason.strip(), reviews=results)
 
 
-def run_search(project, asset, provider, queries, reason, cache_dir, output_dir):
-    """Journal every term before its API call, preserving results and failure outcomes."""
+def run_search(project, asset, provider, queries, reason, cache_dir=None, output_dir=None):
+    """Allocate project-contained attempts, then journal each term before its provider call."""
     stock = module(Path(__file__).with_name('stock.py'), 'studio_broll_stock')
     require(isinstance(queries, list) and 1 <= len(queries) <= 1 + MAX_SEARCH_REFINEMENTS
             and all(isinstance(q, str) for q in queries) and len(set(queries)) == len(queries),
             'Supply at most 6 explicit search terms, within the remaining five-refinement budget')
-    require(provider in stock.PROVIDERS and all(isinstance(q, str) and q.strip() and len(q) <= 100
+    require(provider in stock.PROVIDERS and all(q.strip() and len(q) <= 100
             and '\n' not in q and '\r' not in q for q in queries), 'Invalid search provider or term')
     require(isinstance(reason, str) and reason.strip(), 'Explain why these search terms are being tried')
     require_prerequisites(project, ROOT, '2.2')
-    output_dir, cache_dir = stock.external(output_dir), stock.external(cache_dir)
-    require(not output_dir.exists(), 'Search output directory exists; choose a new scratch directory')
     rows = eligible(project)
     require(asset in rows, 'Select a current eligible asset')
     ledger = load(project, asset)
     require(ledger['requests'][-1]['registry'] == rows[asset], 'Registry changed; revise explicitly first')
     require(ledger['requests'][-1]['sourcing'] != 'manual', 'Manual-only family footage request cannot search stock')
-    refinement_budget(ledger, queries)  # Fail before creating output folders, invalidating or calling the API.
-    output_dir.mkdir(parents=True)
+    refinement_budget(ledger, queries)
+    canonical_cache = confined(project, (STAGE / asset / 'cache').as_posix())
+    require(cache_dir is None or Path(cache_dir).resolve() == canonical_cache,
+            'Asset searches use the assigned asset/cache directory')
+    cache_dir = canonical_cache
+    planned = confined(project, (STAGE / asset / attempt_relative(ledger['requests'][-1]['version'], next_attempt(ledger))).as_posix())
+    require(output_dir is None or (len(queries) == 1 and Path(output_dir).resolve() == planned),
+            'Search output must be the next numbered project attempt directory; omit --output-dir for automatic allocation')
     results = []
     from scripts.stage_invalidation import invalidate
     for query in queries:
@@ -329,26 +444,38 @@ def run_search(project, asset, provider, queries, reason, cache_dir, output_dir)
             require(ledger['requests'][-1]['registry'] == eligible(project).get(asset), 'Asset changed during search batch')
             require(ledger['requests'][-1]['sourcing'] != 'manual', 'Request now requires manual footage')
             refinement_budget(ledger, [query])
+            if output_dir is not None:
+                current = confined(project, (STAGE / asset / attempt_relative(ledger['requests'][-1]['version'], next_attempt(ledger))).as_posix())
+                require(current == Path(output_dir).resolve(), 'Attempt allocation changed; retry without an explicit output directory')
             invalidate(project, ROOT, '2.2', f'Search term recorded for {asset}')
             search_id = record_search(project, asset, ledger, provider, query, reason)
-            log(project, 'B-roll search started', f'{asset}: search {search_id}, provider {provider}, term {query}')
+            attempt = next(e for e in ledger['events'] if e['kind'] == 'search' and e['search_id'] == search_id)
+            target = confined(project, (STAGE / asset / attempt['directory']).as_posix())
+            log(project, 'B-roll search started', f'{asset}: search {search_id}, provider {provider}, term {query}; {attempt["directory"]}')
         try:
-            result = stock.search_to_file(provider, query, cache_dir, output_dir / f'search-{search_id:04d}.json')
+            result = stock.search_to_file(provider, query, cache_dir, target / 'results.json')
         except (stock.StockError, OSError):
             with completion.mutation_guard(project):
                 ledger = load(project, asset)
+                atomic_json(target / 'outcome.json', {'status': 'failed', 'search_id': search_id,
+                            'message': 'Provider request failed; no result set acquired; no automatic retry.'})
                 search_outcome(project, asset, ledger, search_id, 'failed')
-                log(project, 'B-roll search failed', f'{asset}: search {search_id} failed; term and attempt preserved in request.md; no automatic retry.')
-            raise ValueError(f'Search {search_id} failed; recorded in request.md. No further queries attempted.') from None
+                log(project, 'B-roll search failed', f'{asset}: search {search_id} failed; attempt preserved in {journal_name(attempt["request_version"])}; no automatic retry.')
+            raise ValueError(f'Search {search_id} failed; recorded in {journal_name(attempt["request_version"])}. No further queries attempted.') from None
         with completion.mutation_guard(project):
             ledger = load(project, asset)
-            search_outcome(project, asset, ledger, search_id, 'succeeded', count=result['count'], result_file=result['result_file'])
+            relative_results = (Path(attempt['directory']) / 'results.json').as_posix()
+            atomic_json(target / 'outcome.json', {'status': 'succeeded', 'search_id': search_id,
+                        'count': result['count'], 'result_file': 'results.json'})
+            search_outcome(project, asset, ledger, search_id, 'succeeded', count=result['count'], result_file=relative_results)
             log(project, 'B-roll search returned', f'{asset}: search {search_id} returned {result["count"]} results; review and refine the terms as needed.')
-        results.append(dict(result, search_id=search_id))
+        results.append(dict(result, search_id=search_id, output_dir=str(target),
+                            attempt=attempt['attempt'], directory=attempt['directory']))
     latest = load(project, asset)
-    used = { ' '.join(event['query'].split()).casefold() for event in latest['events']
-            if event['kind'] == 'search' and event['request_version'] == latest['requests'][-1]['version'] }
-    return {'asset': asset, 'searches': results, 'request_journal': str(folder(project, asset) / 'request.md'),
+    used = {' '.join(event['query'].split()).casefold() for event in latest['events']
+            if event['kind'] == 'search' and event['request_version'] == latest['requests'][-1]['version']}
+    return {'asset': asset, 'searches': results,
+            'request_journal': str(folder(project, asset) / latest['requests'][-1]['file']),
             'refinements_used': max(0, len(used) - 1), 'refinements_remaining': max(0, 1 + MAX_SEARCH_REFINEMENTS - len(used)),
             'search_limit_reached': len(used) >= 1 + MAX_SEARCH_REFINEMENTS}
 
@@ -418,16 +545,24 @@ def assess(ledger, candidate, spec):
 
 
 def inventory(project):
+    """Watch run evidence recursively; only root video files are candidate media."""
     directory = confined(project, STAGE.as_posix())
     result = []
     if directory.exists():
         for child in directory.iterdir():
             if ID.fullmatch(child.name):
                 require(child.is_dir(), 'Asset path is not a directory')
-                load(project, child.name)
+                ledger = load(project, child.name)
                 for path in child.iterdir():
-                    if path.name == 'Candidates.json' or path.name.startswith('request.') or path.suffix.lower() in EXTENSIONS:
+                    if path.name == 'Candidates.json' or path.name in ledger['journals'] or path.suffix.lower() in EXTENSIONS:
                         result.append(confined(project, path.relative_to(project).as_posix()))
+                for version in range(1, len(ledger['requests']) + 1):
+                    run = child / f'search.{version:02d}'
+                    for current, directories, files in os.walk(run, followlinks=False):
+                        for name in directories + files:
+                            path = confined(project, (Path(current) / name).relative_to(project).as_posix())
+                            if path.is_file():
+                                result.append(path)
     return sorted(result)
 
 
@@ -507,7 +642,7 @@ def main():
         print(json.dumps(check(project), indent=2))
         return
     if args.action == 'search':
-        require(args.asset and args.cache_dir and args.output_dir, 'Search requires --asset, --cache-dir and --output-dir')
+        require(args.asset, 'Search requires --asset')
         print(json.dumps(run_search(project, args.asset, args.provider, args.query, args.reason, args.cache_dir, args.output_dir), indent=2))
         return
     require_prerequisites(project, ROOT, '2.2')
@@ -544,7 +679,12 @@ def main():
                                       spec['sourcing'], spec['shots'], args.reason, text)
             elif args.action == 'search-note':
                 require(args.search_id is not None and args.reason and args.reason.strip(), 'Search note requires --search-id and --reason')
-                require(any(event['kind'] == 'search' and event['search_id'] == args.search_id for event in ledger['events']), 'Unknown search ID')
+                require(any(event['kind'] == 'search' and event['search_id'] == args.search_id
+                            and event['request_version'] == ledger['requests'][-1]['version']
+                            for event in ledger['events']), 'Unknown or superseded search ID')
+                if spec is not None:
+                    require(isinstance(spec, dict) and 'reviews' in spec, 'Search-note spec requires reviews')
+                    scored_results(spec['reviews'])
             elif args.action == 'register':
                 require(args.file and isinstance(spec, dict), 'Registration requires --file and provenance --spec')
                 destination, candidate = register(project, args.asset, args.file, spec, ledger)
@@ -561,12 +701,13 @@ def main():
             log_path.write_text('# B-roll log\n', encoding='utf-8')
         if args.action == 'init':
             for asset, row, entry in work:
-                write_request(project, asset, {'schema': 'studio.broll.candidates', 'schema_version': 2,
+                write_request(project, asset, {'schema': 'studio.broll.candidates', 'schema_version': SCHEMA_VERSION,
                               'asset': asset, 'requests': [], 'candidates': []}, entry, row['Brief'])
         elif args.action == 'revise':
             write_request(project, args.asset, ledger, entry, text)
         elif args.action == 'search-note':
-            search_note(project, args.asset, ledger, args.search_id, args.reason)
+            search_note(project, args.asset, ledger, args.search_id, args.reason,
+                        reviews=spec['reviews'] if spec is not None else None)
         elif args.action == 'register':
             # Exclusive creation preserves originals and refuses accidental replacements.
             if destination != args.file:

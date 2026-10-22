@@ -80,6 +80,50 @@ class PreviewValidationTests(unittest.TestCase):
                 self.assertFalse(target.exists())
             encode.assert_not_called()
 
+    def test_project_attempt_sheets_segments_and_shortlists_are_inspectable_non_candidates(self):
+        attempt = self.root / 'project' / '2-Production' / '2-B-roll' / 'ASSET-000001' / 'search.01' / '01'
+        def encode(arguments, **kwargs):
+            Path(arguments[-1]).write_bytes(b'preview artifact')
+        def thumbnail(result_file, provider_id, output):
+            stock.external(output).write_bytes(b'thumbnail')
+        search = self.root / 'search.json'
+        search.write_text(json.dumps({'provider': 'pixabay', 'results': [
+            {'provider': 'pixabay', 'provider_id': '3', 'page_url': 'https://pixabay.com/videos/id-3/'}]}))
+        with patch.object(preview, 'source_info', return_value=(self.source, self.info)), \
+                patch.object(preview, 'ffmpeg', side_effect=encode), \
+                patch.object(stock, 'probe', return_value={'duration_seconds': 1}), \
+                patch.object(stock, 'thumbnail', side_effect=thumbnail):
+            frames = preview.sheet(self.source, attempt / 'samples', count=2)
+            clip = preview.segment(self.source, attempt / 'closer.mp4', 0, 1)
+            gallery = preview.shortlist(search, attempt / 'thumbnails')
+            for operation in (lambda: preview.sheet(self.source, attempt / 'samples', count=2),
+                              lambda: preview.segment(self.source, attempt / 'closer.mp4', 0, 1),
+                              lambda: preview.shortlist(search, attempt / 'thumbnails')):
+                with self.assertRaises(preview.PreviewError):
+                    operation()
+        for report in (frames, clip, gallery):
+            self.assertFalse(report['candidate_registered'])
+            self.assertFalse(report['content_reviewed'])
+        self.assertTrue(Path(frames['contact_sheet']).is_file())
+        self.assertTrue(Path(gallery['contact_sheet']).is_file())
+        self.assertEqual(Path(clip['output']).read_bytes(), b'preview artifact')
+        self.assertEqual({path.name for path in attempt.iterdir()}, {'samples', 'closer.mp4', 'thumbnails'})
+
+    def test_project_preview_symlink_redirects_refused_before_encoding(self):
+        attempt = self.root / 'project' / '2-Production' / '2-B-roll' / 'ASSET-000001' / 'search.01' / '01'
+        attempt.mkdir(parents=True)
+        outside = self.root / 'elsewhere'
+        outside.mkdir()
+        (attempt / 'redirect').symlink_to(outside, target_is_directory=True)
+        with patch.object(preview, 'source_info', return_value=(self.source, self.info)), \
+                patch.object(preview, 'ffmpeg') as encode:
+            with self.assertRaises(stock.StockError):
+                preview.sheet(self.source, attempt / 'redirect' / 'sheet')
+            with self.assertRaises(stock.StockError):
+                preview.segment(self.source, attempt / 'redirect' / 'segment.mp4', 0, 1)
+            encode.assert_not_called()
+        self.assertEqual(list(outside.iterdir()), [])
+
     def test_existing_outputs_refused_without_modification(self):
         folder = self.root / 'sheet'
         folder.mkdir()

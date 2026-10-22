@@ -1,6 +1,6 @@
 """Create labelled frame sheets and short silent review clips from local video.
 
-Artifacts are external scratch only. They support an agent's visual review;
+Artifacts use external scratch or dedicated project search work folders. They support visual review;
 creating them never constitutes a suitability assessment or asset registration.
 """
 from __future__ import annotations

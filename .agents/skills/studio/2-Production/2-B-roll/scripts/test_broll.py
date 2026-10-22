@@ -2,6 +2,9 @@
 import importlib.util
 import json
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
+from threading import Barrier
 import shutil
 import subprocess
 import sys
@@ -45,7 +48,7 @@ class BrollTests(unittest.TestCase):
     def initialize(self):
         work = broll.initialize(self.project, {self.asset: self.plan}, self.rows)
         for asset, row, entry in work:
-            broll.write_request(self.project, asset, {'schema': 'studio.broll.candidates', 'schema_version': 2,
+            broll.write_request(self.project, asset, {'schema': 'studio.broll.candidates', 'schema_version': 3,
                                 'asset': asset, 'requests': [], 'candidates': []}, entry, row['Brief'])
         return work
 
@@ -76,8 +79,19 @@ class BrollTests(unittest.TestCase):
                                     'either', self.plan['shots'], 'Closer framing', text)
         broll.write_request(self.project, self.asset, ledger, entry, text)
 
+    @contextmanager
+    def mocked_provider(self, search):
+        stock = broll.module(Path(broll.__file__).with_name('stock.py'), 'layout_stock_test')
+        real_module = broll.module
+        def modules(path, name):
+            return stock if Path(path).name == 'stock.py' else real_module(path, name)
+        with patch.object(broll, 'module', side_effect=modules), \
+                patch.object(broll, 'require_prerequisites'), \
+                patch.object(stock, 'search_to_file', side_effect=search):
+            yield stock
+
     def test_current_markdown_human_fields_and_exact_idempotent_v1(self):
-        self.assertEqual((self.directory / 'request.md').read_text(encoding='utf-8'), self.rows[self.asset]['Brief'])
+        self.assertTrue((self.directory / 'search.01.md').read_text(encoding='utf-8').startswith(self.rows[self.asset]['Brief'] + '\n\n### Worker requirements'))
         before = fixture_module.readonly_state(self.project)
         self.assertEqual(self.initialize(), [])
         self.assertEqual(before, fixture_module.readonly_state(self.project))
@@ -89,23 +103,31 @@ class BrollTests(unittest.TestCase):
         self.fixture.path.write_text(original.replace('**Type:** B-roll', '**Type:** Graphic'), encoding='utf-8')
         self.assertEqual(broll.eligible(self.project), {})
 
-    def test_revisions_append_one_journal_and_preserve_previous_bytes(self):
-        original = (self.directory / 'request.md').read_bytes()
+    def test_revisions_create_numbered_journals_and_preserve_previous_bytes(self):
+        original = (self.directory / 'search.01.md').read_bytes()
         for _ in range(9):
             self.revise()
         ledger = broll.load(self.project, self.asset)
         self.assertEqual(ledger['requests'][-1]['version'], 10)
-        self.assertEqual(ledger['requests'][-1]['file'], 'request.md')
-        self.assertTrue((self.directory / 'request.md').read_bytes().startswith(original))
-        self.assertEqual(list(self.directory.glob('request*')), [self.directory / 'request.md'])
-        (self.directory / 'request.md').write_text('edited behind history', encoding='utf-8')
+        self.assertEqual(ledger['requests'][-1]['file'], 'search.10.md')
+        self.assertEqual((self.directory / 'search.01.md').read_bytes(), original)
+        expected = {f'search.{version:02d}.md' for version in range(1, 11)}
+        self.assertEqual(set(ledger['journals']), expected)
+        self.assertEqual({path.name for path in self.directory.glob('search.*.md')}, expected)
+        self.assertFalse((self.directory / 'Requirements.md').exists())
+        for version, request in enumerate(ledger['requests'], 1):
+            self.assertEqual(request['file'], f'search.{version:02d}.md')
+            events = [event for event in ledger['events'] if event['file'] == request['file']]
+            self.assertEqual(len(events), 1)
+            self.assertEqual(events[0]['offset'], 0)
+        (self.directory / 'search.01.md').write_text('edited behind history', encoding='utf-8')
         with self.assertRaisesRegex(ValueError, 'append-only request journal'):
             self.revise()
-        self.assertFalse((self.directory / 'request.v11.md').exists())
+        self.assertFalse((self.directory / 'search.11.md').exists())
 
     def test_untracked_request_refused(self):
-        (self.directory / 'request.v02.md').write_text('ambiguous', encoding='utf-8')
-        with self.assertRaisesRegex(ValueError, 'Unexpected request files'):
+        (self.directory / 'search.02.md').write_text('ambiguous', encoding='utf-8')
+        with self.assertRaisesRegex(ValueError, 'Unexpected'):
             broll.load(self.project, self.asset)
 
     def test_search_terms_outcomes_and_reviews_append_without_changing_brief_identity(self):
@@ -113,14 +135,14 @@ class BrollTests(unittest.TestCase):
             self.candidate(number)
         ledger = broll.load(self.project, self.asset)
         request = dict(ledger['requests'][-1])
-        original = (self.directory / 'request.md').read_bytes()
+        original = (self.directory / 'search.01.md').read_bytes()
         search_id = broll.record_search(self.project, self.asset, ledger, 'pixabay', 'hang up phone', 'Typing clips missed the requested action')
         broll.search_outcome(self.project, self.asset, ledger, search_id, 'succeeded', count=4, result_file='scratch/search-1.json')
         broll.search_note(self.project, self.asset, ledger, search_id, 'Rejected four typing shots; next try ending a call.')
         ledger = broll.load(self.project, self.asset)
         self.assertEqual(ledger['requests'], [request])
-        self.assertTrue((self.directory / 'request.md').read_bytes().startswith(original))
-        content = (self.directory / 'request.md').read_text(encoding='utf-8')
+        self.assertTrue((self.directory / 'search.01.md').read_bytes().startswith(original))
+        content = (self.directory / 'search.01.md').read_text(encoding='utf-8')
         self.assertIn('hang up phone', content)
         self.assertIn('Results returned: 4', content)
         self.assertIn('Rejected four typing shots', content)
@@ -128,8 +150,69 @@ class BrollTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'already recorded'):
             broll.search_outcome(self.project, self.asset, ledger, search_id, 'failed')
 
+    def test_search_journal_indented_scores_preserve_brief_and_review_history(self):
+        ledger = broll.load(self.project, self.asset)
+        request = dict(ledger['requests'][-1])
+        sid = broll.record_search(self.project, self.asset, ledger, 'pexels', 'family lunch', 'Initial action search')
+        broll.search_outcome(self.project, self.asset, ledger, sid, 'succeeded', count=2, result_file='scratch/results.json')
+        before = (self.directory / 'search.01.md').read_bytes()
+        review = {'file': 'Result 1.mp4', 'source_id': '123', 'stage': 'contact-sheet',
+                  'ratings': {'subject_action': 4, 'context_tone': 3, 'editing_usefulness': 4, 'technical_quality': 5},
+                  'evidence': 'Inspected samples at 0, 2, 4 seconds', 'decision': 'Closer review'}
+        broll.search_note(self.project, self.asset, ledger, sid, 'Inspect action continuity next.', [review])
+        content = (self.directory / 'search.01.md').read_text()
+        self.assertIn('family lunch\n\tResult 1.mp4: 77/100 (contact-sheet; Closer review)', content)
+        self.assertTrue((self.directory / 'search.01.md').read_bytes().startswith(before))
+        loaded = broll.load(self.project, self.asset)
+        self.assertEqual(loaded['requests'][-1], request)
+        self.assertEqual(loaded['events'][-1]['reviews'][0]['score'], 77)
+        self.assertEqual(loaded['events'][-1]['reviews'][0]['weights'], broll.SCORE_WEIGHTS)
+        review['stage'] = 'closer-review'
+        review['ratings']['subject_action'] = 2
+        review['decision'] = 'Reject: wrong action'
+        broll.search_note(self.project, self.asset, loaded, sid, 'Next try packing lunch.', [review])
+        content = (self.directory / 'search.01.md').read_text()
+        self.assertIn('Result 1.mp4: 61/100 (closer-review;', content)
+        self.assertIn('Result 1.mp4: 77/100 (contact-sheet;', content)
+        self.assertIn(self.directory / 'search.01.md', broll.inventory(self.project))
+
+    def test_unknown_and_invalid_search_scores(self):
+        review = {'file': 'Result 2.mov', 'source_id': '456', 'stage': 'thumbnail',
+                  'ratings': {key: None for key in broll.SCORE_WEIGHTS},
+                  'evidence': 'Thumbnail only; technical quality unknown', 'decision': 'Inspect preview'}
+        ledger = broll.load(self.project, self.asset)
+        sid = broll.record_search(self.project, self.asset, ledger, 'pexels', 'family lunch', 'Initial search')
+        broll.search_note(self.project, self.asset, ledger, sid, 'Need a contact sheet.', [review])
+        self.assertIn('Result 2.mov: Pending (thumbnail;', (self.directory / 'search.01.md').read_text())
+        for bad in ({'score': 90}, {'ratings': dict.fromkeys(broll.SCORE_WEIGHTS, True)},
+                    {'ratings': dict.fromkeys(broll.SCORE_WEIGHTS, 6)},
+                    {'weights': dict.fromkeys(broll.SCORE_WEIGHTS, 10)}, {'file': '../escape.mp4'}):
+            before = (self.directory / 'search.01.md').read_bytes()
+            with self.subTest(bad=bad), self.assertRaises(ValueError):
+                broll.search_note(self.project, self.asset, ledger, sid, 'Invalid review', [dict(review, **bad)])
+            self.assertEqual(before, (self.directory / 'search.01.md').read_bytes())
+
+    def test_scored_search_note_cli_and_superseded_brief(self):
+        ledger = broll.load(self.project, self.asset)
+        sid = broll.record_search(self.project, self.asset, ledger, 'pexels', 'family lunch', 'Initial search')
+        spec = self.project / 'review.json'
+        spec.write_text(json.dumps({'reviews': [{'file': 'Result.mp4', 'source_id': '789',
+            'stage': 'closer-review', 'ratings': dict.fromkeys(broll.SCORE_WEIGHTS, 4),
+            'evidence': 'Reviewed denser samples across 1–4 seconds', 'decision': 'Acquire'}]}))
+        argv = ['broll.py', 'search-note', '--project-root', str(self.project), '--asset', self.asset,
+                '--search-id', str(sid), '--reason', 'Matches the requested action.', '--spec', str(spec)]
+        with patch.object(sys, 'argv', argv), patch.object(broll, 'require_prerequisites'):
+            broll.main()
+        self.assertIn('Result.mp4: 80/100 (closer-review; Acquire)', (self.directory / 'search.01.md').read_text())
+        self.revise()
+        ledger = broll.load(self.project, self.asset)
+        before = (self.directory / 'search.01.md').read_bytes()
+        with self.assertRaisesRegex(ValueError, 'superseded'):
+            broll.search_note(self.project, self.asset, ledger, sid, 'Wrong brief')
+        self.assertEqual(before, (self.directory / 'search.01.md').read_bytes())
+
     def test_untracked_journal_append_and_interrupted_publication_fail_closed(self):
-        path = self.directory / 'request.md'
+        path = self.directory / 'search.01.md'
         with path.open('ab') as stream:
             stream.write(b'\nUnrecorded text')
         with self.assertRaisesRegex(ValueError, 'append-only request journal'):
@@ -137,12 +220,17 @@ class BrollTests(unittest.TestCase):
 
     def test_interrupted_ledger_publication_preserves_append_and_is_detected(self):
         ledger = broll.load(self.project, self.asset)
-        before = (self.directory / 'request.md').read_bytes()
-        with patch.object(broll, 'atomic_json', side_effect=OSError('Interrupted save')):
+        before = (self.directory / 'search.01.md').read_bytes()
+        publish = broll.atomic_json
+        def interrupted_publish(path, data):
+            if path.name == 'Candidates.json':
+                raise OSError('Interrupted save')
+            return publish(path, data)
+        with patch.object(broll, 'atomic_json', side_effect=interrupted_publish):
             with self.assertRaises(OSError):
                 broll.record_search(self.project, self.asset, ledger, 'pixabay', 'hang up phone', 'Refine action terms')
-        self.assertTrue((self.directory / 'request.md').read_bytes().startswith(before))
-        self.assertIn(b'hang up phone', (self.directory / 'request.md').read_bytes())
+        self.assertTrue((self.directory / 'search.01.md').read_bytes().startswith(before))
+        self.assertIn(b'hang up phone', (self.directory / 'search.01.md').read_bytes())
         with self.assertRaisesRegex(ValueError, 'interrupted append-only'):
             broll.load(self.project, self.asset)
 
@@ -152,10 +240,10 @@ class BrollTests(unittest.TestCase):
             broll.record_search(self.project, self.asset, ledger, 'pixabay' if number % 2 else 'pexels',
                                 f'phone action {number}', 'Try a more precise action')
         ledger = broll.load(self.project, self.asset)
-        before = (self.directory / 'request.md').read_bytes()
+        before = (self.directory / 'search.01.md').read_bytes()
         with self.assertRaisesRegex(ValueError, 'threshold may be too high'):
             broll.record_search(self.project, self.asset, ledger, 'pixabay', 'another direction', 'Keep looking')
-        self.assertEqual(before, (self.directory / 'request.md').read_bytes())
+        self.assertEqual(before, (self.directory / 'search.01.md').read_bytes())
         self.assertEqual(len([e for e in ledger['events'] if e['kind'] == 'search']), 6)
 
     def test_refinement_budget_normalizes_terms_and_preflights_batches(self):
@@ -176,16 +264,18 @@ class BrollTests(unittest.TestCase):
         real_module = broll.module
         def modules(path, name):
             return stock if Path(path).name == 'stock.py' else real_module(path, name)
-        destination = self.project.parent / (self.project.name + '-budget-output')
-        before = (self.directory / 'request.md').read_bytes()
+        destination = self.directory / 'search.01'
+        before_state = fixture_module.readonly_state(self.project)
+        before = (self.directory / 'search.01.md').read_bytes()
         with patch.object(broll, 'module', side_effect=modules), patch.object(broll, 'require_prerequisites'), \
                 patch.object(stock, 'search_to_file') as api:
             with self.assertRaisesRegex(ValueError, 'refinement limit'):
                 broll.run_search(self.project, self.asset, 'pixabay', ['one more term'], 'Try again',
-                                 self.project.parent / 'unused-cache', destination)
+                                 cache_dir=None, output_dir=None)
         api.assert_not_called()
-        self.assertFalse(destination.exists())
-        self.assertEqual(before, (self.directory / 'request.md').read_bytes())
+        self.assertEqual(before_state, fixture_module.readonly_state(self.project))
+        self.assertFalse((destination / '07').exists())
+        self.assertEqual(before, (self.directory / 'search.01.md').read_bytes())
 
     def test_scoped_initialization_does_not_create_other_asset_folders(self):
         self.fixture.reconcile([self.fixture.suggestion(type='B-roll', brief='Another brief', key='other')])
@@ -195,16 +285,13 @@ class BrollTests(unittest.TestCase):
         plan_file = self.project / 'plans.json'
         plan_file.write_text(json.dumps({other: self.plan}))
         argv = ['broll.py', 'init', '--project-root', str(self.project), '--asset', other, '--spec', str(plan_file)]
-        before = (self.directory / 'request.md').read_bytes()
+        before = (self.directory / 'search.01.md').read_bytes()
         with patch.object(sys, 'argv', argv), patch.object(broll, 'require_prerequisites'):
             broll.main()
-        self.assertEqual((self.directory / 'request.md').read_bytes(), before)
-        self.assertTrue((broll.folder(self.project, other) / 'request.md').is_file())
+        self.assertEqual((self.directory / 'search.01.md').read_bytes(), before)
+        self.assertTrue((broll.folder(self.project, other) / 'search.01.md').is_file())
 
     def test_search_runner_records_attempt_before_api_and_stops_after_failure(self):
-        cache, output = self.project.parent / (self.project.name + '-cache'), self.project.parent / (self.project.name + '-search')
-        self.addCleanup(lambda: shutil.rmtree(cache, ignore_errors=True))
-        self.addCleanup(lambda: shutil.rmtree(output, ignore_errors=True))
         stock = broll.module(Path(broll.__file__).with_name('stock.py'), 'journal_stock_test')
         real_module = broll.module
         def modules(path, name):
@@ -223,11 +310,160 @@ class BrollTests(unittest.TestCase):
                 patch.object(stock, 'search_to_file', side_effect=search):
             with self.assertRaisesRegex(ValueError, 'No further queries'):
                 broll.run_search(self.project, self.asset, 'pixabay', ['phone down', 'end call', 'telephone'],
-                                 'Try action-focused alternatives', cache, output)
+                                 'Try action-focused alternatives')
         self.assertEqual(len(observed), 2)
         ledger = broll.load(self.project, self.asset)
         self.assertEqual([e['status'] for e in ledger['events'] if e['kind'] == 'search-result'], ['succeeded', 'failed'])
         self.assertEqual(len(ledger['requests']), 1)
+
+    def test_default_runner_allocates_attempts_across_calls_and_revisions(self):
+        destinations = []
+        def search(provider, query, cache_dir, destination):
+            self.assertEqual(cache_dir, self.directory / 'cache')
+            destinations.append(destination)
+            destination.write_text(json.dumps({'provider': provider, 'query': query, 'results': []}))
+            return {'count': 0, 'result_file': str(destination), 'provider': provider}
+        with self.mocked_provider(search):
+            first = broll.run_search(self.project, self.asset, 'pixabay', ['phone down', 'end call'], 'Initial search')
+            retry = broll.run_search(self.project, self.asset, 'pexels', ['  Phone   Down  '], 'Try another provider')
+            original = (self.directory / 'search.01.md').read_bytes()
+            self.revise()
+            latest = broll.run_search(self.project, self.asset, 'pixabay', ['phone down'], 'New brief search')
+        expected = [self.directory / 'search.01' / f'{number:02d}' / 'results.json' for number in (1, 2, 3)]
+        expected.append(self.directory / 'search.02' / '01' / 'results.json')
+        self.assertEqual(destinations, expected)
+        self.assertEqual([result['output_dir'] for result in first['searches']], [str(path.parent) for path in expected[:2]])
+        self.assertEqual(retry['searches'][0]['output_dir'], str(expected[2].parent))
+        self.assertEqual(latest['request_journal'], str(self.directory / 'search.02.md'))
+        self.assertEqual(first['refinements_used'], 1)
+        self.assertEqual(retry['refinements_used'], 1)
+        self.assertEqual(latest['refinements_used'], 0)
+        self.assertEqual((self.directory / 'search.01.md').read_bytes(), original)
+        ledger = broll.load(self.project, self.asset)
+        attempts = [event for event in ledger['events'] if event['kind'] == 'search']
+        self.assertEqual([event['search_id'] for event in attempts], [1, 2, 3, 4])
+        self.assertEqual([event['attempt'] for event in attempts], [1, 2, 3, 1])
+        self.assertEqual([event['directory'] for event in attempts], ['search.01/01', 'search.01/02', 'search.01/03', 'search.02/01'])
+        self.assertTrue(all(path.is_file() for path in expected))
+        self.assertTrue(all((path.parent / 'attempt.json').is_file() for path in expected))
+        self.assertTrue(all((path.parent / 'outcome.json').is_file() for path in expected))
+
+    def test_noncanonical_output_and_cache_overrides_fail_before_writing(self):
+        canonical = self.directory / 'search.01' / '01'
+        overrides = [dict(output_dir=self.project.parent / 'external-search-output'),
+                     dict(cache_dir=self.project.parent / 'external-search-cache'),
+                     dict(output_dir=self.directory / 'search.01' / '02'),
+                     dict(output_dir=canonical, cache_dir=self.directory / 'other-cache')]
+        before = fixture_module.readonly_state(self.project)
+        with self.mocked_provider(lambda *args: self.fail('Invalid paths must not call provider')):
+            for options in overrides:
+                with self.subTest(options=options), self.assertRaises(ValueError):
+                    broll.run_search(self.project, self.asset, 'pixabay', ['phone down'], 'Initial search', **options)
+                self.assertEqual(before, fixture_module.readonly_state(self.project))
+            with self.assertRaises(ValueError):
+                broll.run_search(self.project, self.asset, 'pixabay', ['phone down', 'end call'],
+                                 'Initial search', output_dir=canonical)
+            self.assertEqual(before, fixture_module.readonly_state(self.project))
+
+    def test_empty_results_and_failures_preserve_project_attempts(self):
+        destinations = []
+        def search(provider, query, cache_dir, destination):
+            destinations.append(destination)
+            if len(destinations) == 2:
+                raise stock.StockError('Access denied')
+            destination.write_text(json.dumps({'provider': provider, 'query': query, 'results': []}))
+            return {'count': 0, 'result_file': str(destination), 'provider': provider}
+        with self.mocked_provider(search) as stock:
+            empty = broll.run_search(self.project, self.asset, 'pixabay', ['phone down'], 'Initial search')
+            with self.assertRaisesRegex(ValueError, 'No further queries'):
+                broll.run_search(self.project, self.asset, 'pixabay', ['end call', 'telephone'], 'Refine action')
+        self.assertEqual(empty['searches'][0]['count'], 0)
+        self.assertEqual(destinations, [self.directory / 'search.01' / f'{number:02d}' / 'results.json' for number in (1, 2)])
+        self.assertTrue(destinations[0].is_file())
+        self.assertTrue(destinations[1].parent.is_dir())
+        self.assertFalse(destinations[1].exists())
+        for destination, status in zip(destinations, ('succeeded', 'failed')):
+            self.assertTrue((destination.parent / 'attempt.json').is_file())
+            self.assertEqual(json.loads((destination.parent / 'outcome.json').read_text())['status'], status)
+        self.assertFalse((self.directory / 'search.01' / '03').exists())
+        ledger = broll.load(self.project, self.asset)
+        outcomes = [event for event in ledger['events'] if event['kind'] == 'search-result']
+        self.assertEqual([event['status'] for event in outcomes], ['succeeded', 'failed'])
+        self.assertEqual([event['file'] for event in outcomes], ['search.01.md', 'search.01.md'])
+        self.assertIn('end call', (self.directory / 'search.01.md').read_text())
+
+    def test_nested_preview_artifacts_are_watched_without_counting_as_candidates(self):
+        for number in range(3):
+            self.candidate(number)
+        ledger = broll.load(self.project, self.asset)
+        broll.record_search(self.project, self.asset, ledger, 'pixabay', 'phone down', 'Search for alternatives')
+        attempt = self.directory / 'search.01' / '01'
+        artifacts = [attempt / 'results.json', attempt / 'preview.mp4', attempt / 'frames' / 'frame-001.jpg', attempt / 'frames' / 'sheet.json']
+        for artifact in artifacts:
+            artifact.parent.mkdir(parents=True, exist_ok=True)
+            artifact.write_bytes(b'inspection evidence')
+        cache = self.directory / 'cache' / 'pixabay' / 'query.json'
+        cache.parent.mkdir(parents=True)
+        cache.write_text('cached response')
+        inventory = broll.inventory(self.project)
+        self.assertTrue(set(artifacts) <= set(inventory))
+        self.assertNotIn(cache, inventory)
+        self.assertEqual(broll.check(self.project), {self.asset: 3})
+        manifest = broll.evidence(self.project)
+        definition = validation.load_stages()['2.2']
+        extra = attempt / 'frames' / 'frame-002.jpg'
+        extra.write_bytes(b'new inspected sample')
+        self.assertIn(extra, broll.inventory(self.project))
+        self.assertEqual(validation.validate_evidence(self.project, broll.ROOT, definition, manifest)[0], 'stale')
+        extra.unlink()
+        probe_result = SimpleNamespace(stdout=json.dumps({'format': {'duration': '10'},
+            'streams': [{'codec_type': 'video', 'width': 1920, 'height': 1080, 'codec_name': 'h264'}]}))
+        cache.write_text('updated cached response')
+        with patch.object(broll.subprocess, 'run', return_value=probe_result):
+            self.assertEqual(validation.validate_evidence(self.project, broll.ROOT, definition, manifest)[0], 'current')
+
+    def test_concurrent_assets_get_isolated_project_output_paths(self):
+        self.fixture.reconcile([self.fixture.suggestion(type='B-roll', brief=self.rows[self.asset]['Brief']),
+                                self.fixture.suggestion(type='B-roll', brief='Another brief', key='other')])
+        self.fixture.edit('Review', 'Keep')
+        rows = broll.eligible(self.project)
+        other = next(key for key in rows if key != self.asset)
+        for asset, row, entry in broll.initialize(self.project, {other: self.plan}, {other: rows[other]}):
+            broll.write_request(self.project, asset, {'schema': 'studio.broll.candidates', 'schema_version': 3,
+                                'asset': asset, 'requests': [], 'candidates': []}, entry, row['Brief'])
+        together = Barrier(2)
+        destinations = []
+        def search(provider, query, cache_dir, destination):
+            together.wait(timeout=10)
+            destinations.append(destination)
+            destination.write_text(json.dumps({'query': query}))
+            return {'count': 0, 'result_file': str(destination), 'provider': provider}
+        with self.mocked_provider(search), ThreadPoolExecutor(max_workers=2) as pool:
+            pending = [pool.submit(broll.run_search, self.project, asset, 'pixabay', ['phone down'], 'Independent asset search')
+                       for asset in (self.asset, other)]
+            results = [task.result(timeout=30) for task in pending]
+        expected = {broll.folder(self.project, asset) / 'search.01' / '01' / 'results.json' for asset in (self.asset, other)}
+        self.assertEqual(set(destinations), expected)
+        self.assertEqual({result['asset'] for result in results}, {self.asset, other})
+        for asset in (self.asset, other):
+            ledger = broll.load(self.project, asset)
+            self.assertEqual([event['search_id'] for event in ledger['events'] if event['kind'] == 'search'], [1])
+            self.assertTrue((broll.folder(self.project, asset) / 'search.01' / '01' / 'results.json').is_file())
+
+    def test_each_run_journal_digest_and_event_file_are_validated(self):
+        self.revise()
+        ledger = broll.load(self.project, self.asset)
+        self.assertEqual(set(ledger['journals']), {'search.01.md', 'search.02.md'})
+        original = (self.directory / 'search.01.md').read_bytes()
+        (self.directory / 'search.01.md').write_bytes(original + b'\nUntracked historical content')
+        with self.assertRaisesRegex(ValueError, 'append-only request journal'):
+            broll.load(self.project, self.asset)
+        (self.directory / 'search.01.md').write_bytes(original)
+        broll.load(self.project, self.asset)
+        ledger['events'][-1]['file'] = 'search.01.md'
+        self.save(ledger)
+        with self.assertRaises(ValueError):
+            broll.load(self.project, self.asset)
 
     def test_deduplicate_bytes_and_source_and_manual_origin(self):
         self.candidate(1)
@@ -295,9 +531,10 @@ class BrollTests(unittest.TestCase):
         original_outputs = set(item['path'] for item in manifest['outputs'])
         self.revise()
         self.assertEqual(validation.validate_evidence(self.project, broll.ROOT, definition, manifest)[0], 'stale')
-        # An append changes file fingerprints, while the canonical file inventory stays the same.
-        validator.require_inventory('outputs', broll.inventory(self.project), exact=True)
-        self.assertEqual(original_outputs, {p.relative_to(self.project).as_posix() for p in broll.inventory(self.project)})
+        revised_outputs = {p.relative_to(self.project).as_posix() for p in broll.inventory(self.project)}
+        self.assertEqual(revised_outputs - original_outputs, {(self.directory / 'search.02.md').relative_to(self.project).as_posix()})
+        with self.assertRaises(ValueError):
+            validator.require_inventory('outputs', broll.inventory(self.project), exact=True)
         original = self.fixture.path.read_text(encoding='utf-8')
         self.fixture.path.write_text(original.replace('**Review:** Keep', '**Review:** Reject'), encoding='utf-8')
         self.assertEqual(broll.eligible(self.project), {})
@@ -337,11 +574,11 @@ class BrollTests(unittest.TestCase):
             completion.record_done(self.project, broll.ROOT, '2.2', broll.evidence(self.project))
             self.assertEqual(before, (marker.stat().st_mtime_ns, marker.read_bytes()))
         from scripts.stage_invalidation import invalidate
-        preserved = {p.name: p.read_bytes() for p in self.directory.iterdir()}
+        preserved = {p.relative_to(self.directory).as_posix(): p.read_bytes() for p in self.directory.rglob('*') if p.is_file()}
         invalidate(self.project, broll.ROOT, '2.2', 'User requests more options')
         self.assertFalse(marker.exists())
         self.assertTrue(list((self.directory.parent / 'STALE').glob('*/DONE')))
-        self.assertEqual(preserved, {p.name: p.read_bytes() for p in self.directory.iterdir()})
+        self.assertEqual(preserved, {p.relative_to(self.directory).as_posix(): p.read_bytes() for p in self.directory.rglob('*') if p.is_file()})
 
     def test_failed_prerequisites_do_not_change_project(self):
         before = fixture_module.readonly_state(self.project)

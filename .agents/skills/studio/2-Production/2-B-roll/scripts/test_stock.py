@@ -28,6 +28,115 @@ class StockTests(unittest.TestCase):
         self.assertEqual(stock.normalize("pexels", pexels)[0]["provider_id"], "1")
         self.assertEqual(stock.normalize("pixabay", pixabay)[0]["variants"][0]["id"], "large")
 
+    def project_asset(self):
+        return self.root / 'project' / '2-Production' / '2-B-roll' / 'ASSET-000001'
+
+    def test_project_artifacts_allow_numbered_attempts_and_shared_asset_cache(self):
+        asset = self.project_asset()
+        for target in (asset / 'search.01' / '01' / 'results.json',
+                       asset / 'search.99' / '99' / 'preview.mp4',
+                       asset / 'search.100' / '101' / 'frames' / 'contact-sheet.jpg',
+                       asset / 'cache', asset / 'cache' / 'provider.json'):
+            with self.subTest(target=target):
+                self.assertEqual(stock.external(target), target.resolve())
+                self.assertFalse(target.exists())
+
+    def test_project_artifacts_refuse_candidate_journal_registry_archive_and_unsafe_paths(self):
+        asset = self.project_asset()
+        invalid = (asset, asset / 'C001.mp4', asset / 'Candidates.json', asset / 'Requirements.md',
+                   asset / 'search.01.md', asset / 'search.01' / 'results.json',
+                   asset / 'search.00' / '01' / 'result.json', asset / 'search.01' / '00' / 'result.json',
+                   asset / 'search.1' / '01' / 'result.json', asset / 'search.001' / '01' / 'result.json',
+                   asset / 'search.01' / '01' / '..' / '02' / 'result.json',
+                   asset / 'search.01' / '01' / 'STALE' / 'result.json',
+                   asset / 'cache' / 'stale' / 'result.json', asset / 'cache' / 'bad:name.json',
+                   asset.parent / 'LOG.md', asset.parent / 'DONE',
+                   self.root / 'project' / '1-Pre Production' / '4-Asset Breakdown' / 'Asset Registry.md',
+                   self.root / 'project' / '2-Production' / '2-B-roll' / 'STALE' / '01' / 'preview.mp4',
+                   stock.WORKSPACE / 'never-created' / '2-Production' / '2-B-roll' /
+                   'ASSET-000001' / 'search.01' / '01' / 'preview.mp4')
+        with patch.object(stock, 'open_url') as network:
+            for target in invalid:
+                with self.subTest(target=target), self.assertRaises(stock.StockError):
+                    stock.save_json_new(target, {'keep': 'protected'})
+                self.assertFalse(target.exists())
+            network.assert_not_called()
+
+    def test_connected_project_prefix_resolves_but_internal_links_and_aliases_are_refused(self):
+        project = self.root / 'project'
+        asset = self.project_asset()
+        attempt = asset / 'search.01' / '01'
+        attempt.mkdir(parents=True)
+        workspace = self.root / 'workflow'
+        connected = workspace / 'Connected Projects'
+        connected.mkdir(parents=True)
+        (connected / 'Project').symlink_to(project, target_is_directory=True)
+        via_workspace = connected / 'Project' / '2-Production' / '2-B-roll' / 'ASSET-000001' / 'search.01' / '01' / 'results.json'
+        with patch.object(stock, 'WORKSPACE', workspace):
+            self.assertEqual(stock.external(via_workspace), (attempt / 'results.json').resolve())
+            stock.save_json_new(via_workspace, {'saved': True})
+        self.assertEqual(json.loads((attempt / 'results.json').read_text()), {'saved': True})
+        outside = self.root / 'outside'
+        outside.mkdir()
+        (attempt / 'redirect').symlink_to(outside, target_is_directory=True)
+        (attempt / 'internal-redirect').symlink_to(attempt, target_is_directory=True)
+        (asset / 'cache').symlink_to(outside, target_is_directory=True)
+        (self.root / 'artifact-alias').symlink_to(attempt, target_is_directory=True)
+        (attempt / 'dangling.mp4').symlink_to(outside / 'missing.mp4')
+        for target in (attempt / 'redirect' / 'result.json', attempt / 'internal-redirect' / 'result.json',
+                       asset / 'cache' / 'result.json',
+                       self.root / 'artifact-alias' / 'result.json', attempt / 'dangling.mp4'):
+            with self.subTest(target=target), self.assertRaises(stock.StockError):
+                stock.external(target)
+        self.assertEqual(list(outside.iterdir()), [])
+        linked_asset = asset.parent / 'ASSET-000002'
+        linked_asset.symlink_to(outside, target_is_directory=True)
+        with self.assertRaises(stock.StockError):
+            stock.external(linked_asset / 'search.01' / '01' / 'result.json')
+
+    @patch.dict(os.environ, {'PIXABAY_API_KEY': 'offline-test-key'})
+    def test_project_cache_retains_24_hour_policy_and_refuses_linked_cache_entries(self):
+        cache = self.project_asset() / 'cache'
+        with patch.object(stock, 'open_url', return_value=io.BytesIO(b'{"hits":[]}')) as network:
+            first = stock.search('pixabay', 'phone', cache)
+            self.assertEqual(stock.search('pixabay', 'phone', cache), first)
+            network.assert_called_once()
+        cached = next(cache.glob('*.json'))
+        original = cached.read_bytes()
+        saved = json.loads(original)
+        saved['cached_at'] -= stock.TTL + 1
+        cached.write_text(json.dumps(saved))
+        with patch.object(stock, 'open_url', return_value=io.BytesIO(b'{"hits":[]}')) as network:
+            stock.search('pixabay', 'phone', cache)
+            network.assert_called_once()
+        external_cache = self.root / 'private-cache.json'
+        external_cache.write_bytes(original)
+        cached.unlink()
+        cached.symlink_to(external_cache)
+        with patch.object(stock, 'open_url') as network, self.assertRaises(stock.StockError):
+            stock.search('pixabay', 'phone', cache)
+        network.assert_not_called()
+        self.assertEqual(external_cache.read_bytes(), original)
+
+    @patch.object(stock.shutil, 'which', return_value='ffprobe')
+    def test_project_download_and_result_publication_never_overwrite(self, _):
+        attempt = self.project_asset() / 'search.01' / '01'
+        output = attempt / 'preview.mp4'
+        with patch.object(stock, 'open_url', return_value=io.BytesIO(b'video')) as network, \
+                patch.object(stock, 'probe', return_value={'duration_seconds': 4}):
+            saved = stock.download('pixabay', 'https://cdn.pixabay.com/a.mp4', output)
+            with self.assertRaises(stock.StockError):
+                stock.download('pixabay', 'https://cdn.pixabay.com/a.mp4', output)
+            network.assert_called_once()
+        self.assertEqual(output.read_bytes(), b'video')
+        self.assertFalse(saved['candidate_registered'])
+        result = attempt / 'results.json'
+        stock.save_json_new(result, {'first': True})
+        with self.assertRaises(stock.StockError):
+            stock.save_json_new(result, {'first': False})
+        self.assertEqual(json.loads(result.read_text()), {'first': True})
+        self.assertFalse(list(attempt.glob('*.part')))
+
     @patch.dict(os.environ, {"PIXABAY_API_KEY": "secret-pixabay", "PEXELS_API_KEY": "secret-pexels"})
     def test_pixabay_cache_24_hours_no_secrets(self):
         raw = {"hits": [{"id": 3, "pageURL": "https://pixabay.com/videos/3/",

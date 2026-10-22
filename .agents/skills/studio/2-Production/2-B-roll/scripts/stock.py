@@ -12,6 +12,7 @@ import json
 import math
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -34,13 +35,60 @@ class StockError(ValueError):
 
 
 def external(path):
-    """Never create scratch material in the repo or a canonical stage folder."""
-    path = Path(path).resolve()
-    if path == WORKSPACE or WORKSPACE in path.parents:
+    """Allow external scratch or dedicated, non-candidate project search artifacts.
+
+    A Connected Projects link may resolve the project prefix. From the stage
+    directory down, every existing component must be a real path, not a link.
+    """
+    original = Path(path)
+    if any(part == '..' for part in original.parts):
+        raise StockError('Artifact paths must not contain parent traversal.')
+    original = original.absolute()
+    try:
+        resolved = original.resolve()
+    except (OSError, RuntimeError, ValueError):
+        raise StockError('Artifact path could not be resolved safely.') from None
+    if resolved == WORKSPACE or WORKSPACE in resolved.parents:
         raise StockError("Use an external scratch directory outside the workspace.")
-    if any(part.casefold() == "2-b-roll" for part in path.parts):
-        raise StockError("Scratch paths must not be inside a B-roll stage folder.")
-    return path
+    stages = {'1-pre production', '2-production', '3-post production', '4-publish', '5-analyze'}
+    original_parts = original.parts
+    stage_indexes = [index for index, part in enumerate(original_parts)
+                     if part.casefold() == '2-b-roll']
+    protected = any(part.casefold() in stages or part.casefold() == '2-b-roll'
+                    for part in (*original_parts, *resolved.parts))
+    if not protected:
+        return resolved
+    message = ('Project artifacts must use 2-Production/2-B-roll/ASSET-xxxxxx/'
+               'search.NN/NN/... or ASSET-xxxxxx/cache/...; protected stage paths are refused.')
+    if len(stage_indexes) != 1:
+        raise StockError(message)
+    index = stage_indexes[0]
+    tail = original_parts[index + 1:]
+    if (index < 1 or original_parts[index - 1:index + 1] != ('2-Production', '2-B-roll') or
+            len(tail) < 2 or not re.fullmatch(r'ASSET-[0-9]{6}', tail[0]) or
+            int(tail[0][6:]) == 0):
+        raise StockError(message)
+    number = r'(?:0[1-9]|[1-9][0-9]+)'
+    is_cache = tail[1] == 'cache'
+    is_attempt = (len(tail) >= 3 and re.fullmatch(r'search\.' + number, tail[1]) and
+                  re.fullmatch(number, tail[2]))
+    if not (is_cache or is_attempt):
+        raise StockError(message)
+    descendants = original_parts[index - 1:]
+    if any(part.casefold() == 'stale' or any(ord(char) < 32 or char in '\\:' for char in part)
+           for part in descendants):
+        raise StockError('Archive and unsafe artifact paths are refused.')
+    project = Path(*original_parts[:index - 1]).resolve()
+    if any(part.casefold() in stages or part.casefold() == '2-b-roll' for part in project.parts):
+        raise StockError(message)
+    cursor = project
+    for part in descendants:
+        cursor = cursor / part
+        if cursor.is_symlink():
+            raise StockError('Symlink redirects inside project artifact directories are refused.')
+    if cursor != resolved:
+        raise StockError('Artifact path changed while resolving the project.')
+    return resolved
 
 
 def allowed_url(url, provider, api=False):
@@ -145,7 +193,7 @@ def search(provider, query, cache_dir, page=1):
     cache_dir.mkdir(parents=True, exist_ok=True)
     secrets = [os.environ.get("PEXELS_API_KEY", ""), os.environ.get("PIXABAY_API_KEY", "")]
     cache_id = hashlib.sha256(json.dumps([provider, query, page]).encode()).hexdigest()
-    cache_path = cache_dir / (cache_id + ".json")
+    cache_path = external(cache_dir / (cache_id + ".json"))
     if cache_path.exists():
         try:
             cached = json.loads(cache_path.read_text(encoding="utf-8"))
