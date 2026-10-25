@@ -2,7 +2,31 @@
   "$schema": "https://app.kilo.ai/config.json",
   "permission": {
     "bash": {
-      "python scripts/*.py*": "allow"
+      "python scripts/*.py*": "allow",
+      "*": "ask",
+      "git worktree *": "ask",
+      "git apply *": "ask",
+      "git update-index *": "ask",
+      "git add *": "ask",
+      "git restore *": "ask",
+      "git fetch *": "ask",
+      "git -c *": "ask",
+      "git status": "allow",
+      "git status *": "allow",
+      "git diff": "allow",
+      "git diff *": "allow",
+      "git log": "allow",
+      "git log *": "allow",
+      "git show": "allow",
+      "git show *": "allow",
+      "git rev-parse *": "allow",
+      "git ls-files": "allow",
+      "git ls-files *": "allow",
+      "git ls-tree *": "allow",
+      "git show-ref": "allow",
+      "git show-ref *": "allow",
+      "git worktree list": "allow",
+      "git worktree list *": "allow"
     }
   }
 }
