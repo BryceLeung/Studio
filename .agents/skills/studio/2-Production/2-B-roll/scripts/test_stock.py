@@ -31,6 +31,15 @@ class StockTests(unittest.TestCase):
     def project_asset(self):
         return self.root / 'project' / '2-Production' / '2-B-roll' / 'ASSET-000001'
 
+    def test_short_asset_ids_and_legacy_ids_share_path_guards(self):
+        stage = self.project_asset().parent
+        for identity in ('A01', 'A99', 'ASSET-000001'):
+            path = stage / identity / 'search.01' / '01' / 'results.json'
+            self.assertEqual(stock.external(path), path.resolve())
+        for identity in ('A00', 'A100', 'A001', 'A1', 'ASSET-000000'):
+            with self.subTest(identity=identity), self.assertRaises(stock.StockError):
+                stock.external(stage / identity / 'search.01' / '01' / 'results.json')
+
     def test_project_artifacts_allow_numbered_attempts_and_shared_asset_cache(self):
         asset = self.project_asset()
         for target in (asset / 'search.01' / '01' / 'results.json',

@@ -5,6 +5,8 @@ description: Run or resume Studio substage 2.3, creating Studio-ready Remotion g
 
 # 2.3 - Animations
 
+Use registry IDs as supplied: new projects use `A01`-`A99`; existing projects keep their legacy `ASSET-000001` IDs. Both formats are supported in asset arguments and folder names. Never renumber existing assets.
+
 ## Purpose and inputs
 
 Create rendered videos for every active, kept `Graphic` or `Animation` in the current 1.4 Asset Registry. Use the canonical Markdown and JSON together, through the maintained registry parser. The approved Asset/Brief is the initial prompt; Why/Notes, linked script passages and extracts supply context. Exclude other types, rejected and inactive rows. The machine-readable dependency and output contract is [dependencies.json](dependencies.json).
@@ -27,7 +29,7 @@ Use Python 3.10+ for the helpers, preferring this stage's `.venv-tools/bin/pytho
 
 ```text
 python "<helper>" context --project-root "<real-project-root>"
-python "<helper>" init --project-root "<real-project-root>" --asset-id ASSET-000010
+python "<helper>" init --project-root "<real-project-root>" --asset-id A10
 ```
 
 Do not run a different stage to repair failed preflight. Do not install packages or download browsers during normal execution or status. Missing Node, dependencies or rendering browser is an explicit setup blocker. The shared renderer package is `renderer/`; its dependencies and lockfile are maintained in Git, with one installation serving all assets. Explicit setup uses `npm ci` and `npm run remotion -- browser ensure` from that directory.
@@ -37,7 +39,7 @@ Do not run a different stage to repair failed preflight. Do not install packages
 Each eligible asset gets its own working directory:
 
 ```text
-2-Production/3-Animations/ASSET-000010/
+2-Production/3-Animations/A10/
   Animation.json
   request.01.md
   settings.json
@@ -61,7 +63,7 @@ Each eligible asset gets its own working directory:
 6. Render through the maintained helper:
 
 ```text
-python "<helper>" render --project-root "<real-project-root>" --asset-id ASSET-000010
+python "<helper>" render --project-root "<real-project-root>" --asset-id A10
 ```
 
 The helper snapshots source, references, requests, context and settings, then creates a numbered render without overwriting previous versions. It records exact render identity and renderer fingerprints. Reuse an unchanged current render instead of generating a duplicate.
@@ -73,7 +75,7 @@ Inspect the resulting video for legibility, composition, timing, motion, clippin
 Open the selected asset with the maintained helper when the user wants visual editing:
 
 ```text
-python "<helper>" studio --project-root "<real-project-root>" --asset-id ASSET-000010
+python "<helper>" studio --project-root "<real-project-root>" --asset-id A10
 ```
 
 This starts a foreground local server, opens the browser, and chooses a free port. Optional `--port 3000` selects a port; `--no-open` leaves the browser closed. Return the actual URL printed by the server. The launcher uses the asset as its editable project root and the shared renderer installation for dependencies. It does not install packages. Missing entry/configuration files are an error; no migration or automatic retrofit is supported.
@@ -87,7 +89,7 @@ For graphs and charts, use supplied facts or explicitly agreed assumptions. Iden
 Record each substantive requested change before editing the composition:
 
 ```text
-python "<helper>" revise --project-root "<real-project-root>" --asset-id ASSET-000010 --request "Slow the deposits, retain the piggy bank longer, and simplify the graph labels."
+python "<helper>" revise --project-root "<real-project-root>" --asset-id A10 --request "Slow the deposits, retain the piggy bank longer, and simplify the graph labels."
 ```
 
 Use `--request-file` for longer exact requests. The helper preserves numbered `request.NN.md` history. Update source, resources or settings and render the next version. Preserve prior render snapshots and candidate videos; do not overwrite a version to conceal iteration. Keep production refinements local to 2.3; reconcile a changed fundamental purpose, type or source applicability through 1.4 instead of silently changing its approved request.

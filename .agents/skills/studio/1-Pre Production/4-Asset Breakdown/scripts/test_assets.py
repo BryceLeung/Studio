@@ -88,6 +88,59 @@ class AssetTests(unittest.TestCase):
     def records(self):
         return [row for _, row in assets.rows(assets.load(self.project))[1]]
 
+    def test_compact_ids_limit_includes_comments_and_rejects_without_writes(self):
+        suggestions = [self.suggestion(key=f"idea-{n:03d}") for n in range(98)]
+        self.reconcile(suggestions)
+        self.assertEqual({row["ID"] for row in self.records()}, {f"A{n:02d}" for n in range(1, 100)})
+        before = readonly_state(self.project)
+        envelope = self.envelope(suggestions + [self.suggestion(key="overflow")])
+        for operation in (assets.dry_run, assets.reconcile):
+            with self.subTest(operation=operation.__name__), self.assertRaisesRegex(ValueError, "at most 99"):
+                operation(self.project, envelope)
+            self.assertEqual(readonly_state(self.project), before)
+
+    def test_oversized_initial_slate_publishes_nothing(self):
+        envelope = self.envelope([self.suggestion(key=f"idea-{n}") for n in range(99)])
+        before = readonly_state(self.project)
+        for operation in (assets.dry_run, assets.reconcile):
+            with self.assertRaisesRegex(ValueError, "at most 99"):
+                operation(self.project, envelope)
+            self.assertEqual(readonly_state(self.project), before)
+
+    def test_cli_rejects_over_limit_before_invalidation(self):
+        envelope = self.envelope([self.suggestion(key=f"idea-{n}") for n in range(99)])
+        request = self.project / "suggestions.json"
+        request.write_text(json.dumps(envelope), encoding="utf-8")
+        with patch.object(sys, "argv", [assets.__file__, "reconcile", "--project-root", str(self.project),
+                                       "--suggestions", str(request)]), patch.object(assets, "audit", return_value={}), \
+                patch.object(invalidation, "invalidate") as invalidate:
+            with self.assertRaisesRegex(ValueError, "at most 99"):
+                assets.main()
+            invalidate.assert_not_called()
+        self.assertFalse(self.path.exists())
+
+    def test_retired_ids_are_not_reused(self):
+        self.reconcile([self.suggestion()])
+        self.reconcile([])
+        self.reconcile([self.suggestion(key="replacement")])
+        self.assertEqual([row["ID"] for row in self.records()], ["A01", "A02", "A03"])
+        self.assertEqual(self.records()[0]["Active"], "No")
+
+    def test_existing_legacy_registry_retains_numbering(self):
+        with patch.object(assets, "new_registry", return_value={"assets": [], "inputs": [], "history": [], "control": {}}):
+            self.reconcile([self.suggestion()])
+        self.assertEqual({row["ID"] for row in self.records()}, {"ASSET-000001", "ASSET-000002"})
+        self.reconcile([self.suggestion(), self.suggestion(key="new")])
+        self.assertEqual({row["ID"] for row in self.records()},
+                         {"ASSET-000001", "ASSET-000002", "ASSET-000003"})
+
+    def test_compact_id_syntax_rejects_zero_overflow_and_extra_digits(self):
+        self.reconcile()
+        row = self.records()[0]
+        for identity in ("A00", "A100", "A001", "A1", "A-01"):
+            with self.subTest(identity=identity), self.assertRaisesRegex(ValueError, "Invalid asset ID"):
+                assets.validate_registry_row(dict(row, ID=identity), set(), set())
+
     def cli(self, action, *args):
         return subprocess.run([sys.executable, assets.__file__, action, "--project-root", str(self.project), *args],
                               capture_output=True, text=True, encoding="utf-8")
@@ -388,9 +441,9 @@ class AssetTests(unittest.TestCase):
         self.reconcile([self.suggestion()])
         rows = self.records()
         self.assertEqual({r["Origin"] for r in rows}, {"AI", "User"})
-        self.assertEqual({r["ID"] for r in rows}, {"ASSET-000001", "ASSET-000002"})
+        self.assertEqual({r["ID"] for r in rows}, {"A01", "A02"})
         self.assertTrue(all(r["Review"] == "Pending Review" for r in rows))
-        self.assertIn("## ASSET-000001 | Comparison diagram\n", self.path.read_text(encoding="utf-8"))
+        self.assertIn("## A01 | Comparison diagram\n", self.path.read_text(encoding="utf-8"))
         text = self.path.read_text(encoding="utf-8")
         self.assertIn("**Review:** Pending Review\n", text)
         self.assertNotIn("\\\n", text)
@@ -784,8 +837,8 @@ class AssetTests(unittest.TestCase):
     def test_malformed_duplicate_ids_fields_and_unrecognized_text_not_discarded(self):
         self.reconcile([self.suggestion()])
         text = self.path.read_text(encoding="utf-8")
-        for malformed in (text.replace("## ASSET-000001", "## ASSET-bad"),
-                          text.replace("## ASSET-000002", "## ASSET-000001"),
+        for malformed in (text.replace("## A01", "## A-bad"),
+                          text.replace("## A02", "## A01"),
                           text.replace("**Review:**", "**Asset:**", 1),
                           text + "Human addition outside field blocks\n"):
             with self.subTest(malformed=malformed[:80]):
@@ -797,7 +850,7 @@ class AssetTests(unittest.TestCase):
     def test_identity_and_internal_proposal_tampering_fail(self):
         self.reconcile()
         original = assets.load(self.project)
-        self.edit("ID", "ASSET-123456")
+        self.edit("ID", "A98")
         with self.assertRaisesRegex(ValueError, "identities changed"):
             assets.check(self.project)
         assets.save(original, self.project)

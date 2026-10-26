@@ -24,7 +24,7 @@ from scripts.validation import require_prerequisites
 STAGE = Path('2-Production/2-B-roll')
 REGISTRY = Path('1-Pre Production/4-Asset Breakdown')
 EXTENSIONS = {'.mp4', '.mov', '.m4v', '.mkv', '.avi', '.webm', '.mxf'}
-ID = re.compile(r'ASSET-\d{6}')
+ID = re.compile(r'(?:A(?:0[1-9]|[1-9][0-9])|ASSET-\d{6,})')
 MAX_SEARCH_REFINEMENTS = 5
 SCHEMA_VERSION = 3
 SCORE_WEIGHTS = {'subject_action': 40, 'context_tone': 25, 'editing_usefulness': 25, 'technical_quality': 10}

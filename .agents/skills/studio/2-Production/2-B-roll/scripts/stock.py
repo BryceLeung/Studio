@@ -59,15 +59,15 @@ def external(path):
                     for part in (*original_parts, *resolved.parts))
     if not protected:
         return resolved
-    message = ('Project artifacts must use 2-Production/2-B-roll/ASSET-xxxxxx/'
-               'search.NN/NN/... or ASSET-xxxxxx/cache/...; protected stage paths are refused.')
+    message = ('Project artifacts must use 2-Production/2-B-roll/<asset-id>/'
+               'search.NN/NN/... or <asset-id>/cache/...; protected stage paths are refused.')
     if len(stage_indexes) != 1:
         raise StockError(message)
     index = stage_indexes[0]
     tail = original_parts[index + 1:]
     if (index < 1 or original_parts[index - 1:index + 1] != ('2-Production', '2-B-roll') or
-            len(tail) < 2 or not re.fullmatch(r'ASSET-[0-9]{6}', tail[0]) or
-            int(tail[0][6:]) == 0):
+            len(tail) < 2 or not re.fullmatch(r'(?:A(?:0[1-9]|[1-9][0-9])|ASSET-[0-9]{6,})', tail[0]) or
+            (tail[0].startswith('ASSET-') and int(tail[0][6:]) == 0)):
         raise StockError(message)
     number = r'(?:0[1-9]|[1-9][0-9]+)'
     is_cache = tail[1] == 'cache'

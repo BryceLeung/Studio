@@ -23,6 +23,8 @@ Read the [Studio root skill](../../SKILL.md) for project resolution, prerequisit
 
 ## Purpose and scope
 
+Use registry IDs as supplied: new projects use `A01`-`A99`; existing projects keep their legacy `ASSET-000001` IDs. Both formats are supported in asset arguments and folder names. Never renumber existing assets.
+
 Collect at least three distinct usable video candidates for each active, approved asset whose current registry Type is `B-roll`. Read both protected 1.4 registry files through their supported parser; the human Review and Type fields in Markdown determine inclusion. Never select solely from potentially outdated JSON human-field snapshots. Skip Reject, inactive and non-B-roll assets; Pending Review upstream blocks execution through the prerequisite gate.
 
 Use existing footage supplied manually by the user, Pexels, Pixabay and user-enabled Storyblocks. Storyblocks discovery and watermarked previews do not license assets. Its `get_download_url` MCP call licenses an item and records a download every time; call it only for an item the user explicitly asked to download, never during discovery or format lookup. Use `get_stock_item_details` for formats. Do not fabricate user/project identities, purchase a subscription, or repeat a licensing call to recover a local failure. Reuse the captured response while its URLs remain valid; ask before a fresh licensing call unless already explicitly authorized. Do not generate video, search the user's Google Photos account, acquire stills, or assemble final edited sequences in this stage.
@@ -47,7 +49,7 @@ Keep artifacts under the resolved OneDrive project:
 
 ```text
 2-Production/2-B-roll/
-  ASSET-000010/
+  A10/
     Candidates.json
     search.01.md
     search.01/

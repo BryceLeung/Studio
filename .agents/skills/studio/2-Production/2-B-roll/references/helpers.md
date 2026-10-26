@@ -10,11 +10,11 @@ Stage 2.2 defaults to coordinator-launched local subagents; read the assignment 
 
 `context` is read-only and lists eligible IDs and their current registry fields. Before any stage execution, follow the root skill's shared audit. All project mutations and `check` enforce prerequisites again.
 
-`init --spec "<plans.json>" [--asset ASSET-000010]` creates missing `search.01.md` worker input/output journals, containing the verbatim brief followed by asset identity, sourcing, shot coverage and scoring/stop settings. Use `--asset` to initialize only the selected eligible asset. The plans object maps each new eligible ASSET ID to an explicit sourcing mode and required shots:
+`init --spec "<plans.json>" [--asset A10]` creates missing `search.01.md` worker input/output journals, containing the verbatim brief followed by asset identity, sourcing, shot coverage and scoring/stop settings. Use `--asset` to initialize only the selected eligible asset. The plans object maps each new eligible ASSET ID to an explicit sourcing mode and required shots:
 
 ```json
 {
-  "ASSET-000010": {
+  "A10": {
     "sourcing": "manual",
     "shots": ["Family at Disney", "Preparing lunch"]
   }
@@ -25,7 +25,7 @@ Choose `manual` for actual-family requirements, `stock` for stock sourcing, or `
 
 ## Request changes
 
-`revise --asset ASSET-000010 --file "<full-current-request.txt>" --spec "<plan.json>" --reason "<user-requested-change>"`
+`revise --asset A10 --file "<full-current-request.txt>" --spec "<plan.json>" --reason "<user-requested-change>"`
 
 The plan is one object, e.g. `{"sourcing":"manual","shots":["Preparing lunch"]}`. The text file contains the full replacement sourcing brief, including unchanged requirements. The helper creates the next numbered `search.NN.md` with this full brief and reason, assigns the next logical revision ID, and retains all earlier journals and run directories. It stores the content SHA-256 and journal offsets, alongside the current 1.4 row, so a changed upstream brief requires explicit reconciliation. Before calling revise, resolve any conflict with local refinements with the user. Simply requesting more candidates or changing search terms appends to the current journal without a brief revision or budget reset. The `search.NN.md` number identifies a logical brief revision, not each individual query. Do not create `Requirements.md` or `Requirements.vN.md` files.
 
@@ -34,15 +34,15 @@ The plan is one object, e.g. `{"sourcing":"manual","shots":["Preparing lunch"]}`
 Use this command for Pexels/Pixabay asset searches, after initialization and prerequisite validation. Storyblocks uses the MCP bridge described below:
 
 ```text
-python "<skill>/scripts/broll.py" search --project-root "<resolved-project>" --asset ASSET-000002 --provider pixabay --query "putting phone down" --reason "Find the requested action instead of scrolling or typing"
+python "<skill>/scripts/broll.py" search --project-root "<resolved-project>" --asset A02 --provider pixabay --query "putting phone down" --reason "Find the requested action instead of scrolling or typing"
 ```
 
-Supply explicit queries with `--query`; `--reason` is required. Omit optional `--cache-dir` and `--output-dir` in the normal project flow. If supplied, they must equal the assigned asset cache and next canonical attempt directory; an explicit output directory is allowed only for a single-query invocation. The default cache is `ASSET-000002/cache/`, reused across runs. Each provider attempt gets a new directory such as `ASSET-000002/search.01/01/`; the next refinement or retry uses `02/`, then `03/`, and so on. Every attempt retains `attempt.json`; the provider outcome is saved as `outcome.json`, with `results.json` on success. Failed attempts also retain their directory and recorded outcome. Each item in the returned `searches` array contains `output_dir`, `result_file`, `search_id`, `attempt` and the asset-relative `directory`; the top-level `request_journal` identifies the current `search.NN.md`. Use the returned attempt `output_dir` to place its thumbnails, previews, sheets and review JSON; do not assume the global search ID equals its per-run directory number. The helper allows the initial distinct term plus at most five refinements per logical brief revision, across invocations and providers, and preflights the whole requested batch against the remaining budget. Case/whitespace variants are the same term. Recorded failed attempts count as tried terms; an intentional same-term retry before exhaustion consumes no extra refinement. Review results before choosing the next refinement. Budget rejection makes no API calls, output folders or journal changes. The helper requires an initialized eligible asset and current prerequisites. It appends each term and its reason to that asset's current `search.NN.md` before calling the maintained stock wrapper, then appends the outcome, result count and saved-result location, or a sanitized failure. The returned search IDs identify attempts for follow-up notes; output also reports refinements used/remaining and whether the limit has been reached. Search terms and result locations never contain API keys.
+Supply explicit queries with `--query`; `--reason` is required. Omit optional `--cache-dir` and `--output-dir` in the normal project flow. If supplied, they must equal the assigned asset cache and next canonical attempt directory; an explicit output directory is allowed only for a single-query invocation. The default cache is `A02/cache/`, reused across runs. Each provider attempt gets a new directory such as `A02/search.01/01/`; the next refinement or retry uses `02/`, then `03/`, and so on. Every attempt retains `attempt.json`; the provider outcome is saved as `outcome.json`, with `results.json` on success. Failed attempts also retain their directory and recorded outcome. Each item in the returned `searches` array contains `output_dir`, `result_file`, `search_id`, `attempt` and the asset-relative `directory`; the top-level `request_journal` identifies the current `search.NN.md`. Use the returned attempt `output_dir` to place its thumbnails, previews, sheets and review JSON; do not assume the global search ID equals its per-run directory number. The helper allows the initial distinct term plus at most five refinements per logical brief revision, across invocations and providers, and preflights the whole requested batch against the remaining budget. Case/whitespace variants are the same term. Recorded failed attempts count as tried terms; an intentional same-term retry before exhaustion consumes no extra refinement. Review results before choosing the next refinement. Budget rejection makes no API calls, output folders or journal changes. The helper requires an initialized eligible asset and current prerequisites. It appends each term and its reason to that asset's current `search.NN.md` before calling the maintained stock wrapper, then appends the outcome, result count and saved-result location, or a sanitized failure. The returned search IDs identify attempts for follow-up notes; output also reports refinements used/remaining and whether the limit has been reached. Search terms and result locations never contain API keys.
 
 After visual inspection, append the outcome and next-term rationale:
 
 ```text
-python "<skill>/scripts/broll.py" search-note --project-root "<resolved-project>" --asset ASSET-000002 --search-id 1 --reason "No suitable action: results show scrolling. Next try placing the phone face down."
+python "<skill>/scripts/broll.py" search-note --project-root "<resolved-project>" --asset A02 --search-id 1 --reason "No suitable action: results show scrolling. Next try placing the phone face down."
 ```
 
 Pass `--spec "<attempt-dir>/review.json"` to record inspected clip scores in the worker's current `search.NN.md`:
@@ -90,7 +90,7 @@ The Python helpers do not call the chat's MCP tools or obtain their credentials.
 1. Save the deliberately chosen MCP search parameters as JSON, e.g. `{"keywords":"elderly holding hands","required_keywords":"hand","content_type":"footage"}`. Run:
 
 ```text
-python "<skill>/scripts/broll.py" storyblocks-begin --project-root "<project>" --asset ASSET-000002 --query "elderly holding hands" --reason "Find the missing age-contrasting supportive clasp" --spec "<parameters.json>"
+python "<skill>/scripts/broll.py" storyblocks-begin --project-root "<project>" --asset A02 --query "elderly holding hands" --reason "Find the missing age-contrasting supportive clasp" --spec "<parameters.json>"
 ```
 
 This validates prerequisites, the live brief, sourcing mode and remaining budget, then journals the request before returning `search_id`, `output_dir`, `tool` and exact `arguments`. Call that Storyblocks MCP tool with those arguments, without invented user or project IDs. One attempt may be pending per asset. If the budget is exhausted, stop unless the user explicitly requested this particular Storyblocks retry; only then add `--authorization "<actual user request>"`. That exception authorizes one search, preserves all prior history and does not create a new brief revision or budget.
@@ -99,7 +99,7 @@ This validates prerequisites, the live brief, sourcing mode and remaining budget
 
 ```text
 python "<skill>/scripts/storyblocks.py" capture --tool mcp__storyblocks__search_videos --arguments-file "<parameters.json>" --output "<attempt>/mcp-search.json"
-python "<skill>/scripts/broll.py" storyblocks-finish --project-root "<project>" --asset ASSET-000002 --search-id <id> --file "<attempt>/mcp-search.json"
+python "<skill>/scripts/broll.py" storyblocks-finish --project-root "<project>" --asset A02 --search-id <id> --file "<attempt>/mcp-search.json"
 ```
 
 Feed the exact serialized MCP return value to the capture process on stdin through the host's process interface. Capture accepts an arguments object or a preparation report containing `arguments`. The saved envelope is `{"tool":"<exact tool name>","arguments":{...},"response":{...exact returned JSON...}}`. Finish checks the captured call against the journal, saves normalized `results.json` and appends its outcome under the project guard. It refuses duplicate imports, superseded briefs and interrupted publication artifacts. For an MCP failure, run `storyblocks-finish --search-id <id> --failed` instead, recording a sanitized failure with no fabricated result count. An invalid import can be corrected before finishing; never silently overwrite published results or truncate the journal.
@@ -135,7 +135,7 @@ The receipt records the provider's licensed-download response, not a legal inter
 
 ## Register acquired footage
 
-`register --asset ASSET-000010 --file "<local-video>" --spec "<provenance.json>"`
+`register --asset A10 --file "<local-video>" --spec "<provenance.json>"`
 
 User footage:
 
@@ -170,13 +170,13 @@ Use actual provider IDs, URLs, dates and retained licence evidence. The example 
 
 ## Correct a stock creator credit
 
-`correct-credit --asset ASSET-000010 --candidate C001 --spec "<credit.json>" --reason "Verified creator against saved provider result"` corrects only the licence attribution. The specification contains `origin`, `source_id`, `source_url` matching the registered source exactly, plus the corrected `attribution`. Verify that credit against the saved provider response before calling. The guarded helper preserves the old credit, new credit, timestamp and reason in `credit_corrections`, updates attribution atomically and uses normal invalidation/logging. It cannot replace footage, change source identity or bypass suitability review. Never remove/re-register a candidate or hand-edit its ledger to fix a credit.
+`correct-credit --asset A10 --candidate C001 --spec "<credit.json>" --reason "Verified creator against saved provider result"` corrects only the licence attribution. The specification contains `origin`, `source_id`, `source_url` matching the registered source exactly, plus the corrected `attribution`. Verify that credit against the saved provider response before calling. The guarded helper preserves the old credit, new credit, timestamp and reason in `credit_corrections`, updates attribution atomically and uses normal invalidation/logging. It cannot replace footage, change source identity or bypass suitability review. Never remove/re-register a candidate or hand-edit its ledger to fix a credit.
 
 ## Assess current applicability
 
 Watch the footage, then call:
 
-`assess --asset ASSET-000010 --candidate C001 --spec "<assessment.json>"`
+`assess --asset A10 --candidate C001 --spec "<assessment.json>"`
 
 ```json
 {

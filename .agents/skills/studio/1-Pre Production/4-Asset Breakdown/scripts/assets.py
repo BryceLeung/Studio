@@ -249,11 +249,33 @@ def proposals(ctx, envelope):
 
 
 def new_registry():
-    return {"assets": [], "inputs": [], "history": [], "control": {}}
+    return {"assets": [], "inputs": [], "history": [], "control": {"asset_id_format": "A01-A99"}}
+
+
+def allocation(registry, incoming):
+    """Preflight stable IDs before either a dry run or publication."""
+    compact = registry["control"].get("asset_id_format") == "A01-A99"
+    existing = registry["assets"]
+    known = {row["Source Key"] for row in existing}
+    additions = sorted(incoming.keys() - known)
+    maximum = max((int(row["ID"][1:] if compact else row["ID"].split("-")[1])
+                   for row in existing), default=0)
+    if compact and maximum + len(additions) > 99:
+        raise ValueError("Asset limit reached: new projects allow at most 99 stable IDs (A01-A99); "
+                         "rejected and retired IDs are not reused. Reduce the new proposals.")
+    return [(key, f"A{maximum + offset:02d}" if compact else f"ASSET-{maximum + offset:06d}")
+            for offset, key in enumerate(additions, 1)]
 
 
 def rows(registry, *, errors=None):
     result = list(enumerate(registry["assets"]))
+    compact = registry["control"].get("asset_id_format") == "A01-A99"
+    if compact and (len(result) > 99 or any(not re.fullmatch(r"A(?:0[1-9]|[1-9][0-9])", str(row.get("ID")))
+                                          for _, row in result)):
+        message = "New registries require at most 99 stable asset IDs in A01-A99 format"
+        if errors is None:
+            raise ValueError(message)
+        errors.append({"asset": None, "message": message})
     ids, keys = set(), set()
     for _, row in result:
         try:
@@ -281,7 +303,7 @@ def rows(registry, *, errors=None):
 def validate_registry_row(row, ids, keys):
     if set(row) != set(HEADERS):
         raise ValueError("Missing or unknown registry fields")
-    if not isinstance(row["ID"], str) or not re.fullmatch(r"ASSET-\d{6,}", row["ID"]):
+    if not isinstance(row["ID"], str) or not re.fullmatch(r"(?:A(?:0[1-9]|[1-9][0-9])|ASSET-\d{6,})", row["ID"]):
         raise ValueError("Invalid asset ID")
     key = row["Source Key"]
     if (row["ID"] in ids or not isinstance(key, str) or key in keys or
@@ -410,12 +432,12 @@ def parse(text, evidence_text, *, errors=None):
     metadata = evidence.pop("asset_metadata")
     # Optional migration evidence is opaque history, never interpreted or applied.
     registry = dict(evidence, assets=[])
-    pattern = (r"## (ASSET-\d{6,}) \| ([^\n]+)\n"
+    pattern = (r"## (A(?:0[1-9]|[1-9][0-9])|ASSET-\d{6,}) \| ([^\n]+)\n"
                r"\*\*Review:\*\* ([^\n]+)\n"
                r"\*\*Type:\*\* ([^\n]+?) \| \*\*Origin:\*\* ([^\n]+)\n"
                r"\*\*Source:\*\* ([^\n]+?) \| \*\*Extracts:\*\* ([^\n]+)\n"
                r"\*\*Passage\*\*\n((?:> [^\n]*\n)+)\n"
-               r"\*\*Asset:\*\* (.*?)\n\*\*Why:\*\* (.*?)\n\n(?=## ASSET-|\Z)")
+               r"\*\*Asset:\*\* (.*?)\n\*\*Why:\*\* (.*?)\n\n(?=## (?:A[0-9]{2} \||ASSET-)|\Z)")
     while body:
         card = re.match(pattern, body, re.S)
         if not card:
@@ -541,12 +563,9 @@ def reconcile(project, envelope):
     before = encoded(registry)
     old_inputs = registry["inputs"]
     inputs_changed = old_inputs != ctx["inputs"]
-    maximum = max((int(row["ID"].split("-")[1]) for _, row in existing), default=0)
-    known = {row["Source Key"] for _, row in existing}
-    for key in sorted(incoming.keys() - known):
-        maximum += 1
+    for key, identity in allocation(registry, incoming):
         item = incoming[key]
-        values = {"ID": f"ASSET-{maximum:06d}", "Origin": item["origin"], "Source Key": key,
+        values = {"ID": identity, "Origin": item["origin"], "Source Key": key,
                   "Review": "Pending Review", "Active": "Yes", "Change": "New proposal",
                   "Provenance": encoded(item["provenance"]), "Proposal": encoded(item)}
         values.update({COLUMNS[field]: field_value(field, value) for field, value in item["fields"].items()})
@@ -742,7 +761,8 @@ def indexed_context(ctx):
 def dry_run(project, envelope):
     ctx = context(project)
     incoming = proposals(ctx, envelope)
-    load(project)  # Same pre-publication evidence validation, without a mutation guard.
+    registry = load(project)  # Same pre-publication evidence validation, without a mutation guard.
+    allocation(registry, incoming)
     return {"valid_snapshot": True, "inputs": ctx["inputs"], "processed": envelope["processed"],
             "counts": {"total": len(incoming), **{origin: sum(item["origin"] == origin for item in incoming.values())
                                                   for origin in ("User", "AI")}}, "published": False}
@@ -808,8 +828,9 @@ def main():
             from scripts.stage_invalidation import invalidate
             if args.action == "reconcile":
                 envelope = json.loads(args.suggestions.read_text(encoding="utf-8-sig"))
-                proposals(context(project), envelope)  # Reject bad/stale proposals before invalidating.
-                load(project)  # Reject missing/tampered evidence before invalidating.
+                incoming = proposals(context(project), envelope)  # Reject bad/stale proposals before invalidating.
+                registry = load(project)  # Reject missing/tampered evidence before invalidating.
+                allocation(registry, incoming)  # Reject exhausted IDs before invalidating completed work.
                 invalidate(project, ROOT, "1.4", "Asset registry reconciliation")
                 print(json.dumps(reconcile(project, envelope), indent=2))
             else:

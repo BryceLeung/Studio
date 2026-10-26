@@ -124,7 +124,7 @@ def eligible(project):
 
 
 def folder(project, asset):
-    require(isinstance(asset, str) and re.fullmatch(r'ASSET-\d{6,}', asset), 'Invalid ASSET ID')
+    require(isinstance(asset, str) and re.fullmatch(r'(?:A(?:0[1-9]|[1-9][0-9])|ASSET-\d{6,})', asset), 'Invalid ASSET ID')
     return confined(project, (STAGE / asset).as_posix())
 
 
@@ -490,7 +490,7 @@ def inventory(project):
         confined(project, child.relative_to(project).as_posix())
         if child.name in ('STALE', 'DONE', 'LOG.md', '.DONE.lock'):
             continue
-        require(child.is_dir() and re.fullmatch(r'ASSET-\d{6,}', child.name),
+        require(child.is_dir() and re.fullmatch(r'(?:A(?:0[1-9]|[1-9][0-9])|ASSET-\d{6,})', child.name),
                 f'Unexpected animation stage entry: {child.name}')
         result.extend(files(project, child.relative_to(project).as_posix()))
     return result
@@ -502,7 +502,7 @@ def check(project):
     stage = confined(project, STAGE.as_posix())
     if stage.exists():
         for child in stage.iterdir():
-            if re.fullmatch(r'ASSET-\d{6,}', child.name):
+            if re.fullmatch(r'(?:A(?:0[1-9]|[1-9][0-9])|ASSET-\d{6,})', child.name):
                 ledger = load(project, child.name)
                 require(all(r['status'] != 'rendering' for r in ledger['renders']),
                         f'{child.name}: render active or interrupted')
