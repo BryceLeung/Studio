@@ -21,7 +21,7 @@ Stage 2.2 defaults to coordinator-launched local subagents; read the assignment 
 }
 ```
 
-Choose `manual` for actual-family requirements, `stock` for stock sourcing, or `either` where the brief explicitly permits both. `shots` contains genuinely required shots; use an empty list for a request without separately required shots. Do not turn optional shot examples into new requirements. Plans need include only missing assets; an empty object is valid on an unchanged rerun. Missing plans fail before publication. Initial request bytes are UTF-8 encoding of the parsed Asset brief, without added headings or a trailing newline.
+Choose `manual` for actual-family requirements, `stock` for stock sourcing, or `either` where the brief explicitly permits both. `shots` contains genuinely required shots; use an empty list for a request without separately required shots. Do not turn optional shot examples or alternative editorial ideas into new requirements. For role-based alternatives, use `shots: []` unless the brief has genuinely mandatory coverage. Give the worker the script passage, editorial role and at least three visual directions; record the chosen direction in search reasons and each accepted candidate's idea label, visible action and script connection in assessment `notes`. Three clips must represent three different visual ideas; source uniqueness alone does not establish diversity. This is an editorial check, not an automatic Python validation. Plans need include only missing assets; an empty object is valid on an unchanged rerun. Missing plans fail before publication. Initial request bytes are UTF-8 encoding of the parsed Asset brief, without added headings or a trailing newline.
 
 ## Request changes
 
@@ -31,7 +31,7 @@ The plan is one object, e.g. `{"sourcing":"manual","shots":["Preparing lunch"]}`
 
 ## Linked asset searches and search notes
 
-Use this command for every real asset search, after initialization and prerequisite validation:
+Use this command for Pexels/Pixabay asset searches, after initialization and prerequisite validation. Storyblocks uses the MCP bridge described below:
 
 ```text
 python "<skill>/scripts/broll.py" search --project-root "<resolved-project>" --asset ASSET-000002 --provider pixabay --query "putting phone down" --reason "Find the requested action instead of scrolling or typing"
@@ -83,6 +83,56 @@ Append another review when closer inspection changes a score. Each review repeat
 
 If a batch falls short, record why, choose new terms within the existing brief and try again within the five-refinement budget. Do not ask to rewrite the creative request merely because the first query failed. After the fifth refinement is reviewed without sufficient passing matches, stop and report terms tried, best supported scores and repeated mismatches. Ask the user whether the threshold is too high or a better search direction is needed. Do not lower thresholds, reset the counter, fabricate a brief revision or use the low-level wrappers to continue past the limit. A genuine user-authorized creative revision starts a new budget. Stop immediately when the target is met. The low-level `stock.py search` and `search-batch` commands below are standalone scratch utilities; they do not record asset history and must not replace this linked workflow.
 
+## Storyblocks MCP search, preview and licensed acquisition
+
+The Python helpers do not call the chat's MCP tools or obtain their credentials. The agent makes each MCP call between maintained CLI preparation/import commands. Keep all call captures, arguments, details, plans, previews, receipts and review files inside the allocated attempt directory. No shell HTTP clients, inline Python provider clients or automatic provider retries are needed.
+
+1. Save the deliberately chosen MCP search parameters as JSON, e.g. `{"keywords":"elderly holding hands","required_keywords":"hand","content_type":"footage"}`. Run:
+
+```text
+python "<skill>/scripts/broll.py" storyblocks-begin --project-root "<project>" --asset ASSET-000002 --query "elderly holding hands" --reason "Find the missing age-contrasting supportive clasp" --spec "<parameters.json>"
+```
+
+This validates prerequisites, the live brief, sourcing mode and remaining budget, then journals the request before returning `search_id`, `output_dir`, `tool` and exact `arguments`. Call that Storyblocks MCP tool with those arguments, without invented user or project IDs. One attempt may be pending per asset. If the budget is exhausted, stop unless the user explicitly requested this particular Storyblocks retry; only then add `--authorization "<actual user request>"`. That exception authorizes one search, preserves all prior history and does not create a new brief revision or budget.
+
+2. Capture the returned JSON without reconstructing or editing signed URLs. `storyblocks.py capture` reads JSON from process stdin and saves a new file:
+
+```text
+python "<skill>/scripts/storyblocks.py" capture --tool mcp__storyblocks__search_videos --arguments-file "<parameters.json>" --output "<attempt>/mcp-search.json"
+python "<skill>/scripts/broll.py" storyblocks-finish --project-root "<project>" --asset ASSET-000002 --search-id <id> --file "<attempt>/mcp-search.json"
+```
+
+Feed the exact serialized MCP return value to the capture process on stdin through the host's process interface. Capture accepts an arguments object or a preparation report containing `arguments`. The saved envelope is `{"tool":"<exact tool name>","arguments":{...},"response":{...exact returned JSON...}}`. Finish checks the captured call against the journal, saves normalized `results.json` and appends its outcome under the project guard. It refuses duplicate imports, superseded briefs and interrupted publication artifacts. For an MCP failure, run `storyblocks-finish --search-id <id> --failed` instead, recording a sanitized failure with no fabricated result count. An invalid import can be corrected before finishing; never silently overwrite published results or truncate the journal.
+
+3. Use the existing `preview.py shortlist` and `stock.py thumbnail` tools with `results.json`. Before closer review, call `mcp__storyblocks__get_stock_item_details` with `contentClass: "videos"`, the selected `stockItemId`, and `extended: "download_formats,description"`. Capture that call to a new file using the same `capture` CLI, then run:
+
+```text
+python "<skill>/scripts/storyblocks.py" details --result-file "<attempt>/results.json" --provider-id <id> --response-file "<attempt>/mcp-details.json" --output "<attempt>/details-<id>.json"
+python "<skill>/scripts/stock.py" preview --result-file "<attempt>/details-<id>.json" --provider-id <id> --output "<attempt>/previews/<id>.mp4" --smallest
+```
+
+The normalized details retain the search's real detail-page URL and contributor credit, verify item identity and obtain preview dimensions from provider format metadata. Preview URLs are marked preview-only; `stock.py acquire` and direct full-resolution `stock.py download` refuse Storyblocks acquisition. Reuse existing contact-sheet/segment review and `broll.py search-note --spec` scoring. A preview never counts as an acquired candidate. Fresh details can refresh expired preview links using new filenames without repeating a search or licensing call.
+
+4. Only after the user explicitly requests downloading this selected item, prepare acquisition:
+
+```text
+python "<skill>/scripts/storyblocks.py" prepare-acquisition --result-file "<attempt>/details-<id>.json" --provider-id <id> --authorization "<actual user download request>" --min-width 1920 --output "<attempt>/acquisition-plan-<id>.json"
+```
+
+The plan selects the highest-resolution MP4 meeting the minimum width, records the user request and returns exact arguments for `mcp__storyblocks__get_download_url`. **Calling that tool licenses the item and records a download each time.** Do not call it for discovery or format inspection. Call it once for the plan, leave account identities to the connection defaults, and capture the complete response with `capture --tool mcp__storyblocks__get_download_url --arguments-file "<attempt>/acquisition-plan-<id>.json" --output "<attempt>/mcp-download-<id>.json"`.
+
+5. Select the URL for the plan's format from that captured response and run:
+
+```text
+python "<skill>/scripts/storyblocks.py" acquire --plan-file "<attempt>/acquisition-plan-<id>.json" --response-file "<attempt>/mcp-download-<id>.json" --url "<exact selected signed URL>" --output "<attempt>/acquired/<id>.mp4" --license-file "<attempt>/provenance-<id>.json"
+```
+
+The URL must occur character-for-character in the captured response. The helper verifies tool/item identity, rejects watermarked sources, enforces trusted provider/CDN domains and the existing 1 GiB limit, probes the acquired dimensions, and emits provenance with the MCP response hash, authorization and acquired-file hash. Current trusted hosts are Storyblocks and its observed `dm0qx8t0i9gc9.cloudfront.net` CDN; an unfamiliar download host fails closed and needs a verified allowlist update, never a disabled URL check. Do not print or rewrite signed URL query parameters.
+
+The receipt records the provider's licensed-download response, not a legal interpretation of account terms or a fabricated licence certificate. Retain the captured response as evidence. Reuse it for local network retries while its URLs remain valid; never automatically call `get_download_url` again. Inspect partial publication (including an acquired file without its receipt) before recovery. A new licensing call after expiry needs an explicit download request covering that call.
+
+6. Inspect the acquired full-resolution footage and chosen ranges, replace the provenance's placeholder description with the actual visible content, then use the existing `register --file ... --spec "<attempt>/provenance-<id>.json"` and `assess` commands. Storyblocks provenance requires the receipt and matching video hash; registration remains distinct from editorial acceptance. Full-stage checking, duplicate-source checks, completion and all manual-footage restrictions remain unchanged.
+
 ## Register acquired footage
 
 `register --asset ASSET-000010 --file "<local-video>" --spec "<provenance.json>"`
@@ -116,7 +166,11 @@ Stock provenance additionally requires:
 }
 ```
 
-Use actual provider IDs, URLs, dates and retained licence evidence. The example placeholders are not valid provenance. Pixabay uses origin `Pixabay` and a Pixabay page. Storyblocks is refused. A manual-only current request refuses stock registrations. Registration probes video metadata using ffprobe, stores SHA-256 and shared media identity, and creates no suitability assessment.
+Use actual provider IDs, URLs, dates and retained licence evidence. The example placeholders are not valid provenance. Pixabay uses origin `Pixabay` and a Pixabay page. Storyblocks uses the acquisition provenance JSON produced by `storyblocks.py acquire`; its receipt hash must match the video bytes. Replace its placeholder description with an accurate description after inspection, preserving the acquisition evidence. A manual-only current request refuses stock registrations. Registration probes video metadata using ffprobe, stores SHA-256 and shared media identity, and creates no suitability assessment.
+
+## Correct a stock creator credit
+
+`correct-credit --asset ASSET-000010 --candidate C001 --spec "<credit.json>" --reason "Verified creator against saved provider result"` corrects only the licence attribution. The specification contains `origin`, `source_id`, `source_url` matching the registered source exactly, plus the corrected `attribution`. Verify that credit against the saved provider response before calling. The guarded helper preserves the old credit, new credit, timestamp and reason in `credit_corrections`, updates attribution atomically and uses normal invalidation/logging. It cannot replace footage, change source identity or bypass suitability review. Never remove/re-register a candidate or hand-edit its ledger to fix a credit.
 
 ## Assess current applicability
 
@@ -128,7 +182,7 @@ Watch the footage, then call:
 {
   "suitable": true,
   "reviewed_by": "Agent after video inspection",
-  "notes": "Usable framing and action match the current request.",
+  "notes": "Idea: family outing. Visible action: family walking at Disney. Script connection: shared time together. Framing and inspected source ranges support this idea and the current request.",
   "ranges": [[1.2, 5.8]],
   "shots": ["Family at Disney"]
 }

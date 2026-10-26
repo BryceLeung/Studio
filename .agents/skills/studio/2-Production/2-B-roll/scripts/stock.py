@@ -2,6 +2,7 @@
 
 Uses only the Python standard library. ffprobe must already be on PATH for
 downloads. Credentials come only from PEXELS_API_KEY / PIXABAY_API_KEY.
+Storyblocks search/licensing uses the separate MCP bridge, not API keys here.
 Search metadata is discovery evidence, not a licence snapshot or content review.
 """
 from __future__ import annotations
@@ -23,7 +24,7 @@ import urllib.parse
 import urllib.request
 
 
-PROVIDERS = ("pexels", "pixabay")
+PROVIDERS = ("pexels", "pixabay", "storyblocks")
 WORKSPACE = Path(__file__).resolve().parents[6]
 TTL = 24 * 60 * 60
 MAX_BYTES = 1024 * 1024 * 1024
@@ -95,7 +96,8 @@ def allowed_url(url, provider, api=False):
     try:
         parsed = urllib.parse.urlsplit(url)
         host = parsed.hostname or ""
-        roots = ("pexels.com",) if provider == "pexels" else ("pixabay.com",)
+        roots = {"pexels": ("pexels.com",), "pixabay": ("pixabay.com",),
+                 "storyblocks": ("storyblocks.com", "dm0qx8t0i9gc9.cloudfront.net")}[provider]
         valid_host = any(host == root or host.endswith("." + root) for root in roots)
         if api:
             valid_host = host == ("api.pexels.com" if provider == "pexels" else "pixabay.com")
@@ -187,6 +189,8 @@ def redact(value, secrets):
 
 
 def search(provider, query, cache_dir, page=1):
+    if provider == 'storyblocks':
+        raise StockError('Storyblocks uses MCP: use broll.py storyblocks-begin, call the returned tool, then storyblocks-finish.')
     if provider not in PROVIDERS or not query.strip() or len(query) > 100 or page < 1:
         raise StockError("Choose a provider, a 1–100 character query, and a positive page.")
     cache_dir = external(cache_dir)
@@ -317,10 +321,12 @@ def probe(path):
     return {"duration_seconds": duration}
 
 
-def download(provider, url, output):
+def download(provider, url, output, *, _licensed=False):
     if provider not in PROVIDERS:
         raise StockError("Unsupported provider.")
     allowed_url(url, provider)
+    if provider == 'storyblocks' and not _licensed and '/watermarks/' not in urllib.parse.urlsplit(url).path:
+        raise StockError('Storyblocks full-resolution downloads require the licensed acquisition bridge.')
     output = external(output)
     if output.exists():
         raise StockError("Output already exists; overwriting is forbidden.")
@@ -390,6 +396,8 @@ def select_variant(hit, purpose="preview", min_width=1920):
     """Preview: smallest >=640 wide, else largest. Acquisition: largest >=minimum."""
     if purpose not in ("preview", "acquire", "samples") or type(min_width) is not int or min_width < 1:
         raise StockError("Choose preview or acquire and a positive minimum width.")
+    if hit.get('provider') == 'storyblocks' and purpose == 'acquire':
+        raise StockError('Storyblocks acquisition requires storyblocks.py acquire with an explicitly authorized MCP download response.')
     variants = []
     for variant in hit.get("variants", []):
         if not isinstance(variant, dict) or not valid_dimensions(variant) or not variant.get("url"):

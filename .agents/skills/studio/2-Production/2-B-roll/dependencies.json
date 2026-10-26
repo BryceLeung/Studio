@@ -7,6 +7,7 @@
   "workflow_dependencies": [
     ".agents/skills/studio/2-Production/2-B-roll/scripts/broll.py",
     ".agents/skills/studio/2-Production/2-B-roll/scripts/stock.py",
+    ".agents/skills/studio/2-Production/2-B-roll/scripts/storyblocks.py",
     ".agents/skills/studio/2-Production/2-B-roll/scripts/preview.py",
     ".agents/skills/studio/2-Production/2-B-roll/references/helpers.md",
     ".agents/skills/studio/1-Pre Production/4-Asset Breakdown/scripts/assets.py"

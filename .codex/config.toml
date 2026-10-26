@@ -10,4 +10,6 @@ sandbox_mode = "workspace-write"
 [sandbox_workspace_write]
 writable_roots = [
 	"/Users/bryceleung/Library/CloudStorage/OneDrive-Personal/Books/Parent Like a Millionaire/Marketing/Studio",
+	"C:/Users/bryce/OneDrive/Books/Parent Like a Millionaire/Marketing/Studio"
 ]
+network_access = true

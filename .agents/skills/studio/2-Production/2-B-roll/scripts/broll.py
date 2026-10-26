@@ -167,7 +167,7 @@ def load(project, asset, *, allow_unregistered=False):
         if event['kind'] == 'search':
             key = event['search_id']
             number = attempts.get(version, 0) + 1
-            require(type(key) is int and key == len(searches) + 1 and event['provider'] in ('pixabay', 'pexels')
+            require(type(key) is int and key == len(searches) + 1 and event['provider'] in ('pixabay', 'pexels', 'storyblocks')
                     and isinstance(event['query'], str) and event['query'].strip(), 'Invalid search attempt history')
             require(type(event.get('attempt')) is int and event['attempt'] == number
                     and event.get('directory') == attempt_relative(version, number), 'Invalid search attempt directory')
@@ -223,7 +223,7 @@ def load(project, asset, *, allow_unregistered=False):
         path = confined(project, (STAGE / asset / name).as_posix())
         require(path.is_file() and completion.matches_entry(candidate['identity'], project, ROOT), f'Changed/missing candidate: {name}')
         require(type(candidate['request_version']) is int and 1 <= candidate['request_version'] <= len(requests), 'Unknown originating request')
-        require(candidate['origin'] in ('User', 'Pexels', 'Pixabay') and candidate['source_id'].strip(), 'Invalid candidate origin/source')
+        require(candidate['origin'] in ('User', 'Pexels', 'Pixabay', 'Storyblocks') and candidate['source_id'].strip(), 'Invalid candidate origin/source')
         require(isinstance(candidate['assessments'], list), 'Invalid assessment history')
     media = {p.name for p in directory.iterdir() if p.suffix.lower() in EXTENSIONS}
     require(len({c['file'] for c in candidates}) == len(candidates), 'Duplicate candidate file records')
@@ -285,7 +285,8 @@ def write_request(project, asset, ledger, entry, text):
                 f'- Required shots: {json.dumps(entry["shots"], ensure_ascii=False)}\n'
                 '- Ratings: 0–5; weights: subject/action 40%, context/tone 25%, editing usefulness 25%, technical quality 10%.\n'
                 '- Contact-sheet threshold: 65/100; closer-review threshold: 80/100.\n'
-                '- Target: 3 distinct usable candidates; initial search plus at most 5 refinements.\n'
+                '- Target: 3 diverse visual ideas, each supported by a distinct usable video; initial search plus at most 5 refinements.\n'
+                '- Explore alternative actions serving the script role within essential constraints; record each candidate idea and script connection in assessment notes.\n'
                 '- Read this brief and its later revisions before working. Append search terms and inspected result scores below.\n')
     append_journal(project, asset, ledger, prefix + text + settings, 'request', entry['version'])
 
@@ -323,12 +324,21 @@ def refinement_budget(ledger, queries):
             'refinements_remaining': maximum - total}
 
 
-def record_search(project, asset, ledger, provider, query, reason):
-    require(provider in ('pixabay', 'pexels'), 'Unsupported stock provider')
+def record_search(project, asset, ledger, provider, query, reason, *, authorization=None, mcp_arguments=None):
+    require(provider in ('pixabay', 'pexels', 'storyblocks'), 'Unsupported stock provider')
     require(isinstance(query, str) and query.strip() and len(query) <= 100 and '\n' not in query and '\r' not in query,
             'Search terms must be a single nonempty line of at most 100 characters')
     require(isinstance(reason, str) and reason.strip(), 'Record why this search term is being tried')
-    budget = refinement_budget(ledger, [query])
+    if authorization is not None:
+        require(provider == 'storyblocks' and isinstance(authorization, str) and authorization.strip(),
+                'A Storyblocks retry requires the explicit user authorization text')
+        used = {' '.join(e['query'].split()).casefold() for e in ledger['events']
+                if e['kind'] == 'search' and e['request_version'] == ledger['requests'][-1]['version']}
+        budget = {'distinct_terms': len(used | {' '.join(query.split()).casefold()}),
+                  'refinements': max(0, len(used | {' '.join(query.split()).casefold()}) - 1),
+                  'refinements_remaining': max(0, 1 + MAX_SEARCH_REFINEMENTS - len(used | {' '.join(query.split()).casefold()}))}
+    else:
+        budget = refinement_budget(ledger, [query])
     search_id = max([event['search_id'] for event in ledger['events'] if event['kind'] == 'search'] + [0]) + 1
     revision = ledger['requests'][-1]['version']
     attempt = next_attempt(ledger)
@@ -343,9 +353,15 @@ def record_search(project, asset, ledger, provider, query, reason):
             f'- Results directory: [{relative}/]({relative}/)\n'
             f'- Why this term: {reason.strip()}\n- Refinements used: {budget["refinements"]}/{MAX_SEARCH_REFINEMENTS}\n- Status: started\n'
             f'\n```text\n{query}\n\tPending visual review\n```\n')
+    if authorization is not None:
+        text += f'\nExplicit authorization for this one Storyblocks retry: {authorization.strip()}\n'
+    if mcp_arguments is not None:
+        text += '\nMCP arguments:\n```json\n' + json.dumps(mcp_arguments, indent=2) + '\n```\n'
     append_journal(project, asset, ledger, text, 'search', revision,
                    search_id=search_id, provider=provider, query=query, reason=reason.strip(), budget=budget,
-                   attempt=attempt, directory=relative)
+                   attempt=attempt, directory=relative,
+                   **({'authorization': authorization} if authorization is not None else {}),
+                   **({'mcp_arguments': mcp_arguments} if mcp_arguments is not None else {}))
     return search_id
 
 
@@ -415,6 +431,7 @@ def search_note(project, asset, ledger, search_id, reason, reviews=None):
 def run_search(project, asset, provider, queries, reason, cache_dir=None, output_dir=None):
     """Allocate project-contained attempts, then journal each term before its provider call."""
     stock = module(Path(__file__).with_name('stock.py'), 'studio_broll_stock')
+    require(provider != 'storyblocks', 'Use storyblocks-begin and storyblocks-finish for the MCP bridge')
     require(isinstance(queries, list) and 1 <= len(queries) <= 1 + MAX_SEARCH_REFINEMENTS
             and all(isinstance(q, str) for q in queries) and len(set(queries)) == len(queries),
             'Supply at most 6 explicit search terms, within the remaining five-refinement budget')
@@ -480,6 +497,86 @@ def run_search(project, asset, provider, queries, reason, cache_dir=None, output
             'search_limit_reached': len(used) >= 1 + MAX_SEARCH_REFINEMENTS}
 
 
+def storyblocks_bridge(project, asset, action, *, query=None, reason=None, parameters=None,
+                       authorization=None, search_id=None, response_file=None, failed=False):
+    """Guarded MCP handoff. Begin precedes the call; finish never calls a provider."""
+    bridge = module(Path(__file__).with_name('storyblocks.py'), 'studio_storyblocks')
+    from scripts.stage_invalidation import invalidate
+    require_prerequisites(project, ROOT, '2.2')
+    with completion.mutation_guard(project):
+        require_prerequisites(project, ROOT, '2.2')
+        rows = eligible(project)
+        require(asset in rows, 'Select a current eligible asset')
+        ledger = load(project, asset)
+        request = ledger['requests'][-1]
+        require(request['registry'] == rows[asset], 'Registry changed; reconcile explicitly first')
+        require(request['sourcing'] != 'manual', 'Manual-only request cannot search stock')
+        if action == 'storyblocks-begin':
+            require(isinstance(parameters, dict), 'Supply search arguments in --spec')
+            allowed = {'keywords', 'required_keywords', 'filtered_keywords', 'categories', 'content_type',
+                       'orientation', 'quality', 'min_duration', 'max_duration', 'frame_rates', 'safe_search',
+                       'has_property_released', 'has_talent_released', 'is_editorial', 'is_vr_360', 'has_alpha',
+                       'template_type', 'page', 'results_per_page', 'sort_by', 'sort_order', 'extended'}
+            require(set(parameters) <= allowed and parameters.get('keywords') == query,
+                    'MCP parameters must match --query; account identities cannot be supplied here')
+            require(isinstance(parameters.get('required_keywords'), str) and parameters['required_keywords'].strip(),
+                    'Supply a primary subject noun in required_keywords')
+            require(type(parameters.get('page', 1)) is int and parameters.get('page', 1) >= 1
+                    and type(parameters.get('results_per_page', 15)) is int
+                    and 1 <= parameters.get('results_per_page', 15) <= 250
+                    and parameters.get('page', 1) * parameters.get('results_per_page', 15) <= 10000,
+                    'Invalid Storyblocks page bounds')
+            require(isinstance(query, str) and query.strip() and len(query) <= 100 and '\n' not in query and '\r' not in query,
+                    'Supply one search term of at most 100 characters')
+            require(isinstance(reason, str) and reason.strip(), 'Explain why this search is being tried')
+            if authorization is None:
+                refinement_budget(ledger, [query])
+            else:
+                require(isinstance(authorization, str) and authorization.strip(), 'Record explicit authorization for this one retry')
+            require(not any(e['kind'] == 'search' and e['provider'] == 'storyblocks'
+                            and not any(o['kind'] == 'search-result' and o['search_id'] == e['search_id'] for o in ledger['events'])
+                            for e in ledger['events']), 'Finish the pending Storyblocks attempt before starting another')
+            invalidate(project, ROOT, '2.2', f'Storyblocks search started for {asset}')
+            sid = record_search(project, asset, ledger, 'storyblocks', query, reason,
+                                authorization=authorization, mcp_arguments=parameters)
+            attempt = next(e for e in ledger['events'] if e['kind'] == 'search' and e['search_id'] == sid)
+            log(project, 'Storyblocks MCP search prepared', f'{asset}: search {sid}; call MCP once, then import its response.')
+            return {'search_id': sid, 'output_dir': str(folder(project, asset) / attempt['directory']),
+                    'tool': 'mcp__storyblocks__search_videos', 'arguments': parameters,
+                    'next_action': 'Save the MCP response, then run storyblocks-finish with this search ID.'}
+        require(action == 'storyblocks-finish', 'Unknown MCP bridge action')
+        matches = [e for e in ledger['events'] if e['kind'] == 'search' and e['search_id'] == search_id
+                   and e['provider'] == 'storyblocks' and e['request_version'] == request['version']]
+        require(len(matches) == 1, 'Unknown or superseded Storyblocks search ID')
+        require(not any(e['kind'] == 'search-result' and e['search_id'] == search_id for e in ledger['events']),
+                'Search outcome already recorded; do not import it twice')
+        attempt = matches[0]
+        target = confined(project, (STAGE / asset / attempt['directory']).as_posix())
+        stock = module(Path(__file__).with_name('stock.py'), 'studio_stock_import')
+        normalized = None
+        if not failed:
+            require(response_file is not None, 'Supply --file with the captured MCP response')
+            raw = bridge.read_response(response_file)
+            # Capture the tool call and arguments as well as its response to bind filters and page.
+            require(raw.get('tool') == 'mcp__storyblocks__search_videos'
+                    and raw.get('arguments') == attempt['mcp_arguments'], 'MCP call does not match the prepared search')
+            normalized = bridge.normalize_search(raw['response'], attempt['query'])
+            require(normalized['page'] == attempt['mcp_arguments'].get('page', 1), 'MCP page differs from the prepared request')
+        require(not (target / 'outcome.json').exists() and not (target / 'results.json').exists(),
+                'Interrupted import artifacts exist; inspect before retrying')
+        invalidate(project, ROOT, '2.2', f'Storyblocks search outcome for {asset}')
+        if normalized is not None:
+            stock.save_json_new(target / 'results.json', normalized)
+        status = 'failed' if failed else 'succeeded'
+        count = None if failed else len(normalized['results'])
+        relative = None if failed else (Path(attempt['directory']) / 'results.json').as_posix()
+        atomic_json(target / 'outcome.json', {'status': status, 'search_id': search_id, 'count': count})
+        search_outcome(project, asset, ledger, search_id, status, count=count, result_file=relative)
+        log(project, 'Storyblocks MCP search imported', f'{asset}: search {search_id} {status}; no licensing call made.')
+        return {'search_id': search_id, 'status': status, 'count': count, 'output_dir': str(target),
+                'result_file': str(target / 'results.json') if normalized is not None else None}
+
+
 def probe(path):
     try:
         result = subprocess.run(['ffprobe', '-v', 'error', '-show_streams', '-show_format', '-of', 'json', str(path)],
@@ -496,16 +593,23 @@ def probe(path):
 
 
 def provenance(spec):
-    require(spec['origin'] in ('User', 'Pexels', 'Pixabay'), 'Unsupported origin; Storyblocks is not enabled')
+    require(spec['origin'] in ('User', 'Pexels', 'Pixabay', 'Storyblocks'), 'Unsupported origin')
     for key in ('source_id', 'description'):
         require(isinstance(spec[key], str) and spec[key].strip(), f'{key} is required')
     if spec['origin'] != 'User':
         host = urlparse(spec['source_url'])
-        domain = {'Pexels': 'pexels.com', 'Pixabay': 'pixabay.com'}[spec['origin']]
+        domain = {'Pexels': 'pexels.com', 'Pixabay': 'pixabay.com', 'Storyblocks': 'storyblocks.com'}[spec['origin']]
         require(host.scheme == 'https' and (host.hostname == domain or (host.hostname or '').endswith('.' + domain)), 'Provider page URL mismatch')
         licence = spec['license']
         require(all(isinstance(licence.get(k), str) and licence[k].strip() for k in ('url', 'text', 'checked_at')),
                 'Stock licence URL, retained text and checked_at are required')
+        if spec['origin'] == 'Storyblocks':
+            receipt = licence.get('acquisition', {})
+            require(receipt.get('tool') == 'mcp__storyblocks__get_download_url'
+                    and receipt.get('stock_item_id') == spec['source_id']
+                    and isinstance(receipt.get('authorization'), str) and receipt['authorization'].strip()
+                    and all(isinstance(receipt.get(k), str) and re.fullmatch(r'[0-9a-f]{64}', receipt[k])
+                            for k in ('sha256', 'response_sha256')), 'Storyblocks licensed acquisition evidence is required')
 
 
 def register(project, asset, source, spec, ledger):
@@ -513,6 +617,8 @@ def register(project, asset, source, spec, ledger):
     require(source.is_file() and source.suffix.lower() in EXTENSIONS, 'Supply a local video file')
     technical = probe(source)
     content = sha(source)
+    if spec['origin'] == 'Storyblocks':
+        require(spec['license']['acquisition']['sha256'] == content, 'Storyblocks receipt does not match acquired video bytes')
     require(not any(c['sha256'] == content for c in ledger['candidates']), 'Duplicate candidate bytes')
     require(not any(c['origin'] == spec['origin'] and c['source_id'] == spec['source_id'] for c in ledger['candidates']), 'Source already registered for this asset')
     if ledger['requests'][-1]['sourcing'] == 'manual':
@@ -526,6 +632,19 @@ def register(project, asset, source, spec, ledger):
     return destination, dict(spec, id=cid, file=destination.name, sha256=content, technical=technical,
                              original_filename=source.name, acquired_at=now(),
                              request_version=len(ledger['requests']), assessments=[])
+
+
+def correct_credit(candidate, spec, reason):
+    require(isinstance(spec, dict), 'Credit correction requires a provenance reference')
+    require(candidate['origin'] in ('Pexels', 'Pixabay', 'Storyblocks'), 'Credit correction requires a stock candidate')
+    require(all(spec.get(key) == candidate[key] for key in ('origin', 'source_id', 'source_url')),
+            'Credit correction cannot change source identity')
+    require(isinstance(reason, str) and reason.strip(), 'Credit correction requires a reason')
+    attribution = spec.get('attribution')
+    require(isinstance(attribution, str) and attribution.strip(), 'Corrected attribution is required')
+    require(attribution != candidate['license'].get('attribution'), 'Attribution is unchanged')
+    return {'previous': candidate['license'].get('attribution'), 'attribution': attribution,
+            'reason': reason, 'corrected_at': now()}
 
 
 def assess(ledger, candidate, spec):
@@ -587,6 +706,8 @@ def check(project, rows=None):
                 require(request['sourcing'] != 'manual' or candidate['origin'] == 'User',
                         f'{asset}: current manual request cannot be satisfied by stock')
                 require(sha(folder(project, asset) / candidate['file']) == candidate['sha256'], 'Candidate content changed')
+                if candidate['origin'] == 'Storyblocks':
+                    require(candidate['license']['acquisition']['sha256'] == candidate['sha256'], 'Storyblocks receipt hash mismatch')
                 require(probe(folder(project, asset) / candidate['file']) == candidate['technical'], 'Video metadata differs from registration')
                 accepted.append(candidate)
                 covered.update(review['shots'])
@@ -620,20 +741,31 @@ def log(project, title, message):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=('context', 'init', 'revise', 'search', 'search-note', 'register', 'assess', 'check', 'complete'))
+    parser.add_argument('action', choices=('context', 'init', 'revise', 'search', 'storyblocks-begin', 'storyblocks-finish', 'search-note', 'register', 'correct-credit', 'assess', 'check', 'complete'))
     parser.add_argument('--project-root', required=True, type=Path)
     parser.add_argument('--asset')
     parser.add_argument('--spec', type=Path, help='Plans, provenance or assessment JSON; see skill reference')
     parser.add_argument('--file', type=Path, help='Full revised request text or local source video')
     parser.add_argument('--reason')
     parser.add_argument('--candidate')
-    parser.add_argument('--provider', choices=('pixabay', 'pexels'), default='pixabay')
+    parser.add_argument('--provider', choices=('pixabay', 'pexels', 'storyblocks'), default='pixabay')
     parser.add_argument('--query', action='append')
     parser.add_argument('--cache-dir', type=Path)
     parser.add_argument('--output-dir', type=Path)
     parser.add_argument('--search-id', type=int)
+    parser.add_argument('--authorization', help='Exact user authorization for this one Storyblocks retry; never inferred')
+    parser.add_argument('--failed', action='store_true', help='Finish a failed MCP search without importing results')
     args = parser.parse_args()
     project = args.project_root.resolve(strict=True)
+    if args.action in ('storyblocks-begin', 'storyblocks-finish'):
+        require(args.asset, 'MCP bridge requires --asset')
+        require(args.action != 'storyblocks-begin' or args.query and len(args.query) == 1,
+                'MCP begin requires exactly one --query')
+        print(json.dumps(storyblocks_bridge(project, args.asset, args.action,
+                         query=args.query[0] if args.query else None, reason=args.reason,
+                         parameters=read_json(args.spec) if args.spec else None, authorization=args.authorization,
+                         search_id=args.search_id, response_file=args.file, failed=args.failed), indent=2))
+        return
     if args.action == 'context':
         print(json.dumps({'assets': eligible(project), 'stage': STAGE.as_posix()}, indent=2))
         return
@@ -688,6 +820,10 @@ def main():
             elif args.action == 'register':
                 require(args.file and isinstance(spec, dict), 'Registration requires --file and provenance --spec')
                 destination, candidate = register(project, args.asset, args.file, spec, ledger)
+            elif args.action == 'correct-credit':
+                candidate = next((c for c in ledger['candidates'] if c['id'] == args.candidate), None)
+                require(candidate is not None, 'Supply a registered --candidate')
+                correction = correct_credit(candidate, spec, args.reason)
             elif args.action == 'assess':
                 candidate = next((c for c in ledger['candidates'] if c['id'] == args.candidate), None)
                 require(candidate is not None and isinstance(spec, dict), 'Supply registered --candidate and assessment --spec')
@@ -716,6 +852,10 @@ def main():
             require(sha(destination) == candidate['sha256'], 'Source changed while copying; inspect unregistered destination')
             candidate['identity'] = completion.fingerprint(destination, project, 'project')
             ledger['candidates'].append(candidate)
+            atomic_json(folder(project, args.asset) / 'Candidates.json', ledger)
+        elif args.action == 'correct-credit':
+            candidate.setdefault('credit_corrections', []).append(correction)
+            candidate['license']['attribution'] = correction['attribution']
             atomic_json(folder(project, args.asset) / 'Candidates.json', ledger)
         elif args.action == 'assess':
             candidate['assessments'].append(review)

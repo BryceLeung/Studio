@@ -26,6 +26,24 @@ assets = fixture_module.assets
 from scripts import validation, stage_completion as completion
 
 
+class CreditCorrectionTests(unittest.TestCase):
+    def test_credit_correction_preserves_source_and_requires_same_identity(self):
+        candidate = {'origin': 'Pixabay', 'source_id': '86866',
+                     'source_url': 'https://pixabay.com/videos/id-86866/',
+                     'license': {'attribution': 'Wrong author'}, 'sha256': 'unchanged'}
+        spec = {key: candidate[key] for key in ('origin', 'source_id', 'source_url')}
+        spec['attribution'] = 'Verified author, Pixabay, original page'
+        correction = broll.correct_credit(candidate, spec, 'Verified saved provider result')
+        self.assertEqual(correction['previous'], 'Wrong author')
+        self.assertEqual(candidate['license']['attribution'], 'Wrong author')
+        self.assertEqual(candidate['sha256'], 'unchanged')
+        for key in ('origin', 'source_id', 'source_url'):
+            with self.subTest(key=key), self.assertRaisesRegex(ValueError, 'source identity'):
+                broll.correct_credit(candidate, dict(spec, **{key: 'different'}), 'Verified')
+        with self.assertRaisesRegex(ValueError, 'requires a reason'):
+            broll.correct_credit(candidate, spec, '')
+
+
 class BrollTests(unittest.TestCase):
     def setUp(self):
         self.fixture = fixture_module.AssetTests('runTest')
@@ -102,6 +120,82 @@ class BrollTests(unittest.TestCase):
         self.assertEqual(sidecar, self.fixture.path.with_suffix('.json').read_bytes())
         self.fixture.path.write_text(original.replace('**Type:** B-roll', '**Type:** Graphic'), encoding='utf-8')
         self.assertEqual(broll.eligible(self.project), {})
+
+    def test_storyblocks_begin_finish_journals_and_reuses_existing_review_flow(self):
+        params = {'keywords': 'elderly hands', 'required_keywords': 'hand', 'content_type': 'footage'}
+        with patch.object(broll, 'require_prerequisites'):
+            begun = broll.storyblocks_bridge(self.project, self.asset, 'storyblocks-begin',
+                         query=params['keywords'], reason='Find supportive hand contact', parameters=params)
+            self.assertEqual(begun['arguments'], params)
+            with self.assertRaisesRegex(ValueError, 'pending'):
+                broll.storyblocks_bridge(self.project, self.asset, 'storyblocks-begin',
+                    query=params['keywords'], reason='Retry', parameters=params)
+            response = self.project / 'mcp-response.json'
+            response.write_text(json.dumps({'tool': begun['tool'], 'arguments': params,
+                'response': {'results': [{'id': 123, 'contentClass': 'video', 'duration': 8,
+                    'details_url': 'https://www.storyblocks.com/video/stock/hands-123',
+                    'thumbnail_url': 'https://dm0qx8t0i9gc9.cloudfront.net/thumbnails/123.jpg'}]}}))
+            finished = broll.storyblocks_bridge(self.project, self.asset, 'storyblocks-finish',
+                           search_id=begun['search_id'], response_file=response)
+            self.assertEqual(finished['count'], 1)
+            ledger = broll.load(self.project, self.asset)
+            broll.search_note(self.project, self.asset, ledger, begun['search_id'], 'Review pending')
+            self.assertEqual(broll.load(self.project, self.asset)['events'][-1]['kind'], 'search-note')
+            with self.assertRaisesRegex(ValueError, 'already recorded'):
+                broll.storyblocks_bridge(self.project, self.asset, 'storyblocks-finish',
+                    search_id=begun['search_id'], response_file=response)
+
+    def test_storyblocks_failure_and_explicit_retry_do_not_reset_budget(self):
+        ledger = broll.load(self.project, self.asset)
+        for i in range(6):
+            sid = broll.record_search(self.project, self.asset, ledger, 'pixabay', f'query {i}', 'Search fixture')
+            broll.search_outcome(self.project, self.asset, ledger, sid, 'failed')
+        old = (self.directory / 'search.01.md').read_bytes()
+        params = {'keywords': 'older hands', 'required_keywords': 'hand'}
+        with patch.object(broll, 'require_prerequisites'):
+            with self.assertRaisesRegex(ValueError, 'limit reached'):
+                broll.storyblocks_bridge(self.project, self.asset, 'storyblocks-begin',
+                    query=params['keywords'], reason='Retry', parameters=params)
+            begun = broll.storyblocks_bridge(self.project, self.asset, 'storyblocks-begin',
+                query=params['keywords'], reason='Try the authorized provider', parameters=params,
+                authorization='User explicitly requested one Storyblocks retry')
+            broll.storyblocks_bridge(self.project, self.asset, 'storyblocks-finish', search_id=begun['search_id'], failed=True)
+        ledger = broll.load(self.project, self.asset)
+        self.assertEqual(len(ledger['requests']), 1)
+        self.assertTrue((self.directory / 'search.01.md').read_bytes().startswith(old))
+        self.assertEqual(ledger['events'][-1]['status'], 'failed')
+        with self.assertRaisesRegex(ValueError, 'limit reached'):
+            broll.refinement_budget(ledger, ['another term'])
+
+    def test_storyblocks_registration_requires_licensed_bytes(self):
+        source = self.project / 'licensed.mp4'
+        source.write_bytes(b'licensed footage')
+        ledger = broll.load(self.project, self.asset)
+        spec = {'origin': 'Storyblocks', 'source_id': '123', 'description': 'Inspected older hands',
+                'source_url': 'https://www.storyblocks.com/video/stock/hands-123',
+                'license': {'url': 'https://www.storyblocks.com/video/stock/hands-123',
+                            'text': 'Captured MCP licensed acquisition', 'checked_at': '2026-10-25T00:00:00Z'}}
+        with self.assertRaisesRegex(ValueError, 'licensed acquisition'):
+            broll.register(self.project, self.asset, source, spec, ledger)
+        spec['license']['acquisition'] = {'tool': 'mcp__storyblocks__get_download_url', 'stock_item_id': '123',
+                'authorization': 'User requested this clip', 'sha256': broll.sha(source), 'response_sha256': 'a' * 64}
+        destination, candidate = broll.register(self.project, self.asset, source, spec, ledger)
+        shutil.copyfile(source, destination)
+        candidate['identity'] = completion.fingerprint(destination, self.project, 'project')
+        ledger['candidates'].append(candidate)
+        self.save(ledger)
+        self.assertEqual(broll.load(self.project, self.asset)['candidates'][0]['origin'], 'Storyblocks')
+        other = self.project / 'other.mp4'
+        other.write_bytes(b'not the licensed bytes')
+        with self.assertRaisesRegex(ValueError, 'receipt does not match'):
+            broll.register(self.project, self.asset, other, spec, ledger)
+        candidate['assessments'].append(broll.assess(ledger, candidate, {
+            'suitable': True, 'reviewed_by': 'Fixture reviewer', 'notes': 'Full-resolution inspected',
+            'ranges': [[1, 5]], 'shots': ['hands', 'lunch']}))
+        self.save(ledger)
+        self.candidate(20)
+        self.candidate(21)
+        self.assertEqual(broll.check(self.project), {self.asset: 3})
 
     def test_revisions_create_numbered_journals_and_preserve_previous_bytes(self):
         original = (self.directory / 'search.01.md').read_bytes()
@@ -551,8 +645,8 @@ class BrollTests(unittest.TestCase):
                 broll.confined(self.project, path)
         with self.assertRaisesRegex(ValueError, 'Invalid ASSET ID'):
             broll.folder(self.project, '../ASSET-000001')
-        with self.assertRaisesRegex(ValueError, 'Storyblocks'):
-            broll.provenance({'origin': 'Storyblocks'})
+        with self.assertRaisesRegex(ValueError, 'Unsupported origin'):
+            broll.provenance({'origin': 'Unknown'})
         stock = {'origin': 'Pexels', 'source_id': 'x', 'description': 'x', 'source_url': 'https://pexels.com.evil.example/video'}
         with self.assertRaisesRegex(ValueError, 'Provider page URL'):
             broll.provenance(stock)
