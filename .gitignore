@@ -13,5 +13,6 @@ __pycache__/
 /dist/
 /.kilo/
 
-# Local JavaScript dependencies, including Remotion's browser download.
+# Local JavaScript dependencies and downloaded Remotion browsers.
 node_modules/
+.remotion/

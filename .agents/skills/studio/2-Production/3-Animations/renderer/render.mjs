@@ -1,25 +1,27 @@
 import {constants, realpathSync} from 'node:fs';
-import {copyFile, mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile} from 'node:fs/promises';
+import {copyFile, mkdir, mkdtemp, readFile, realpath, rm, stat} from 'node:fs/promises';
 import path from 'node:path';
 import {createRequire} from 'node:module';
 import {fileURLToPath} from 'node:url';
 import {parseArgs} from 'node:util';
 import {bundle} from '@remotion/bundler';
-import {openBrowser, renderMedia, selectComposition} from '@remotion/renderer';
+import {getCompositions, openBrowser, renderMedia} from '@remotion/renderer';
 import {validateSettings} from './settings.mjs';
+import {findRenderPort} from './ports.mjs';
 
 const renderer = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
 
-export const render = async ({sourceDir, publicDir, settingsFile, output}) => {
+export const render = async ({sourceDir, publicDir, settingsFile, output, inspectOnly = false}) => {
   const source = await realpath(sourceDir);
   const compositionFile = await realpath(path.join(source, 'Composition.tsx'));
+  const studioEntry = await realpath(path.join(source, 'Studio.tsx'));
   if (path.dirname(compositionFile) !== source || !(await stat(compositionFile)).isFile()) {
     throw new Error('Composition.tsx must be a file directly inside the source directory.');
   }
   const settings = validateSettings(JSON.parse(await readFile(settingsFile, 'utf8')));
-  const destination = path.resolve(output);
-  if (path.extname(destination).toLowerCase() !== '.mp4') {
+  const destination = inspectOnly ? null : path.resolve(output);
+  if (!inspectOnly && path.extname(destination).toLowerCase() !== '.mp4') {
     throw new Error('Output must be an MP4 file.');
   }
   // Public assets and code are supplied by the lifecycle helper's immutable snapshot.
@@ -48,15 +50,8 @@ export const render = async ({sourceDir, publicDir, settingsFile, output}) => {
         });
       },
     };
-    const entry = path.join(temporary, 'entry.js');
-    await writeFile(entry, [
-      "import React from 'react';",
-      "import {Composition, registerRoot} from 'remotion';",
-      `import Asset from ${JSON.stringify(compositionFile.replaceAll('\\', '/'))};`,
-      `registerRoot(() => React.createElement(Composition, {id: 'Animation', component: Asset, width: ${settings.width}, height: ${settings.height}, fps: ${settings.fps}, durationInFrames: ${settings.durationInFrames}}));`,
-    ].join('\n'));
     const serveUrl = await bundle({
-      entryPoint: entry,
+      entryPoint: studioEntry,
       rootDir: renderer,
       outDir: path.join(temporary, 'bundle'),
       publicDir: references,
@@ -83,12 +78,22 @@ export const render = async ({sourceDir, publicDir, settingsFile, output}) => {
       },
     });
     const inputProps = settings.props ?? {};
-    const composition = await selectComposition({serveUrl, id: 'Animation', inputProps, puppeteerInstance: browser, logLevel: 'error'});
+    const port = await findRenderPort();
+    const compositions = await getCompositions({serveUrl, inputProps, port, puppeteerInstance: browser, logLevel: 'error', onBrowserLog: ({type, text}) => {if (type === 'error') console.error(text);}});
+    if (compositions.length !== 1) throw new Error('An animation asset must register exactly one Studio composition.');
+    const composition = compositions[0];
+    const resolved = validateSettings({width: composition.width, height: composition.height,
+      fps: composition.fps, durationInFrames: composition.durationInFrames});
+    if (inspectOnly) return resolved;
+    if (Object.keys(resolved).some(key => resolved[key] !== settings[key])) {
+      throw new Error('Studio metadata differs from recorded settings. Render through animations.py to capture current Studio metadata first.');
+    }
     const rendered = path.join(temporary, 'render.mp4');
     await renderMedia({
       serveUrl,
       composition,
       inputProps,
+      port,
       codec: 'h264',
       pixelFormat: 'yuv420p',
       outputLocation: rendered,
@@ -97,7 +102,7 @@ export const render = async ({sourceDir, publicDir, settingsFile, output}) => {
       logLevel: 'error',
     });
     await copyFile(rendered, destination, constants.COPYFILE_EXCL);
-    return {output: destination, width: settings.width, height: settings.height, fps: settings.fps, durationInFrames: settings.durationInFrames};
+    return {output: destination, ...resolved};
   } finally {
     try {
       if (browser) await browser.close({silent: true});
@@ -114,12 +119,13 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
       'public-dir': {type: 'string'},
       settings: {type: 'string'},
       output: {type: 'string'},
+      inspect: {type: 'boolean', default: false},
     }});
-    if (['source-dir', 'public-dir', 'settings', 'output'].some((key) => !values[key])) {
-      throw new Error('Required: --source-dir DIR --public-dir DIR --settings FILE --output FILE.mp4');
+    if (['source-dir', 'public-dir', 'settings'].some((key) => !values[key]) || (!values.inspect && !values.output)) {
+      throw new Error('Required: --source-dir DIR --public-dir DIR --settings FILE (--output FILE.mp4 | --inspect)');
     }
     // Remotion locates its installed browser relative to the renderer package.
-    const options = {sourceDir: path.resolve(values['source-dir']), publicDir: path.resolve(values['public-dir']), settingsFile: path.resolve(values.settings), output: path.resolve(values.output)};
+    const options = {sourceDir: path.resolve(values['source-dir']), publicDir: path.resolve(values['public-dir']), settingsFile: path.resolve(values.settings), output: values.output ? path.resolve(values.output) : undefined, inspectOnly: values.inspect};
     process.chdir(renderer);
     const result = await render(options);
     console.log(JSON.stringify(result));

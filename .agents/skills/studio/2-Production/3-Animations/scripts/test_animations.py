@@ -43,6 +43,7 @@ class AnimationTests(unittest.TestCase):
                     Path('scripts/append-log.py'),
                     Path('scripts/stage_invalidation.py'), Path('studio/fingerprints.py'),
                     Path('.agents/skills/studio/1-Pre Production/4-Asset Breakdown/scripts/assets.py')]
+        required.extend(Path(name) for name in json.loads((original / a.LOCAL / 'dependencies.json').read_text())['workflow_dependencies'])
         for relative in required:
             target = self.workflow / relative
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -56,16 +57,20 @@ class AnimationTests(unittest.TestCase):
             'step': '1.4', 'folder': a.REGISTRY.as_posix(), 'prerequisites': [],
             'inputs': [], 'outputs': []}), encoding='utf-8')
         renderer = self.workflow / a.LOCAL / 'renderer'
-        (renderer / 'template').mkdir(parents=True)
-        for name in ('render.mjs', 'probe.mjs', 'settings.mjs', 'package.json', 'package-lock.json'):
+        (renderer / 'template').mkdir(parents=True, exist_ok=True)
+        for name in ('render.mjs', 'studio.mjs', 'probe.mjs', 'settings.mjs', 'package.json', 'package-lock.json'):
             (renderer / name).write_text('{}', encoding='utf-8')
         (renderer / 'template/Composition.tsx').write_text('export default () => null;\n')
+        for name in ('Studio.tsx', 'tsconfig.json'):
+            shutil.copyfile(original / a.LOCAL / 'renderer/template' / name, renderer / 'template' / name)
         self.start_patch(a, 'ROOT', self.workflow)
         self.start_patch(a, 'RENDERER', renderer)
         self.prerequisites = self.start_patch(a, 'require_prerequisites')
         self.start_patch(validation, 'require_prerequisites')
         self.real_transition = a.transition
         self.real_renderer = a.run_renderer
+        self.real_inspector = a.inspect_settings
+        self.inspector = self.start_patch(a, 'inspect_settings', return_value=dict(a.DEFAULT_SETTINGS))
         self.start_patch(a, 'log')
         self.transition = self.start_patch(a, 'transition')
         self.start_patch(subprocess, 'run', side_effect=self.external)
@@ -135,12 +140,98 @@ class AnimationTests(unittest.TestCase):
         self.assertEqual(list((self.directory / 'APPROVED').iterdir()), [])
         self.assertTrue((self.directory / 'src/Composition.tsx').is_file())
         self.assertTrue((self.directory / 'references').is_dir())
+        self.assertTrue(ledger['studio_ready'])
+        self.assertTrue((self.directory / 'src/Studio.tsx').is_file())
+        self.assertTrue(a.read_json(self.directory / 'package.json')['private'])
+        self.assertEqual(a.read_json(self.directory / 'tsconfig.json')['include'], ['src/**/*'])
         with self.assertRaisesRegex(ValueError, 'exactly one'):
             a.check(self.project)
         before = self.state()
         with patch.object(a, 'audit', return_value={a.STEP: {'status': 'missing'}}):
             self.assertEqual(a.init(self.project, self.asset)['status'], 'reused')
         self.assertEqual(before, self.state())
+
+    def test_init_recovers_only_pristine_scaffold_before_request_publication(self):
+        (self.directory / 'Animation.json').unlink()
+        (self.directory / 'request.01.md').unlink()
+        source = self.directory / 'src/Composition.tsx'
+        before = source.read_bytes(), source.stat().st_mtime_ns
+        self.assertEqual(a.init(self.project, self.asset)['status'], 'initialized')
+        self.assertEqual(before, (source.read_bytes(), source.stat().st_mtime_ns))
+        self.assertEqual(a.load(self.project, self.asset)['renders'], [])
+
+    def test_init_recovery_refuses_edited_or_unregistered_work(self):
+        (self.directory / 'Animation.json').unlink()
+        (self.directory / 'request.01.md').unlink()
+        source = self.directory / 'src/Composition.tsx'
+        original = source.read_bytes()
+        source.write_text('Human authored composition')
+        with self.assertRaisesRegex(ValueError, 'edited or unexpected'):
+            a.init(self.project, self.asset)
+        self.assertEqual(source.read_text(), 'Human authored composition')
+        source.write_bytes(original)
+        (self.directory / 'references/human.txt').write_text('Human reference')
+        with self.assertRaisesRegex(ValueError, 'edited or unexpected'):
+            a.init(self.project, self.asset)
+
+    def test_first_log_entry_creates_log_and_appends_without_rewriting(self):
+        logger = load_module('studio_animation_real_logger', Path(__file__).with_name('animations.py'))
+        log_path = self.project / a.STAGE / 'LOG.md'
+        with patch.object(logger, 'ROOT', self.workflow):
+            logger.log(self.project, 'First', 'First entry')
+            first = log_path.read_bytes()
+            logger.log(self.project, 'Second', 'Second entry')
+        self.assertTrue(log_path.read_bytes().startswith(first))
+        self.assertIn(b'Second entry', log_path.read_bytes())
+
+    def test_studio_launch_preserves_existing_work_and_releases_mutation_lock(self):
+        (self.directory / 'src/Composition.tsx').write_text('Human authored artwork')
+        before = self.state()
+        def launch(command, **kwargs):
+            self.assertEqual(command, ['node', str(a.RENDERER / 'studio.mjs'), '--source-dir',
+                str(self.directory / 'src'), '--public-dir', str(self.directory / 'references'),
+                '--port', '3033', '--no-open'])
+            with completion.mutation_guard(self.project):
+                pass
+            return subprocess.CompletedProcess(command, 0)
+        with patch.object(subprocess, 'run', side_effect=launch):
+            a.studio(self.project, self.asset, 3033, True)
+        self.assertEqual(before, self.state())
+
+    def test_current_studio_contract_requires_its_entry_and_configuration(self):
+        (self.directory / 'src/Studio.tsx').unlink()
+        before = self.state()
+        for action in (lambda: a.render(self.project, self.asset), lambda: a.studio(self.project, self.asset)):
+            with self.assertRaisesRegex(ValueError, 'missing required Studio'):
+                action()
+        self.assertEqual(before, self.state())
+
+    def test_studio_metadata_is_captured_before_candidate_snapshot(self):
+        value = dict(width=1280, height=720, fps=24, durationInFrames=240)
+        metadata = dict(width=1280, height=720, fps=24, durationInSeconds=10)
+        with patch.object(a, 'inspect_settings', return_value=value), patch.object(a, 'probe', return_value=metadata):
+            a.render(self.project, self.asset)
+        self.assertEqual(a.read_json(self.directory / 'settings.json'), value)
+        snapshot = self.directory / 'snapshots/v001'
+        self.assertEqual(a.read_json(snapshot / 'settings.json'), value)
+        self.assertEqual((snapshot / 'src/Studio.tsx').read_bytes(), (self.directory / 'src/Studio.tsx').read_bytes())
+        self.assertEqual((snapshot / 'package.json').read_bytes(), (self.directory / 'package.json').read_bytes())
+
+    def test_metadata_race_never_registers_a_render_or_rewrites_settings(self):
+        original = (self.directory / 'settings.json').read_bytes()
+        def editing(directory):
+            (directory / 'src/Studio.tsx').write_text('Changed while inspecting')
+            return dict(a.DEFAULT_SETTINGS, durationInFrames=300)
+        with patch.object(a, 'inspect_settings', side_effect=editing), self.assertRaisesRegex(ValueError, 'changed during Studio metadata'):
+            a.render(self.project, self.asset)
+        self.assertEqual((self.directory / 'settings.json').read_bytes(), original)
+        self.assertEqual(a.load(self.project, self.asset)['renders'], [])
+
+    def test_current_render_reuse_does_not_start_metadata_browser(self):
+        a.render(self.project, self.asset)
+        self.inspector.reset_mock()
+        self.assertEqual(a.render(self.project, self.asset)['status'], 'reused')
+        self.inspector.assert_not_called()
 
     def test_approval_matches_moved_and_renamed_bytes_and_is_readonly(self):
         approved = self.approve()
@@ -310,7 +401,8 @@ class AnimationTests(unittest.TestCase):
         self.prerequisites.side_effect = ValueError('1.4 is stale')
         for action in (lambda: a.init(self.project, self.asset),
                        lambda: a.revise(self.project, self.asset, 'new request'),
-                       lambda: a.render(self.project, self.asset), lambda: a.complete(self.project)):
+                       lambda: a.render(self.project, self.asset), lambda: a.complete(self.project),
+                       lambda: a.studio(self.project, self.asset)):
             with self.assertRaisesRegex(ValueError, '1.4 is stale'):
                 action()
         self.assertEqual(before, self.state())
@@ -412,6 +504,10 @@ class AnimationTests(unittest.TestCase):
             self.assertEqual(run.call_args.kwargs['cwd'], a.RENDERER)
             self.assertTrue(run.call_args.kwargs['check'])
             self.assertEqual(run.call_args.kwargs['timeout'], 3600)
+        with patch.object(subprocess, 'run', return_value=subprocess.CompletedProcess([], 0, json.dumps(a.DEFAULT_SETTINGS), '')) as run:
+            self.assertEqual(self.real_inspector(self.directory), a.DEFAULT_SETTINGS)
+            self.assertIn('--inspect', run.call_args.args[0])
+            self.assertNotIn('--output', run.call_args.args[0])
         failure = subprocess.CalledProcessError(1, 'node', stderr='Browser missing; explicit setup required')
         with patch.object(subprocess, 'run', side_effect=failure):
             with self.assertRaisesRegex(ValueError, 'Browser missing'):

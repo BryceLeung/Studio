@@ -1,9 +1,21 @@
 {
-  "schema": "studio.stage", "schema_version": 1, "step": "2.3",
-  "folder": "2-Production/3-Animations", "requires_stage_check": true,
-  "completion": {"stage_owned": true},
-  "validation": {"script": "scripts/validation.py"},
-  "prerequisites": [{"step": "1.4", "folder": "1-Pre Production/4-Asset Breakdown"}],
+  "schema": "studio.stage",
+  "schema_version": 1,
+  "step": "2.3",
+  "folder": "2-Production/3-Animations",
+  "requires_stage_check": true,
+  "completion": {
+    "stage_owned": true
+  },
+  "validation": {
+    "script": "scripts/validation.py"
+  },
+  "prerequisites": [
+    {
+      "step": "1.4",
+      "folder": "1-Pre Production/4-Asset Breakdown"
+    }
+  ],
   "workflow_dependencies": [
     ".agents/skills/studio/2-Production/3-Animations/scripts/animations.py",
     ".agents/skills/studio/2-Production/3-Animations/renderer/render.mjs",
@@ -12,8 +24,22 @@
     ".agents/skills/studio/2-Production/3-Animations/renderer/package.json",
     ".agents/skills/studio/2-Production/3-Animations/renderer/package-lock.json",
     ".agents/skills/studio/2-Production/3-Animations/renderer/template/Composition.tsx",
-    ".agents/skills/studio/1-Pre Production/4-Asset Breakdown/scripts/assets.py"
+    ".agents/skills/studio/1-Pre Production/4-Asset Breakdown/scripts/assets.py",
+    ".agents/skills/studio/2-Production/3-Animations/renderer/studio.mjs",
+    ".agents/skills/studio/2-Production/3-Animations/renderer/template/Studio.tsx",
+    ".agents/skills/studio/2-Production/3-Animations/renderer/template/tsconfig.json",
+    ".agents/skills/studio/2-Production/3-Animations/references/studio-authoring.md",
+    ".agents/skills/studio/2-Production/3-Animations/renderer/ports.mjs"
   ],
-  "inputs": [{"folder": "1-Pre Production/4-Asset Breakdown", "filename_regex": "^Asset Registry\\.(md|json)$", "minimum": 2, "maximum": 2, "complete_set": true}],
-  "outputs": [], "generated": []
+  "inputs": [
+    {
+      "folder": "1-Pre Production/4-Asset Breakdown",
+      "filename_regex": "^Asset Registry\\.(md|json)$",
+      "minimum": 2,
+      "maximum": 2,
+      "complete_set": true
+    }
+  ],
+  "outputs": [],
+  "generated": []
 }

@@ -17,6 +17,17 @@ try {
   await mkdir(path.join(temporary, 'src'));
   await mkdir(path.join(temporary, 'references'));
   await copyFile(path.join(renderer, 'template/Composition.tsx'), path.join(temporary, 'src/Composition.tsx'));
+  const entry = (await readFile(path.join(renderer, 'template/Studio.tsx'), 'utf8'))
+    .replace('width={1920}', 'width={320}').replace('height={1080}', 'height={180}')
+    .replace('durationInFrames={150}', 'durationInFrames={15}');
+  await writeFile(path.join(temporary, 'src/Studio.tsx'), entry);
+  const args = ['--source-dir', path.join(temporary, 'src'), '--public-dir', path.join(temporary, 'references'), '--settings', path.join(temporary, 'settings.json')];
+  await writeFile(path.join(temporary, 'settings.json'), JSON.stringify({width: 320, height: 180, fps: 30, durationInFrames: 150}));
+  const inspected = run('render.mjs', [...args, '--inspect']);
+  assert.deepEqual(inspected, {width: 320, height: 180, fps: 30, durationInFrames: 15}, 'Read metadata from the actual Studio root.');
+  const mismatch = spawnSync(process.execPath, [path.join(renderer, 'render.mjs'), ...args, '--output', path.join(temporary, 'mismatched.mp4')], {cwd: renderer, encoding: 'utf8', timeout: 120000});
+  assert.notEqual(mismatch.status, 0, 'Refuse stale settings instead of producing a different video than Studio.');
+  assert.match(mismatch.stderr, /Studio metadata differs/);
   await writeFile(path.join(temporary, 'settings.json'), JSON.stringify({width: 320, height: 180, fps: 30, durationInFrames: 15, props: {title: 'Installation smoke test'}}));
   const output = path.join(temporary, 'smoke.mp4');
   run('render.mjs', ['--source-dir', path.join(temporary, 'src'), '--public-dir', path.join(temporary, 'references'), '--settings', path.join(temporary, 'settings.json'), '--output', output]);
@@ -33,7 +44,7 @@ try {
   const escaped = spawnSync(process.execPath, [path.join(renderer, 'render.mjs'), '--source-dir', path.join(temporary, 'src'), '--public-dir', path.join(temporary, 'references'), '--settings', path.join(temporary, 'settings.json'), '--output', path.join(temporary, 'escaped.mp4')], {cwd: renderer, encoding: 'utf8', timeout: 120000});
   assert.notEqual(escaped.status, 0, 'Rendering must reject imports outside the recorded source.');
   assert.match(escaped.stderr, /outside the recorded source/);
-  console.log('Smoke render and probe passed; existing output was preserved and untracked imports rejected.');
+  console.log('Studio metadata, mismatch rejection, render and probe passed; existing output was preserved and untracked imports rejected.');
 } finally {
   await rm(temporary, {recursive: true, force: true});
 }

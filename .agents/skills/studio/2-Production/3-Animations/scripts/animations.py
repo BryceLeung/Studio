@@ -195,18 +195,41 @@ def current_input(project, asset, ledger, row):
     resources = files(project, (STAGE / asset / 'references').as_posix())
     setting_path = confined(project, (STAGE / asset / 'settings.json').as_posix())
     settings(read_json(setting_path))
+    studio_paths = [confined(project, (STAGE / asset / name).as_posix())
+                    for name in ('src/Studio.tsx', 'package.json', 'tsconfig.json')]
+    require(all(path.is_file() for path in studio_paths),
+            f'{asset}: missing required Studio entry/configuration')
+    config = [path for path in studio_paths[1:] if path.is_file()]
     return {'registry': row, 'requests': [r['sha256'] for r in ledger['requests']],
             'files': {p.relative_to(directory).as_posix(): sha(p)
-                      for p in source + resources + [setting_path]}, 'renderer': renderer_identity()}
+                      for p in source + resources + [setting_path] + config}, 'renderer': renderer_identity()}
 
 
 def log(project, title, message):
     helper = module(ROOT / 'scripts/append-log.py', 'studio_animation_log')
-    helper.append_entry(confined(project, (STAGE / 'LOG.md').as_posix()), title, [message], date.today())
+    path = confined(project, (STAGE / 'LOG.md').as_posix())
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not path.exists():
+        with path.open('x', encoding='utf-8') as stream:
+            stream.write('# Animations Log\n')
+    helper.append_entry(path, title, [message], date.today())
 
 
 def transition(project, reason):
     invalidate(project, ROOT, STEP, reason)
+
+
+def studio_files(asset, value):
+    """Portable asset files, with no per-asset dependencies or machine paths."""
+    template = confined(ROOT, (LOCAL / 'renderer/template/Studio.tsx').as_posix())
+    entry = template.read_text(encoding='utf-8')
+    for key in DEFAULT_SETTINGS:
+        entry = entry.replace(f'{key}={{{DEFAULT_SETTINGS[key]}}}', f'{key}={{{value[key]}}}')
+    configuration = confined(ROOT, (LOCAL / 'renderer/template/tsconfig.json').as_posix())
+    return {'src/Studio.tsx': entry.encode('utf-8'),
+            'tsconfig.json': configuration.read_bytes(),
+            'package.json': (json.dumps({'name': f'studio-{asset.lower()}', 'private': True,
+                                         'version': '0.0.0'}, indent=2) + '\n').encode('utf-8')}
 
 
 def init(project, asset):
@@ -216,26 +239,66 @@ def init(project, asset):
         rows = eligible(project)
         require(asset in rows, 'Select a current Graphic or Animation asset')
         directory = folder(project, asset)
-        if directory.exists():
+        if directory.exists() and (directory / 'Animation.json').exists():
             ledger = load(project, asset)
             current_input(project, asset, ledger, rows[asset])
             return {'asset': asset, 'status': 'reused', 'stage': audit(project, ROOT, STEP)[STEP]}
         template = confined(ROOT, (LOCAL / 'renderer/template/Composition.tsx').as_posix())
         require(template.is_file(), 'Missing maintained editable composition template')
+        expected = {'src/Composition.tsx': template.read_bytes(),
+                    'settings.json': (json.dumps(DEFAULT_SETTINGS, indent=2) + '\n').encode('utf-8'),
+                    **studio_files(asset, DEFAULT_SETTINGS)}
+        recovering = directory.exists()
+        if recovering:
+            # Only finish an untouched scaffold interrupted before request/ledger publication.
+            # Never infer provenance for authored source, media, or an existing request.
+            actual = {p.relative_to(directory).as_posix()
+                      for p in files(project, (STAGE / asset).as_posix())}
+            require({'src/Composition.tsx', 'settings.json'} <= actual <= set(expected)
+                    and all((directory / name).read_bytes() == expected[name] for name in actual)
+                    and {p.name for p in directory.iterdir() if p.is_dir()}
+                        == {'src', 'references', 'renders', 'snapshots', 'APPROVED'},
+                    'Interrupted initialization contains edited or unexpected files; preserve and inspect before recovery')
         transition(project, f'Initialize animation {asset}')
-        directory.mkdir(parents=True)
-        for name in ('src', 'references', 'renders', 'snapshots', 'APPROVED'):
-            (directory / name).mkdir()
-        shutil.copyfile(template, directory / 'src/Composition.tsx')
-        atomic_json(directory / 'settings.json', DEFAULT_SETTINGS)
+        if not recovering:
+            directory.mkdir(parents=True)
+            for name in ('src', 'references', 'renders', 'snapshots', 'APPROVED'):
+                (directory / name).mkdir()
+        for relative, contents in expected.items():
+            path = directory / relative
+            if not path.exists():
+                with path.open('xb') as stream:
+                    stream.write(contents)
         text = '# Initial Approved Registry Context\n\n' + json.dumps(rows[asset], indent=2) + '\n'
         (directory / 'request.01.md').write_text(text, encoding='utf-8', newline='\n')
         ledger = {'schema': 'studio.animation', 'schema_version': 1, 'asset': asset,
-                  'requests': [{'version': 1, 'registry': rows[asset],
+                  'studio_ready': True, 'requests': [{'version': 1, 'registry': rows[asset],
                                 'sha256': sha(directory / 'request.01.md')}], 'renders': []}
         atomic_json(directory / 'Animation.json', ledger)
-        log(project, 'Animation initialized', f'{asset}: approved brief/passage retained; edit the demo composition before rendering. Human approval remains pending.')
+        log(project, 'Animation initialized', f'{asset}: approved brief/passage retained; Studio entry, named editable scaffold and portable project config created. Author the approved visual before rendering. Human approval remains pending.')
         return {'asset': asset, 'status': 'initialized'}
+
+
+def studio(project, asset, port=None, no_open=False):
+    require_prerequisites(project, ROOT, STEP)
+    require(port is None or type(port) is int and 1 <= port <= 65535, 'Invalid Studio port')
+    with completion.mutation_guard(project):
+        require_prerequisites(project, ROOT, STEP)
+        rows = eligible(project)
+        require(asset in rows, 'Select a current Graphic or Animation asset')
+        ledger = load(project, asset)
+        require(ledger['requests'][-1]['registry'] == rows[asset], 'Registry context changed; record a revision first')
+        directory = folder(project, asset)
+        current_input(project, asset, ledger, rows[asset])
+    command = ['node', str(RENDERER / 'studio.mjs'), '--source-dir', str(directory / 'src'),
+               '--public-dir', str(directory / 'references')]
+    if port is not None:
+        command.extend(['--port', str(port)])
+    if no_open:
+        command.append('--no-open')
+    # The server needs to remain editable; do not hold the project mutation lock.
+    subprocess.run(command, cwd=RENDERER, check=True)
+    return {'asset': asset, 'status': 'studio closed'}
 
 
 def revise(project, asset, text):
@@ -290,6 +353,17 @@ def run_renderer(snapshot, output):
     summary = json.loads(result.stdout)
     require(isinstance(summary, dict), 'Invalid renderer JSON summary')
     return summary
+
+
+def inspect_settings(directory):
+    try:
+        result = subprocess.run(['node', str(RENDERER / 'render.mjs'), '--inspect',
+                                '--source-dir', str(directory / 'src'), '--public-dir',
+                                str(directory / 'references'), '--settings', str(directory / 'settings.json')],
+                                cwd=RENDERER, check=True, capture_output=True, text=True, timeout=120)
+    except subprocess.CalledProcessError as error:
+        raise ValueError(f'Studio metadata inspection failed: {error.stderr or error}') from error
+    return settings(json.loads(result.stdout))
 
 
 def approved_videos(project, asset):
@@ -349,6 +423,20 @@ def render(project, asset):
                 return {'asset': asset, 'status': 'reused',
                         'candidate': candidate.relative_to(project).as_posix(), 'sha256': record['sha256'],
                         'stage': audit(project, ROOT, STEP)[STEP]}
+        transition(project, f'Resolve Studio metadata for {asset}')
+        try:
+            resolved = inspect_settings(directory)
+            require(current_input(project, asset, load(project, asset), eligible(project)[asset]) == provenance,
+                    'Animation inputs changed during Studio metadata inspection; retry after editing stops')
+            value = settings(read_json(directory / 'settings.json'))
+            updated = dict(value, **{key: resolved[key] for key in DEFAULT_SETTINGS})
+            if value != updated:
+                atomic_json(directory / 'settings.json', updated)
+                log(project, 'Studio metadata captured', f'{asset}: captured width, height, fps and duration from the same Studio composition used for candidate rendering.')
+            provenance = current_input(project, asset, ledger, rows[asset])
+        except Exception as error:
+            log(project, 'Studio metadata failed', f'{asset}: {error}. Source, candidates and approvals preserved; no new candidate registered.')
+            raise
         version = len(ledger['renders']) + 1
         name = f'v{version:03d}'
         snapshot = confined(project, (STAGE / asset / 'snapshots' / name).as_posix())
@@ -479,9 +567,11 @@ def complete(project):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=('context', 'init', 'revise', 'render', 'check', 'complete'))
+    parser.add_argument('action', choices=('context', 'init', 'revise', 'render', 'studio', 'check', 'complete'))
     parser.add_argument('--project-root', required=True, type=Path)
     parser.add_argument('--asset-id')
+    parser.add_argument('--port', type=int, help='Optional Studio port; otherwise choose a free port')
+    parser.add_argument('--no-open', action='store_true', help='Start Studio without opening a browser')
     request = parser.add_mutually_exclusive_group()
     request.add_argument('--request', help='Verbatim chat revision text')
     request.add_argument('--request-file', type=Path, help='UTF-8 file containing verbatim chat revision')
@@ -500,6 +590,8 @@ def main():
             result = init(project, args.asset_id)
         elif args.action == 'render':
             result = render(project, args.asset_id)
+        elif args.action == 'studio':
+            result = studio(project, args.asset_id, args.port, args.no_open)
         else:
             text = args.request_file.read_bytes().decode('utf-8') if args.request_file else args.request
             result = revise(project, args.asset_id, text)
