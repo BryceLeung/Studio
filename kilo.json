@@ -1,5 +1,56 @@
 {
   "$schema": "https://app.kilo.ai/config.json",
+  "agent": {
+    "studio-runner": {
+      "description": "Run Studio stages with trusted repository Python scripts and connected-project writes",
+      "mode": "all",
+      "permission": {
+        "bash": {
+          "*": "ask",
+          "python \"./*.py\" *": "allow",
+          "python -B \"./*.py\" *": "allow",
+          "python3 \"./*.py\" *": "allow",
+          "python3 -B \"./*.py\" *": "allow",
+          "& \"./*/Scripts/python.exe\" \"./*.py\" *": "allow",
+          "\"./*/bin/python\" \"./*.py\" *": "allow",
+          "\"./*/bin/python3\" \"./*.py\" *": "allow",
+          "*../*": "ask",
+          "*..\\*": "ask",
+          "*>*": "ask",
+          "*;*": "ask",
+          "*|*": "ask",
+          "*\n*": "ask"
+        },
+        "edit": {
+          "*": "ask",
+          "Connected Projects/*": "allow",
+          "Connected Projects\\*": "allow",
+          "../../OneDrive/Books/Parent Like a Millionaire/Marketing/Studio/01-Love Compounds Too/*": "allow",
+          "..\\..\\OneDrive\\Books\\Parent Like a Millionaire\\Marketing\\Studio\\01-Love Compounds Too\\*": "allow",
+          "C:/Users/bryce/OneDrive/Books/Parent Like a Millionaire/Marketing/Studio/01-Love Compounds Too/*": "allow",
+          "C:\\Users\\bryce\\OneDrive\\Books\\Parent Like a Millionaire\\Marketing\\Studio\\01-Love Compounds Too\\*": "allow",
+          "*/Library/CloudStorage/OneDrive*/Books/Parent Like a Millionaire/Marketing/Studio/01-Love Compounds Too/*": "allow",
+          "*/OneDrive/Books/Parent Like a Millionaire/Marketing/Studio/01-Love Compounds Too/*": "allow"
+        },
+        "external_directory": {
+          "*": "ask",
+          "C:/Users/bryce/OneDrive/Books/Parent Like a Millionaire/Marketing/Studio/01-Love Compounds Too": "allow",
+          "C:/Users/bryce/OneDrive/Books/Parent Like a Millionaire/Marketing/Studio/01-Love Compounds Too/*": "allow",
+          "C:\\Users\\bryce\\OneDrive\\Books\\Parent Like a Millionaire\\Marketing\\Studio\\01-Love Compounds Too": "allow",
+          "C:\\Users\\bryce\\OneDrive\\Books\\Parent Like a Millionaire\\Marketing\\Studio\\01-Love Compounds Too\\*": "allow",
+          "/Users/*/Library/CloudStorage/OneDrive*/Books/Parent Like a Millionaire/Marketing/Studio/01-Love Compounds Too": "allow",
+          "/Users/*/Library/CloudStorage/OneDrive*/Books/Parent Like a Millionaire/Marketing/Studio/01-Love Compounds Too/*": "allow",
+          "/Users/*/OneDrive/Books/Parent Like a Millionaire/Marketing/Studio/01-Love Compounds Too": "allow",
+          "/Users/*/OneDrive/Books/Parent Like a Millionaire/Marketing/Studio/01-Love Compounds Too/*": "allow"
+        },
+        "task": {
+          "*": "ask",
+          "studio-runner": "allow"
+        }
+      },
+      "prompt": "You are Studio's trusted execution runner. Read .agents/skills/studio/SKILL.md and the requested substage's SKILL.md and dependencies.json before execution. Work in the existing Studio repository, never a new worktree. Resolve the supplied connected project to its real OneDrive path. Execute the assigned studio run request directly; do not delegate the whole request to another runner. When assigned a scoped worker unit, run only that unit and return results to its coordinator. Set the execution tool's workdir to the resolved Studio repository root for every approved Python command. Use quoted repository-relative forward-slash script paths: python \"./path/to/helper.py\" args on Windows or python3 \"./path/to/helper.py\" args on macOS. For existing repository virtualenvs use & \"./.venv-tools/Scripts/python.exe\" \"./path/to/helper.py\" on Windows or \"./.venv-tools/bin/python\" \"./path/to/helper.py\" on macOS. Relative command approvals do not enforce the working directory themselves; never run them from another directory. Any repository Python script, including a new untracked stage helper, is trusted for execution. Do not use inline Python, arbitrary modules, shell chains, or another execution tool to bypass approval. Shared workflow code, dependencies and Kilo configuration changes still require approval; never use an approved script to evade that restriction. Write project artifacts only in the selected connected project. Preserve human edits, approval gates, shared prerequisite validation, invalidation, logs and completion recording. Stop for human review, missing tools or a failed prerequisite rather than installing packages, repairing ancestors or fabricating completion. Keep human approval moves human-only. Independent workers must use the same studio-runner agent, not a general agent with different permissions. These approvals are not a Python filesystem sandbox. Return outputs, validation results, blockers and the next human action."
+    }
+  },
   "permission": {
     "bash": {
       "*": "ask",
