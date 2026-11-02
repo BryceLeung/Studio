@@ -49,6 +49,22 @@ class InvalidationTests(unittest.TestCase):
         return invalidation.prepare_regeneration(self.project, WORKFLOW, step, paths, "regenerate",
                                                  self.log if logger is None else logger, **kwargs)
 
+    def test_script_candidates_can_regenerate_but_approved_scripts_are_protected(self):
+        # A maximum=0 inventory is an absence gate, not a protected source input.
+        self.stages["1.1"] = copy.deepcopy(load_stages(WORKFLOW)["1.1"])
+        own = self.folder("1.1", marker=False)
+        approved = own / "Approved" / "Accepted.docx"
+        approved.parent.mkdir()
+        approved.write_bytes(b"approved script")
+        candidate = own / "Candidate.docx"
+        candidate.write_bytes(b"candidate script")
+        with self.assertRaises(ValueError):
+            self.prepare([approved], step="1.1")
+        slot = self.prepare([candidate], step="1.1")
+        self.assertFalse(candidate.exists())
+        self.assertEqual((slot / candidate.name).read_bytes(), b"candidate script")
+        self.assertEqual(approved.read_bytes(), b"approved script")
+
     def test_all_graph_branches_preserve_independent_siblings(self):
         expected = {
             "1.1": {"1.1", "1.2", "1.3", "1.4", "2.1", "2.2", "2.3", "3.1", "3.2", "3.3", "3.4", "3.5", "3.6"},

@@ -263,7 +263,8 @@ def _outputs(project, definition, paths):
                                            ".mts", ".m2ts", ".braw", ".r3d", ".log"}
                 or not _matches(path, project, definition.get("generated", []))
                 or _matches(path, project, [item for item in definition.get("inputs", [])
-                                           if item.get("role") != "project"])):
+                                           if item.get("role") != "project"
+                                           and item.get("maximum") != 0])):
             raise ValueError(f"Not a stage-owned generated artifact: {path}")
         if path.exists():
             if not path.is_file():

@@ -15,6 +15,39 @@ For a pickup child project, start from the specific parent asset that failed or 
 
 Do not draft full new scripts in chat, create or copy script files into the project, or advance to candidate review merely because an idea is promising or the user asked to create, run, or plan a project. Wait until the user explicitly asks to write scripts or names the scripts to draft; that request authorizes writing the selected scripts without another confirmation. When its OneDrive `1-Pre Production/1-Script Review/` folder is created, immediately create `Approved/` inside it, even if no candidate exists yet. After the writing request, use the agreed sources and decisions to write each filming candidate as a Word `.docx` directly in the step folder with a descriptive filename and no production-action prefix. Every `.docx` directly in the step folder is a script to be filmed. Record extract ideas in the discussion and `LOG.md`, but do not create extract documents during this step. Substage 1.3 creates extract documents from the approved scripts for its own approved-Markdown handoff. Record the source, discussion decisions, filming candidates, and handoff in that folder's `LOG.md`.
 
+## Writing Word candidates
+
+Use the maintained `scripts/write-script.py` helper in this skill directory instead of creating a one-off Python generator. It requires Python 3.9+ and `python-docx` from `scripts/requirements.txt`; dependency installation remains subject to normal permission approval.
+
+From the workflow repository root, run:
+
+```text
+python "./.agents/skills/studio/1-Pre Production/1-Script Review/scripts/write-script.py" --project-root "<real-project-root>" --filename "Descriptive Title.docx" --input "<draft.json>"
+```
+
+Use `scripts/draft-template.json` as the reusable review-notes and script template. Fill its fields in the JSON supplied to the helper; do not edit the shared blank template for each project. The UTF-8 JSON draft has this shape:
+
+```json
+{
+  "title": "Descriptive Title",
+  "review": {
+    "objective": "Trust",
+    "audience": "U.S. parents saving for their children",
+    "ending_cta": "Decision-framework payoff; no spoken sales CTA",
+    "factual_caveats": "State rules vary; recheck current tax rules before publication"
+  },
+  "sources": ["IRS guidance: https://www.irs.gov/"],
+  "notes": ["Optional visual ideas, packaging notes, or conditional extract ideas. Not spoken."],
+  "paragraphs": ["First spoken paragraph.", "Second spoken paragraph."]
+}
+```
+
+Fill the review fields with the agreed objective (`Reach`, `Trust`, or `Traffic`), intended audience, ending/CTA decision, and factual caveats. Say explicitly when there is no CTA or no known caveat rather than assuming one. Add source references under `sources`; reserve `notes` for other nonspoken context. The helper always renders a standard review block and a separate sources section before the spoken script, calculates estimated runtime from spoken text at 140-160 words per minute, and marks missing review fields as `Not specified` and absent sources as `Not supplied` without inventing decisions or references. `review`, `sources`, and `notes` are optional inputs, but fill applicable fields during normal script review.
+
+Each `paragraphs` entry becomes one spoken Word paragraph; embedded newlines remain line breaks. Omit `--input` to supply the same JSON through standard input when supported, avoiding an intermediate draft file. If using a JSON file, keep it in a scratch directory, not as another filming candidate. Do not create project-specific Python generators.
+
+The helper writes only a new `.docx` directly in the existing project's Script Review folder, refuses paths in `--filename`, and never overwrites an existing file. It puts the title first, all nonspoken notes before one exact `Spoken script` heading, and only spoken paragraphs afterward for downstream cue-card and script readers. It verifies the paragraph sequence before publishing and reports spoken word count and estimated runtime. It does not approve scripts, append logs, invalidate stages, or record completion; follow the normal logging, regeneration, and human-review gates separately. Do not include the reserved standalone heading `Spoken script` in draft fields.
+
 ## Endings and CTA pickups
 
 Decide the ending for each proposed piece during script review. If a new spoken end-of-film CTA or alternate ending must be recorded, account for it as filmed material before the shoot. Include it in the main filming script when it is inseparable from that piece; use a separate `CTA Pickup - <destination>.docx` in the step folder when it is an optional or reusable ending. State which piece and destination it serves, the exact approved words, and where the pickup attaches. It receives human approval and a cue card like any other filming script. Treat an ending as an extract only when its exact words are already present in the flagship footage. A link, caption, end card, or other nonspoken CTA can be recorded as a packaging note in the relevant script and needs no filming pickup.
