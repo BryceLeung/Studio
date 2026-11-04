@@ -183,6 +183,8 @@ class StageTests(unittest.TestCase):
             marker = project / scoring.STAGE / "DONE"
             self.assertTrue(report["done_written"])
             self.assertTrue(marker.is_file())
+            self.assertIn("studio/script_docx.py", {
+                entry["path"] for entry in json.loads(marker.read_text())["dependencies"]})
             original_done, original_mtime = marker.read_bytes(), marker.stat().st_mtime_ns
             scoring.run_stage(project, [path])
             self.assertEqual(marker.read_bytes(), original_done)

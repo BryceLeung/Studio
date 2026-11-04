@@ -123,6 +123,31 @@ class StudioRunnerTests(unittest.TestCase):
         self.assertFalse(any('C:/Users/bryce/VSCode/Studio' in pattern
                              for pattern in self.permissions['bash']))
 
+    def test_three_column_conversion_skill_routes_to_existing_writer_without_stage_run(self):
+        stage = ROOT / '.agents/skills/studio/1-Pre Production/1-Script Review'
+        skill = stage / 'convert-script-to-3-col-format/SKILL.md'
+        text = skill.read_text(encoding='utf-8')
+        self.assertTrue(text.startswith('---\nname: studio-convert-script-to-3-col-format\n'))
+        self.assertIn('# Convert Script to 3-Col Format', text)
+        self.assertIn('convert script to 3-col format', text)
+        self.assertIn('--to three-column', text)
+        self.assertIn('--output', text)
+        self.assertIn('write-script.py', text)
+        self.assertIn('Do not invoke `studio run 1.1`', text)
+        self.assertIn('this action does not implicitly create an Agent Manager session', text)
+        self.assertIn('never in approval or archive directories', text)
+        self.assertIn('write or record `DONE`, invalidate completion', text)
+        self.assertTrue((skill.parent / '../../../SKILL.md').resolve().is_file())
+        self.assertEqual((skill.parent / '../SKILL.md').resolve(), stage / 'SKILL.md')
+        self.assertTrue((stage / 'scripts/convert-script.py').is_file())
+        self.assertIn('convert-script-to-3-col-format/SKILL.md',
+                      (stage / 'SKILL.md').read_text(encoding='utf-8'))
+        root_skill = (ROOT / '.agents/skills/studio/SKILL.md').read_text(encoding='utf-8')
+        self.assertIn('`convert script to 3-col format [script] [project]`', root_skill)
+        self.assertIn('1-Script%20Review/convert-script-to-3-col-format/SKILL.md', root_skill)
+        definition = json.loads((stage / 'dependencies.json').read_text(encoding='utf-8'))
+        self.assertIn(skill.relative_to(ROOT).as_posix(), definition['workflow_dependencies'])
+
 
 if __name__ == '__main__':
     unittest.main()

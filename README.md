@@ -43,8 +43,9 @@ The GUI uses PySide6 and the operating system's desktop window system.
 
 ## Review with Line!
 
-1. Load an approved Word script. Only the content after **Spoken script** becomes
-   initial word groupings; the title and filming instructions are excluded.
+1. Load an approved Word script. Only dialogue after **Spoken script** becomes
+   initial word groupings. Three-column scripts use only **Spoken Dialog**;
+   IDs, stage directions, headers, and review notes are excluded.
 2. Use **Add files…** to load one or more word-timestamped transcript JSON files
    from `3-Post Production/2-Transcribe/`. Existing WhisperX files are supported;
    source text and files remain intact. Multiple files appear under clickable

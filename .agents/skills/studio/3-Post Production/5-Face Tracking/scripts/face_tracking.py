@@ -505,7 +505,7 @@ def run(project, *, analyzer=analyze_video, get_model=model_path, regenerate=Fal
         completion_dependencies = [Path(__file__).with_name("validation.py"),
                                    Path(__file__).parents[1] / "dependencies.json",
                                    ROOT / "scripts/validation.py", ROOT / "scripts/stage_completion.py",
-                                   ROOT / "scripts/stage_invalidation.py"]
+                                   ROOT / "scripts/stage_invalidation.py", ROOT / "studio/script_docx.py"]
         completion_dependencies.extend(ROOT / "studio/tools/line" / name for name in
                                        ("sources.py", "actions.py", "quality.py", "combined.py", "boundaries.py"))
         manifest = {"step": "3.5", "schema": "studio.face-tracking.done", "inputs": inputs,

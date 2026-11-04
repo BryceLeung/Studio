@@ -13,6 +13,8 @@ Input: every approved `.docx` filming script from the project's OneDrive `1-Pre 
 
 Approved `CTA Pickup -` documents are filming scripts: create a separate deck for each one, label its destination and attachment point, and preserve the approved CTA wording. Do not put an optional pickup on the flagship's core cue cards.
 
+Approved scripts use an `ID` / `Spoken Dialog` / `Stage Directions` table after the `Spoken script` heading. The shared reader in `studio/script_docx.py` supplies only dialogue to the cue planner. IDs, table headers, stage directions, and review front matter are not cue-card speech. Retain support for reading earlier paragraph-format documents, but do not use that support to bypass stage 1.1's current approval gate.
+
 ## Shared generators
 
 With Python 3.10 or later, install [the Python dependencies](scripts/requirements.txt) in the active environment. Run [make-plans.py](scripts/make-plans.py) with the OneDrive project folder to prepare cue text, then [build-cue-cards.py](scripts/build-cue-cards.py) with the same project folder to create editable decks. Both scripts run on Windows, macOS, and Linux without PowerPoint. Generated plans stay in the project's `2-Cue Cards/working/` folder. The builder refuses to replace an existing deck unless `--overwrite` is supplied after reviewing it for human edits. Visual inspection is optional, not a completion gate. The Python builder does not render slides. Check and label CTA pickup decks according to their approved destination and attachment point.

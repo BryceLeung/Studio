@@ -203,7 +203,7 @@ def generate(project, shortlist, score_paths, padding_ms, omit_discarded, regene
         mappings["dependencies"] = [cut.scoring.fingerprint(p, cut.ROOT, "workflow") for p in
                                     (Path(__file__), Path(cut.__file__), Path(cut.subtitles.__file__),
                                      Path(cut.portrait.__file__), Path(__file__).parents[1] / "SKILL.md",
-                                     cut.ROOT / "studio/fingerprints.py")]
+                                     cut.ROOT / "studio/fingerprints.py", cut.ROOT / "studio/script_docx.py")]
         mappings["review_required"] = ("Import and review every extract project in Final Cut, including framing and subtitles; "
                                        "edit and render, then move same-stem movies into this stage's APPROVED folder.")
         mapping_path = directory / "Extract Mappings.json"

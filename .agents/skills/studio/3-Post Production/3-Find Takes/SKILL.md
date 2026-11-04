@@ -16,8 +16,10 @@ work.
 Read the approved scripts in `1-Pre Production/1-Script Review/Approved/` and
 native word-timestamped JSON files in `3-Post Production/2-Transcribe/`.
 The source adapters support Word, plain-text, and script JSON; normal 1.1 outputs
-are Word documents. Only text after a Word document's `Spoken script` heading is
-included. Pair transcripts by filename:
+are Word documents. The shared script reader includes only dialogue after the
+`Spoken script` heading: for three-column scripts, read `Spoken Dialog`, not
+IDs, table headers, or `Stage Directions`. Table IDs are not Line sentence IDs.
+Pair transcripts by filename:
 
 ```text
 <Script>__C<nn>__lav.json
@@ -61,7 +63,8 @@ python "<workflow-root>/.agents/skills/studio/3-Post Production/3-Find Takes/scr
 ```
 
 The command initializes `LOG.md` when absent, validates the 1.1 approved-output
-inventory, fingerprints, and empty-candidate condition against its DONE,
+inventory, fingerprints, and three-column script validity against its DONE
+(the 1.1 root must have no `.docx`; historical drafts may remain in `DRAFTS/`),
 validates actual transcript inputs, generates only missing v1 files, checks
 latest versions, logs the result, and manages completion markers. Missing or
 changed approved outputs fail the prerequisite check before any project mutation.

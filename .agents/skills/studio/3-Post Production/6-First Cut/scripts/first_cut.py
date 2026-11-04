@@ -450,7 +450,7 @@ def run(project, score_paths, padding_ms=50, ffprobe="ffprobe", regenerate=False
         for output, xml, item_report in planned:
             validate_xml(xml, output, item_report)
         dependencies = [Path(__file__), Path(subtitles.__file__), Path(__file__).parents[1] / "SKILL.md", SCORER, scoring.FIND_SCRIPT,
-                         ROOT / "scripts/append-log.py", ROOT / "studio/fingerprints.py"]
+                         ROOT / "scripts/append-log.py", ROOT / "studio/fingerprints.py", ROOT / "studio/script_docx.py"]
         dependencies.extend(ROOT / "studio/tools/line" / name for name in
                             ("mapping.py", "sources.py", "combined.py", "quality.py", "actions.py", "boundaries.py"))
         # Extracts remain a declared input; no extract projects are emitted yet.

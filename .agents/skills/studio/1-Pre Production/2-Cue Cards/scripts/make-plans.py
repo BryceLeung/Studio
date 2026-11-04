@@ -1,5 +1,4 @@
 from argparse import ArgumentParser
-from docx import Document
 from pathlib import Path
 import json
 import re
@@ -9,6 +8,7 @@ ROOT = next(p for p in Path(__file__).resolve().parents if (p / "studio/fingerpr
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 from studio.fingerprints import sha256
+from studio.script_docx import document_xml, script_blocks, script_title, spoken_paragraphs, spoken_text
 from scripts.validation import require_prerequisites
 from scripts.stage_invalidation import invalidate, prepare_regeneration
 
@@ -32,8 +32,10 @@ if not sources:
     parser.error(f"No approved Word scripts found in {approved}")
 
 def make_plan(source):
-    paragraphs = [paragraph.text for paragraph in Document(source).paragraphs]
-    spoken = paragraphs[paragraphs.index("Spoken script") + 1 :]
+    document = document_xml(source)
+    script_blocks(document, require_heading=True)
+    paragraphs = spoken_paragraphs(document, preserve_blanks=True)
+    spoken = [spoken_text(paragraph) for paragraph in paragraphs]
 
     units = []
     break_before = 0
@@ -71,7 +73,7 @@ def make_plan(source):
     plan = {
         "source_docx": str(source),
         "source_sha256": sha256(source).upper(),
-        "title": paragraphs[0],
+        "title": script_title(document) or source.stem,
         "slides": slides,
         "spoken_word_count": len(source_words),
         "coverage": "exact token sequence",

@@ -2,16 +2,14 @@
 
 from __future__ import annotations
 
-from io import BytesIO
 import json
 import math
 from pathlib import Path
 import re
 from typing import Any
-from xml.etree import ElementTree
-from zipfile import BadZipFile, ZipFile
 
 from studio.fingerprints import sha256
+from studio.script_docx import document_xml, paragraph_text, script_title, spoken_paragraphs, spoken_text
 
 
 SEGMENTATION_VERSION = "line-sentences-v1"
@@ -84,40 +82,21 @@ def sentence_spans(text: str) -> list[tuple[int, int]]:
     return spans
 
 
-def _docx_paragraphs(path: Path, content: bytes) -> list[str]:
-    try:
-        with ZipFile(BytesIO(content)) as package:
-            document = ElementTree.fromstring(package.read("word/document.xml"))
-    except (BadZipFile, KeyError, ElementTree.ParseError) as exc:
-        raise ValueError(f"Cannot read Word script: {path.name}") from exc
-    body = document.find(f"{_WORD_NS}body")
-    if body is None:
-        raise ValueError(f"Word script has no document body: {path.name}")
-    paragraphs = []
-    for paragraph in body.findall(f"{_WORD_NS}p"):
-        text = []
-        for element in paragraph.iter():
-            if element.tag == f"{_WORD_NS}t":
-                text.append(element.text or "")
-            elif element.tag in (f"{_WORD_NS}br", f"{_WORD_NS}cr"):
-                text.append("\n")
-            elif element.tag == f"{_WORD_NS}tab":
-                text.append("\t")
-        paragraphs.append("".join(text))
-    return paragraphs
-
-
 def _script_paragraphs(path: Path, content: bytes) -> tuple[str, list[str], str]:
     suffix = path.suffix.lower()
     if suffix == ".docx":
-        paragraphs = _docx_paragraphs(path, content)
-        heading = next(
-            (i for i, text in enumerate(paragraphs) if text.strip().lower() == "spoken script"),
-            None,
-        )
-        if heading is None:
+        try:
+            document = document_xml(content)
+        except ValueError as exc:
+            raise ValueError(f"Cannot read Word script: {path.name}") from exc
+        body = document.find(f"{_WORD_NS}body")
+        if body is None:
+            raise ValueError(f"Word script has no document body: {path.name}")
+        if not any(paragraph_text(p).strip().lower() == "spoken script"
+                   for p in body.findall(f"{_WORD_NS}p")):
             raise ValueError(f"Script must contain a ‘Spoken script’ heading: {path.name}")
-        return next((p for p in paragraphs if p.strip()), path.stem), paragraphs[heading + 1 :], "docx-spoken-script"
+        return (script_title(document) or path.stem,
+                [spoken_text(p) for p in spoken_paragraphs(document, preserve_blanks=True)], "docx-spoken-script")
     if suffix == ".txt":
         return path.stem, content.decode("utf-8-sig").splitlines(), "text"
     if suffix == ".json":

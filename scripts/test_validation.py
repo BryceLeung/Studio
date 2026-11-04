@@ -3,8 +3,11 @@ import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
+from unittest.mock import patch
+from zipfile import ZipFile
 
 from scripts import stage_completion, validation
+from scripts.script_docx_fixture import write_script_docx
 
 
 class CommonValidationTests(unittest.TestCase):
@@ -191,7 +194,7 @@ class CommonValidationTests(unittest.TestCase):
                 candidate["outputs"] = [stage_completion.fingerprint(movie, project, "project")]
                 self.assertEqual(validation.validate_evidence(project, validation.ROOT, definition, candidate)[0], "current")
 
-    def test_script_review_checks_approval_inventory_without_writing(self):
+    def test_script_review_checks_approval_and_root_inventory_without_writing(self):
         definition = validation.load_stages()["1.1"]
         with TemporaryDirectory() as directory:
             project = Path(directory).resolve()
@@ -199,15 +202,18 @@ class CommonValidationTests(unittest.TestCase):
             approved = folder / "Approved"
             approved.mkdir(parents=True)
             script = approved / "Script.docx"
-            script.write_bytes(b"approved script")
+            write_script_docx(script)
             marker = folder / "DONE"
             marker.write_text(json.dumps({"step": "1.1", "inputs": [], "dependencies": [],
                                           "outputs": [stage_completion.fingerprint(script, project, "project")]}))
-            before = marker.read_bytes()
-            self.assertEqual(validation.check_marker(project, validation.ROOT, definition)[0], "current")
             (folder / "Candidate.docx").write_bytes(b"not approved")
-            self.assertEqual(validation.check_marker(project, validation.ROOT, definition)[0], "stale")
-            self.assertEqual(marker.read_bytes(), before)
+            before = {path.relative_to(project): (path.read_bytes(), path.stat().st_mtime_ns)
+                      for path in project.rglob("*") if path.is_file()}
+            status, reason = validation.check_marker(project, validation.ROOT, definition)
+            self.assertEqual(status, "stale")
+            self.assertIn("found 1", reason)
+            self.assertEqual({path.relative_to(project): (path.read_bytes(), path.stat().st_mtime_ns)
+                              for path in project.rglob("*") if path.is_file()}, before)
             self.assertFalse((folder / "STALE").exists())
 
     def test_declared_validator_must_extend_common_class(self):
@@ -327,6 +333,178 @@ class CommonValidationTests(unittest.TestCase):
             self.assertEqual(results["1.1"]["status"], "skipped")
             self.assertEqual(results["1.2"]["status"], "skipped")
             self.assertEqual(results["2.1"]["status"], "blocked")
+
+
+class ScriptReviewValidationTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.project = Path(self.temporary.name).resolve()
+        self.definition = validation.load_stages()["1.1"]
+        self.folder = self.project / self.definition["folder"]
+        self.approved = self.folder / "Approved"
+        self.approved.mkdir(parents=True)
+        self.script = write_script_docx(self.approved / "A.docx")
+
+    def evidence(self):
+        return {"step": "1.1", "inputs": [], "dependencies": [
+            stage_completion.fingerprint(validation.ROOT / "scripts/validation.py", validation.ROOT, "workflow")
+        ], "outputs": [
+            stage_completion.fingerprint(path, self.project, "project")
+            for path in sorted(self.approved.iterdir())
+            if path.is_file() and path.suffix.lower() == ".docx"]}
+
+    def check(self):
+        return validation.validate_evidence(self.project, validation.ROOT, self.definition, self.evidence())
+
+    def test_definition_requires_empty_root_and_shared_format_validation(self):
+        self.assertEqual(self.definition["inputs"], [{
+            "folder": self.definition["folder"], "filename_regex": r"^.+\.docx$",
+            "minimum": 0, "maximum": 0, "complete_set": True,
+        }])
+        self.assertTrue(self.definition["requires_stage_check"])
+        self.assertEqual(self.definition["validation"], {"script": "scripts/validation.py"})
+        self.assertIn("studio/script_docx.py", self.definition["workflow_dependencies"])
+        self.assertIn(".agents/skills/studio/1-Pre Production/1-Script Review/scripts/write-script.py",
+                      self.definition["workflow_dependencies"])
+        self.assertIn(".agents/skills/studio/1-Pre Production/1-Script Review/scripts/convert-script.py",
+                      self.definition["workflow_dependencies"])
+
+    def test_stored_drafts_cannot_replace_at_least_one_approved_script(self):
+        drafts = self.folder / "DRAFTS"
+        drafts.mkdir()
+        self.script.rename(drafts / "Historical.docx")
+        (drafts / "Invalid Draft.docx").write_bytes(b"unconverted historical draft")
+        status, reason = self.check()
+        self.assertEqual(status, "stale")
+        self.assertIn("found 0", reason)
+        self.assertFalse((self.folder / "DONE").exists())
+
+    def test_root_docx_blocks_completion_until_moved_to_drafts_or_approved(self):
+        for name in ("Pending.docx", "Pending.DOCX"):
+            with self.subTest(name=name):
+                pending = write_script_docx(self.folder / name, "Pending script.")
+                status, reason = self.check()
+                self.assertEqual(status, "stale")
+                self.assertIn("found 1", reason)
+                self.assertFalse((self.folder / "DONE").exists())
+                pending.rename(self.approved / name)
+                self.assertEqual(self.check()[0], "current")
+                (self.approved / name).unlink()
+        drafts = self.folder / "DRAFTS"
+        drafts.mkdir()
+        pending = self.folder / "Old version.docx"
+        pending.write_bytes(b"historical draft need not be valid or approved")
+        self.assertEqual(self.check()[0], "stale")
+        pending.rename(drafts / pending.name)
+        self.assertEqual(self.check()[0], "current")
+
+    def test_non_docx_root_files_do_not_block_completion(self):
+        (self.folder / "LOG.md").write_text("Review history")
+        (self.folder / "Notes.txt").write_text("Unspoken review notes")
+        self.assertEqual(self.check()[0], "current")
+
+    def test_every_approved_script_uses_the_shared_validator(self):
+        from studio.script_docx import validate_three_column
+
+        other = write_script_docx(self.approved / "B.DOCX", "Another approved script.")
+        drafts = self.folder / "DRAFTS"
+        drafts.mkdir()
+        (drafts / "Historical.docx").write_bytes(b"not an approved script")
+        with patch("studio.script_docx.validate_three_column", wraps=validate_three_column) as validator:
+            self.assertEqual(self.check()[0], "current")
+        self.assertEqual([call.args[0] for call in validator.call_args_list], [self.script, other])
+        other.write_bytes(b"broken approved document")
+        status, reason = self.check()
+        self.assertEqual(status, "stale")
+        self.assertIn("B.DOCX", reason)
+
+    def test_added_approved_scripts_require_fingerprint_evidence(self):
+        evidence = self.evidence()
+        write_script_docx(self.approved / "B.docx", "Newly approved script.")
+        status, reason = validation.validate_evidence(self.project, validation.ROOT, self.definition, evidence)
+        self.assertEqual(status, "stale")
+        self.assertIn("added=", reason)
+        self.assertEqual(self.check()[0], "current")
+
+    def test_plain_prose_and_tables_before_heading_cannot_prove_completion(self):
+        for options in ({"paragraph_body": True}, {"table_before_heading": True}):
+            with self.subTest(options=options):
+                write_script_docx(self.script, **options)
+                self.assertEqual(self.check()[0], "stale")
+
+    def test_spoken_script_heading_is_required(self):
+        for heading in (None, "Spoken script:", "Spoken script notes"):
+            with self.subTest(heading=heading):
+                write_script_docx(self.script, heading=heading)
+                self.assertEqual(self.check()[0], "stale")
+
+    def test_spoken_script_heading_is_case_insensitive(self):
+        for heading in ("Spoken Script", "spoken script", "SPOKEN SCRIPT", "  sPoKeN sCrIpT  "):
+            with self.subTest(heading=heading):
+                write_script_docx(self.script, heading=heading)
+                self.assertEqual(self.check()[0], "current")
+
+    def test_canonical_three_column_header_is_required(self):
+        for headers, row in (
+            (("Spoken Dialog", "Stage Directions"), ("Speech.", "")),
+            (("ID", "Spoken Dialogue", "Stage Directions"), ("L01", "Speech.", "")),
+            (("ID", "Stage Directions", "Spoken Dialog"), ("L01", "", "Speech.")),
+            (("ID", "Spoken Dialog", "Stage Directions", "Extra"), ("L01", "Speech.", "", "")),
+        ):
+            with self.subTest(headers=headers):
+                write_script_docx(self.script, headers=headers, rows=[row])
+                self.assertEqual(self.check()[0], "stale")
+
+    def test_fresh_fingerprints_cannot_approve_missing_or_reassigned_line_ids(self):
+        for ids in (("",), ("L00",), ("L02",), ("L1",), ("l01",), ("L001",),
+                    ("L01", "L01"), ("L01", "L03"), ("L02", "L01")):
+            with self.subTest(ids=ids):
+                write_script_docx(self.script, rows=[(line_id, "Speech.", "") for line_id in ids])
+                status, reason = self.check()
+                self.assertEqual(status, "stale")
+                self.assertIn("A.docx", reason)
+
+    def test_sequential_line_ids_continue_naturally_past_ninety_nine(self):
+        write_script_docx(self.script, rows=[(f"L{index:02d}", f"Line {index}.", "")
+                                           for index in range(1, 102)])
+        self.assertEqual(self.check()[0], "current")
+
+    def test_direction_only_rows_are_allowed_but_dialogue_is_required_somewhere(self):
+        rows = [("L01", "", "Pause before speaking."), ("L02", "Speech.", "")]
+        write_script_docx(self.script, rows=rows)
+        self.assertEqual(self.check()[0], "current")
+        for invalid in ([], [("L01", "", "Pause.")], [("L01", " \t", "Pause.")]):
+            with self.subTest(rows=invalid):
+                write_script_docx(self.script, rows=invalid)
+                self.assertEqual(self.check()[0], "stale")
+
+    def test_malformed_approved_docx_fails_closed(self):
+        for content in (b"", b"not a DOCX", b"PK\x03\x04broken ZIP package"):
+            with self.subTest(content=content):
+                self.script.write_bytes(content)
+                status, reason = self.check()
+                self.assertEqual(status, "stale")
+                self.assertIn("A.docx", reason)
+        for name, xml in (("wrong.xml", "<document/>"), ("word/document.xml", "<broken XML")):
+            with self.subTest(member=name):
+                with ZipFile(self.script, "w") as package:
+                    package.writestr(name, xml)
+                self.assertEqual(self.check()[0], "stale")
+
+    def test_missing_shared_validator_is_reported_as_an_unavailable_dependency(self):
+        with patch.dict("sys.modules", {"studio.script_docx": None}):
+            status, reason = self.check()
+        self.assertEqual(status, "unverifiable")
+        self.assertIn("Stage validator dependency unavailable", reason)
+
+    def test_common_checks_run_before_the_shared_validator_import(self):
+        evidence = self.evidence()
+        write_script_docx(self.script, "Changed approved dialogue.")
+        with patch.dict("sys.modules", {"studio.script_docx": None}):
+            status, reason = validation.validate_evidence(self.project, validation.ROOT, self.definition, evidence)
+        self.assertEqual(status, "stale")
+        self.assertIn("Fingerprint differs", reason)
 
 
 if __name__ == "__main__":

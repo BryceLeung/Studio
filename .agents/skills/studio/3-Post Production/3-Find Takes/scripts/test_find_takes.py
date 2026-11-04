@@ -245,6 +245,9 @@ class GenerationTests(unittest.TestCase):
             self.recheck.assert_called_once_with(root, find_takes.ROOT, "3.3")
             stage = root / find_takes.OUTPUT
             done = json.loads((stage / "DONE").read_text())
+            self.assertIn("studio/script_docx.py", {entry["path"] for entry in done["dependencies"]})
+            self.assertEqual(find_takes.alignment_provenance()["code_sha256"]["studio/script_docx.py"],
+                             find_takes.sha256(find_takes.ROOT / "studio/script_docx.py"))
             self.assertEqual(done["conditions"]["latest_versions"][0]["version"], 1)
             self.assertTrue(all(find_takes.sha256(root / entry["path"]) == entry["sha256"] for entry in done["inputs"] + done["outputs"]))
             original_log = (stage / "LOG.md").read_bytes()

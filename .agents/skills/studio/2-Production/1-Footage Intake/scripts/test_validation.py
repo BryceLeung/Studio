@@ -9,6 +9,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from scripts import stage_completion as completion
+from scripts.script_docx_fixture import write_script_docx
 
 
 SOURCE = Path(__file__).with_name("validation.py")
@@ -144,12 +145,8 @@ class CueCardEntryTests(unittest.TestCase):
             project = Path(directory).resolve()
             approved = project / "1-Pre Production/1-Script Review/Approved"
             approved.mkdir(parents=True)
-            (approved / "A.docx").write_bytes(b"fixture Word script")
-            docx = MagicMock()
-            docx.Document.return_value.paragraphs = [MagicMock(text=text) for text in
-                                                   ("Example", "Spoken script", "A short spoken script.")]
+            write_script_docx(approved / "A.docx", "A short spoken script.")
             with patch("scripts.validation.require_prerequisites") as prerequisites, \
-                    patch.dict(sys.modules, {"docx": docx}), \
                     patch.object(sys, "argv", ["make-plans.py", str(project)]):
                 runpy.run_path(str(scripts / "make-plans.py"), run_name="__main__")
             prerequisites.assert_called_once_with(project, ROOT, "1.2")
@@ -177,7 +174,6 @@ class CueCardEntryTests(unittest.TestCase):
         with TemporaryDirectory() as directory:
             project = Path(directory).resolve()
             with patch("scripts.validation.require_prerequisites", side_effect=ValueError("stale ancestor")), \
-                    patch.dict(sys.modules, {"docx": MagicMock()}), \
                     patch.object(sys, "argv", ["make-plans.py", str(project)]):
                 with self.assertRaisesRegex(ValueError, "stale ancestor"):
                     runpy.run_path(str(script), run_name="__main__")
@@ -193,13 +189,13 @@ class CueCardEntryTests(unittest.TestCase):
         (self.approved / "A.docx").write_bytes(b"Word fixture")
         self.cue = self.project / "1-Pre Production/2-Cue Cards"
         self.downstream = self.project / "1-Pre Production/3-Extracts"
+        self.plan_spoken = None
 
     def plans(self, *options, spoken="Original spoken words."):
-        docx = MagicMock()
-        docx.Document.return_value.paragraphs = [MagicMock(text=text) for text in
-                                               ("Example", "Spoken script", spoken)]
+        if self.plan_spoken != spoken:
+            write_script_docx(self.approved / "A.docx", spoken)
+            self.plan_spoken = spoken
         with patch("scripts.validation.require_prerequisites"), \
-                patch.dict(sys.modules, {"docx": docx}), \
                 patch.object(sys, "argv", ["make-plans.py", str(self.project), *options]):
             runpy.run_path(str(self.scripts / "make-plans.py"), run_name="__main__")
 

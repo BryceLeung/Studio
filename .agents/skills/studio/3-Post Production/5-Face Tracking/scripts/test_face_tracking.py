@@ -333,6 +333,9 @@ class FaceTrackingTests(unittest.TestCase):
                 self.assertEqual((output.parent / "STALE/1/DONE").read_text(), "prior completion")
                 self.assertFalse((output.parent / "STALE/2").exists())
             self.assertEqual(first, second)
+            self.assertIn("studio/script_docx.py", {entry["path"] for entry in first["dependencies"]})
+            self.assertNotIn("studio/script_docx.py", {
+                entry["path"] for entry in json.loads(original)["dependencies"]})
             self.assertEqual(len(first["conditions"]["face_paths"]), 1)
             self.assertFalse((project / track.STAGE / "DONE").exists())
 

@@ -178,6 +178,8 @@ class FirstCutTests(unittest.TestCase):
                 self.assertEqual((marker.read_bytes(), marker.stat().st_mtime_ns), before)
                 review = output.parent / "REVIEW.json"
                 review_bytes = review.read_bytes()
+                self.assertIn("studio/script_docx.py", {
+                    entry["path"] for entry in json.loads(review_bytes)["dependencies"]})
                 output.write_bytes(b"human edited XML")
                 with self.assertRaisesRegex(ValueError, "inspect before replacing"):
                     cut.run(project, [score])

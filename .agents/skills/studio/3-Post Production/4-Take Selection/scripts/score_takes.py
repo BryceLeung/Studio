@@ -218,7 +218,7 @@ def run_stage(project: Path, inputs: list[Path], output_dir: Path | None = None,
                          Path(__file__).parents[1] / "dependencies.json",
                          Path(__file__).with_name("validation.py"), ROOT / "scripts/validation.py",
                          ROOT / "scripts/stage_completion.py", ROOT / "scripts/stage_invalidation.py",
-                         ROOT / "scripts/append-log.py", ROOT / "studio/fingerprints.py"]
+                         ROOT / "scripts/append-log.py", ROOT / "studio/fingerprints.py", ROOT / "studio/script_docx.py"]
         dependencies.extend(ROOT / "studio/tools/line" / name for name in
                             ("mapping.py", "sources.py", "combined.py", "quality.py", "actions.py", "boundaries.py"))
         manifest = {"project": project.name, "step": "3.4", "algorithm": provenance(),

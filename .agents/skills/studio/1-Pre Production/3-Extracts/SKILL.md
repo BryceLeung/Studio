@@ -9,6 +9,17 @@ Read the Studio root skill at `.agents/skills/studio/SKILL.md` for project resol
 
 ## Work and output
 
+Read the approved three-column script through `studio/script_docx.py`: use `document_xml(path)`, `spoken_paragraphs(root)`, and `spoken_text(paragraph)` for canonical spoken text, or `script_rows(root)` to inspect line IDs and directions separately. Copy only the `Spoken Dialog` wording into extracts. IDs, `Stage Directions`, table headers, and review front matter are not spoken passages. Directions can inform editorial feasibility but do not authorize new dialogue. Do not flatten all table cells into script text. Line IDs may have been reassigned during stage 1.1; retain the approved source filename/version as provenance.
+
+Use the maintained read-only CLI rather than a one-off DOCX extraction script:
+
+```text
+python "./studio/script_docx.py" "<approved-script.docx>" --format text
+python "./studio/script_docx.py" "<approved-script.docx>" --format json
+```
+
+Text output is dialogue only; JSON includes the title and ordered rows with IDs, dialogue, and directions in separate fields. Neither command writes files.
+
 Create one Markdown file, `Short-Form Excerpt Shortlist.md`, directly in the project's OneDrive `1-Pre Production/3-Extracts/` folder. Use a top-level title and a heading for each candidate so the candidates appear in the editor's outline. This is a preproduction opportunity list, not a finished edit plan or a request for new filming lines. Consider TikTok, Instagram Reels, YouTube Shorts, and X. A shared vertical presentation is the starting point; choose passages for their story, not a platform's maximum duration. Aim for roughly 30–60 seconds, allowing up to 90 seconds when the setup is needed for a coherent payoff. These are editorial targets, not platform requirements.
 
 For each promising, distinct opportunity, identify its review status (`Pending Review`, `Approved`, or `Rejected`), the approved source script and its version, a descriptive working title, Reach/Trust/Traffic aim, approximate duration, the core idea, and brief opening and payoff anchors traceable to the approved wording. New candidates start as `Pending Review`. Include a provisional spoken script assembled only from that approved source, in source order. Mark every omitted span between selected passages as a proposed jump. Every sentence in the provisional spoken script must be copied verbatim from the approved master script, preserving words and punctuation. Do not add connective narration, a spoken CTA, or an alternate ending. Explain why the opportunity could stand alone and flag any dependence on context, delivery, visuals, or a possible jump. Rank the strongest opportunities. Include representation from every approved script that yields a viable opportunity; record why a script yields none if applicable. The script is a paper proposal, not a footage-tested edit: do not claim timestamps or final cut points before footage exists. Label all opportunities conditional on the recorded take.

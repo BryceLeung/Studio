@@ -3,6 +3,7 @@
   "schema_version": 1,
   "step": "3.6",
   "workflow_dependencies": [
+    "studio/script_docx.py",
     ".agents/skills/studio/3-Post Production/6-First Cut/scripts/first_cut.py",
     ".agents/skills/studio/3-Post Production/6-First Cut/scripts/extracts.py",
     ".agents/skills/studio/3-Post Production/6-First Cut/scripts/portrait.py",

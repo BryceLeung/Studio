@@ -4,6 +4,7 @@
   "step": "3.4",
   "completion": {"stage_owned": true},
   "workflow_dependencies": [
+    "studio/script_docx.py",
     ".agents/skills/studio/3-Post Production/4-Take Selection/scripts/score_takes.py",
     ".agents/skills/studio/3-Post Production/3-Find Takes/scripts/find_takes.py",
     "scripts/append-log.py",

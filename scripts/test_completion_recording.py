@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 from scripts import stage_completion as completion
 from scripts import validation
+from scripts.script_docx_fixture import write_script_docx
 
 
 class RecordingTests(unittest.TestCase):
@@ -20,7 +21,7 @@ class RecordingTests(unittest.TestCase):
         approved = self.project / self.stages["1.1"]["outputs"][0]["folder"]
         approved.mkdir(parents=True)
         self.script = approved / "A.docx"
-        self.script.write_bytes(b"approved script")
+        write_script_docx(self.script)
 
     def manifest(self, step):
         return completion.build_manifest(self.project, validation.ROOT, step)
@@ -76,6 +77,57 @@ class RecordingTests(unittest.TestCase):
         self.assertEqual(self.marker("1.1").stat().st_mtime_ns, stamp)
         self.assertFalse((self.marker("1.1").parent / "STALE").exists())
 
+    def test_stored_drafts_are_not_fingerprinted_or_completion_blockers(self):
+        drafts = self.script.parent.parent / "DRAFTS"
+        drafts.mkdir()
+        draft = drafts / "Historical Draft.docx"
+        draft.write_bytes(b"old prose draft")
+        saved = self.record("1.1")
+        self.assertEqual(saved["inputs"], [])
+        self.assertEqual([entry["path"] for entry in saved["outputs"]],
+                         [self.script.relative_to(self.project).as_posix()])
+        before, stamp = self.marker("1.1").read_bytes(), self.marker("1.1").stat().st_mtime_ns
+        downstream = self.marker("1.2")
+        downstream.parent.mkdir(parents=True)
+        downstream.write_text("preserved downstream marker")
+        draft.write_bytes(b"changed historical draft, still not approved")
+        (draft.parent / "Another Draft.docx").write_bytes(b"another unconverted draft")
+        self.assertEqual(validation.check_marker(self.project, validation.ROOT, self.stages["1.1"])[0], "current")
+        self.record("1.1")
+        self.assertEqual(self.marker("1.1").read_bytes(), before)
+        self.assertEqual(self.marker("1.1").stat().st_mtime_ns, stamp)
+        self.assertEqual(downstream.read_text(), "preserved downstream marker")
+        self.assertFalse((self.marker("1.1").parent / "STALE").exists())
+
+    def test_root_docx_prevents_recording_without_mutating_existing_markers(self):
+        draft = self.script.parent.parent / "Pending.DOCX"
+        draft.write_bytes(b"pending draft")
+        with self.assertRaisesRegex(ValueError, "Cannot complete.*found 1"):
+            self.record("1.1")
+        self.assertFalse(self.marker("1.1").exists())
+        drafts = draft.parent / "DRAFTS"
+        drafts.mkdir()
+        draft.rename(drafts / draft.name)
+        self.record("1.1")
+        before = self.marker("1.1").read_bytes()
+        (draft.parent / "Another.docx").write_bytes(b"new candidate")
+        self.assertEqual(validation.check_marker(self.project, validation.ROOT, self.stages["1.1"])[0], "stale")
+        with self.assertRaises(validation.PrerequisiteError):
+            validation.require_prerequisites(self.project, validation.ROOT, "1.2")
+        with self.assertRaisesRegex(ValueError, "Cannot complete.*found 1"):
+            self.record("1.1")
+        self.assertEqual(self.marker("1.1").read_bytes(), before)
+        self.assertFalse((self.marker("1.1").parent / "STALE").exists())
+
+    def test_malformed_approved_script_cannot_publish_fresh_completion_evidence(self):
+        self.record("1.1")
+        before = self.marker("1.1").read_bytes()
+        write_script_docx(self.script, rows=[("L02", "Re-ID edit with invalid sequence.", "")])
+        with self.assertRaisesRegex(ValueError, "Cannot complete.*A.docx"):
+            self.record("1.1")
+        self.assertEqual(self.marker("1.1").read_bytes(), before)
+        self.assertFalse((self.marker("1.1").parent / "STALE").exists())
+
     def test_compatible_legacy_hash_entries_are_not_rewritten_on_reuse(self):
         legacy = self.manifest("1.1")
         for section in ("inputs", "outputs", "dependencies"):
@@ -95,7 +147,7 @@ class RecordingTests(unittest.TestCase):
     def test_replaced_record_preserves_previous_marker(self):
         self.record("1.1")
         before = self.marker("1.1").read_bytes()
-        self.script.write_bytes(b"revised approved script")
+        write_script_docx(self.script, "Revised approved script.")
         self.record("1.1")
         archive = self.marker("1.1").parent / "STALE/1/DONE"
         self.assertEqual(archive.read_bytes(), before)
@@ -104,7 +156,7 @@ class RecordingTests(unittest.TestCase):
     def test_failed_atomic_replace_restores_previous_active_marker(self):
         self.record("1.1")
         before = self.marker("1.1").read_bytes()
-        self.script.write_bytes(b"revised approved script")
+        write_script_docx(self.script, "Revised approved script.")
         with patch.object(completion.os, "replace", side_effect=OSError("write failed")):
             with self.assertRaisesRegex(OSError, "write failed"):
                 self.record("1.1")
@@ -151,7 +203,7 @@ class RecordingTests(unittest.TestCase):
     def test_atomic_publication_keeps_active_marker_visible_and_serializes_recorders(self):
         self.record("1.1")
         before = self.marker("1.1").read_bytes()
-        self.script.write_bytes(b"revised approved script")
+        write_script_docx(self.script, "Revised approved script.")
         replace = completion.os.replace
 
         def publish(source, destination):
@@ -255,7 +307,7 @@ class RecordingTests(unittest.TestCase):
     def test_replaced_recording_lock_is_not_removed_and_prevents_publication(self):
         self.record("1.1")
         before = self.marker("1.1").read_bytes()
-        self.script.write_bytes(b"changed approved source")
+        write_script_docx(self.script, "Changed approved source.")
         archive = completion.archive_done
         lock = self.marker("1.1").parent / ".DONE.lock"
 
@@ -293,7 +345,7 @@ class RecordingTests(unittest.TestCase):
         deck.write_bytes(b"human edited deck")
         self.record("1.2")
         before = self.marker("1.2").read_bytes()
-        self.script.write_bytes(b"revised source")
+        write_script_docx(self.script, "Revised source.")
         self.record("1.1")
         self.assertFalse(self.marker("1.2").exists())
         self.assertEqual((self.marker("1.2").parent / "STALE/1/DONE").read_bytes(), before)

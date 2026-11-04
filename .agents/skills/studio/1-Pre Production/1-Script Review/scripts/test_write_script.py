@@ -62,6 +62,14 @@ class WriteScriptTests(unittest.TestCase):
         self.assertNotIn("Additional notes (not spoken)", paragraphs)
         self.assertEqual(paragraphs[paragraphs.index("Spoken script") + 1:], ["Speech"])
 
+    def test_directions_do_not_count_toward_spoken_runtime(self):
+        draft = {"title": "Directions", "paragraphs": [
+            "[Open on presenter.]\nFirst spoken line.", "[Animate a balance.]", "Second [optional] line.",
+        ]}
+        target, words = writer.write_script(self.project, "Directions.docx", draft)
+        self.assertEqual(words, 6)
+        self.assertIn("(6 spoken words at 140-160 wpm)", " ".join(p.text for p in Document(target).paragraphs))
+
     def test_template_requires_actual_script(self):
         draft = json.loads(HELPER.with_name("draft-template.json").read_text(encoding="utf-8"))
         self.assertEqual(set(draft["review"]), set(writer.REVIEW_FIELDS))

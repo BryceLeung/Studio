@@ -17,6 +17,7 @@ ROOT = Path(__file__).resolve().parents[6]
 sys.path.insert(0, str(ROOT))
 from scripts import stage_completion as completion
 from scripts.validation import audit
+from studio.script_docx import HEADERS as SCRIPT_HEADERS, is_direction, paragraph_text, spoken_paragraphs
 
 STAGE = Path("1-Pre Production/4-Asset Breakdown")
 SCRIPTS = Path("1-Pre Production/1-Script Review/Approved")
@@ -43,11 +44,25 @@ def normalized(text):
 
 
 def read_docx(path):
-    """Read the visible main story, tracking overlapping Word comment ranges."""
+    """Read dialogue while keeping original, possibly overlapping comment anchors."""
     with ZipFile(path) as archive:
         document = ET.fromstring(archive.read("word/document.xml"))
         comments = (ET.fromstring(archive.read("word/comments.xml"))
                     if "word/comments.xml" in archive.namelist() else [])
+    body = document.find(W + "body")
+    if body is None:
+        raise ValueError("Missing Word document body")
+    # Headingless imports predate Studio's spoken-body convention; retain their
+    # full main-story word indexes rather than invalidating existing registries.
+    legacy = not any(paragraph_text(p).strip().lower() == "spoken script"
+                     for p in body.findall(W + "p"))
+    table_header = body.find(W + "tbl/" + W + "tr")
+    if table_header is not None and tuple(
+        "\n".join(paragraph_text(p) for p in cell.findall(W + "p")).strip()
+        for cell in table_header.findall(W + "tc")
+    ) == SCRIPT_HEADERS:
+        legacy = False
+    selected = set(body.iter(W + "p")) if legacy else set(spoken_paragraphs(document))
     definitions = {}
     for comment in comments:
         key = comment.get(W + "id")
@@ -60,17 +75,22 @@ def read_docx(path):
                             "date": comment.get(W + "date", ""),
                             "comment_text": comment_text,
                             "brief": asset.group(1).strip() if asset else None}
-    parts, length, opened, ranges = [], 0, {}, {}
+    parts, length, opened, ranges, excluded = [], 0, {}, {}, set()
 
-    def add(text):
+    def add(text, keep=True):
         nonlocal length
+        if not keep:
+            if text:
+                excluded.update(opened)
+            return
         parts.append(text)
         length += len(text)
 
-    def visit(node):
+    def visit(node, mask=(), offset=0):
         # Deleted revisions and field instructions are not spoken script text.
         if node.tag in (W + "del", W + "moveFrom", W + "instrText"):
-            return
+            excluded.update(opened)
+            return offset
         if node.tag == W + "commentRangeStart":
             key = node.get(W + "id")
             if key in opened or key in ranges:
@@ -81,25 +101,33 @@ def read_docx(path):
             if key not in opened:
                 raise ValueError("Word comment ends without a start")
             ranges[key] = (opened.pop(key), length)
-        elif node.tag == W + "t":
-            add(node.text or "")
-        elif node.tag in (W + "tab", W + "br", W + "cr"):
-            add(" ")
+        elif node.tag in (W + "t", W + "tab", W + "br", W + "cr", W + "noBreakHyphen"):
+            text = paragraph_text(node)
+            if legacy and node.tag in (W + "tab", W + "br", W + "cr"):
+                text = " "
+            for character in text:
+                add(" " if node.tag in (W + "tab", W + "br", W + "cr") else character,
+                    legacy or offset < len(mask) and mask[offset])
+                offset += 1
         else:
-            for child in node:
-                visit(child)
             if node.tag == W + "p":
-                add("\n")
+                mask = []
+                for line in paragraph_text(node).splitlines(keepends=True):
+                    mask.extend([node in selected and (legacy or not is_direction(line))] * len(line))
+                offset = 0
+            for child in node:
+                offset = visit(child, mask, offset)
+            if node.tag == W + "p":
+                add("\n", node in selected)
+        return offset
 
-    body = document.find(W + "body")
-    if body is None:
-        raise ValueError("Missing Word document body")
     visit(body)
     if opened:
         raise ValueError("Unclosed Word comment range")
     for key, definition in definitions.items():
         if definition["brief"] is not None and key not in ranges:
-            raise ValueError(f"Asset: comment {key} in {path.name} has no anchored script range")
+            raise ValueError(f"Asset: comment {key} in {path.name} has no anchored script range; "
+                             "highlight visible spoken dialogue and reattach the comment.")
     text = "".join(parts)
     tokens = list(re.finditer(r"\S+", text))
     words = [match.group() for match in tokens]
@@ -110,6 +138,10 @@ def read_docx(path):
         if definitions[key]["brief"] is None:
             continue
         indices = [i for i, token in enumerate(tokens) if token.start() < end and token.end() > start]
+        if not indices and key in excluded:
+            raise ValueError(f"Asset: comment {key} in {path.name} highlights only excluded content. "
+                             "Move its highlight to spoken dialogue after the Spoken script heading "
+                             "(the Spoken Dialog column), not metadata, IDs, headers or stage directions.")
         if not indices or not definitions[key]["brief"]:
             raise ValueError("Word comment needs a nonempty highlighted passage and brief")
         imported.append(dict(definitions[key], highlighted_text=text[start:end], start=indices[0], end=indices[-1],

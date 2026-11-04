@@ -106,7 +106,10 @@ automatically checks the highest numbered version on rerun.
 ### Grouping operations
 
 Initial groupings come from sentence segmentation. Word scripts include only
-paragraphs after the `Spoken script` heading. Script words retain whitespace
+dialogue after the `Spoken script` heading. For an `ID` / `Spoken Dialog` /
+`Stage Directions` table, only the spoken column contributes words; table IDs
+are not Line row identities. Legacy paragraph scripts remain readable, with
+standalone bracketed direction lines excluded. Script words retain whitespace
 before each word so a merged group can display original line breaks. Transcript
 groups start from ordered ASR words, independently of ASR segment boundaries.
 Terminal `.`, `!`, `?`, and `…` punctuation creates an initial boundary; common

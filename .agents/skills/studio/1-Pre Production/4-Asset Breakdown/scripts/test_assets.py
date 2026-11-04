@@ -21,15 +21,25 @@ assets = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(assets)
 
 
-def docx(path, text="One two three four five six.", brief="Asset: Show the diagram", comment=True, body=None):
+def docx(path, text="One two three four five six.", brief="Asset: Show the diagram", comment=True, body=None,
+         three_column=False):
     path.parent.mkdir(parents=True, exist_ok=True)
     if body is None:
         body = ('<w:commentRangeStart w:id="7"/>' if comment else '')
         body += '<w:r><w:t>' + escape(text) + '</w:t></w:r>'
         body += '<w:commentRangeEnd w:id="7"/>' if comment else ''
+    story = '<w:p>' + body + '</w:p>'
+    if three_column:
+        def paragraph(value):
+            return '<w:p><w:r><w:t>' + escape(value) + '</w:t></w:r></w:p>'
+        rows = [[paragraph(value) for value in ("ID", "Spoken Dialog", "Stage Directions")],
+                [paragraph("L01"), story, paragraph("")]]
+        story = paragraph("Spoken script") + '<w:tbl>' + ''.join(
+            '<w:tr>' + ''.join('<w:tc>' + cell + '</w:tc>' for cell in row) + '</w:tr>'
+            for row in rows) + '</w:tbl>'
     with ZipFile(path, "w") as archive:
         archive.writestr("word/document.xml", '<w:document xmlns:w="' + assets.W[1:-1] +
-                         '"><w:body><w:p>' + body + '</w:p></w:body></w:document>')
+                         '"><w:body>' + story + '</w:body></w:document>')
         if comment:
             archive.writestr("word/comments.xml", '<w:comments xmlns:w="' + assets.W[1:-1] +
                 '"><w:comment w:id="7" w:author="Human" w:date="2026-10-20T12:00:00Z">'
@@ -747,6 +757,7 @@ class AssetTests(unittest.TestCase):
         self.assertTrue(self.path.exists())
 
     def test_shared_recorder_rejects_pending_and_uses_real_ancestors(self):
+        docx(self.script, three_column=True)
         # These inventory stages use their normal shared recorders, not mock DONEs.
         for step in ("1.1", "1.2", "1.3"):
             if step == "1.2":
@@ -961,6 +972,7 @@ class AssetTests(unittest.TestCase):
         self.assertEqual(sidecar.read_bytes(), changed)
 
     def test_cli_prerequisites_reconcile_review_check_and_empty_confirmation(self):
+        docx(self.script, three_column=True)
         helper = str(Path(assets.__file__))
 
         def run(action, *args):

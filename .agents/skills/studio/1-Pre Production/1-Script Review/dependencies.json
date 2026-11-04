@@ -3,12 +3,20 @@
   "schema_version": 1,
   "step": "1.1",
   "folder": "1-Pre Production/1-Script Review",
+  "requires_stage_check": true,
+  "validation": {"script": "scripts/validation.py"},
+  "workflow_dependencies": [
+    "studio/script_docx.py",
+    ".agents/skills/studio/1-Pre Production/1-Script Review/scripts/write-script.py",
+    ".agents/skills/studio/1-Pre Production/1-Script Review/scripts/convert-script.py",
+    ".agents/skills/studio/1-Pre Production/1-Script Review/convert-script-to-3-col-format/SKILL.md"
+  ],
   "generated": [
     {"folder": "1-Pre Production/1-Script Review", "filename_regex": "^.+\\.docx$"}
   ],
   "prerequisites": [],
   "inputs": [
-    {"folder": "1-Pre Production/1-Script Review", "filename_regex": "^.+\\.docx$", "minimum": 0, "maximum": 0}
+    {"folder": "1-Pre Production/1-Script Review", "filename_regex": "^.+\\.docx$", "minimum": 0, "maximum": 0, "complete_set": true}
   ],
   "outputs": [
     {"folder": "1-Pre Production/1-Script Review/Approved", "filename_regex": "^.+\\.docx$", "minimum": 1, "complete_set": true}

@@ -57,6 +57,7 @@ def alignment_provenance() -> dict:
         "name": "cursor-word-alignment", "version": 3, "settings": dict(SETTINGS),
         "quality": quality.provenance(),
         "code_sha256": {
+            "studio/script_docx.py": sha256(ROOT / "studio/script_docx.py"),
             "studio/fingerprints.py": sha256(ROOT / "studio/fingerprints.py"),
             "find_takes.py": sha256(Path(__file__)),
             "studio/tools/line/sources.py": sha256(Path(sources.__file__)),
@@ -435,7 +436,7 @@ def completion_manifest(project: Path, result: dict) -> dict:
                     Path(__file__).with_name("validation.py").relative_to(ROOT),
                     Path("scripts/validation.py"), Path("scripts/stage_completion.py"),
                     Path("scripts/stage_invalidation.py"),
-                    Path("scripts/append-log.py"), Path("studio/fingerprints.py")]
+                    Path("scripts/append-log.py"), Path("studio/fingerprints.py"), Path("studio/script_docx.py")]
     dependencies.extend(Path("studio/tools/line") / name for name in
                         ("sources.py", "mapping.py", "actions.py", "quality.py", "combined.py", "boundaries.py"))
     def fingerprint(path: Path, root: Path, scope: str) -> dict:

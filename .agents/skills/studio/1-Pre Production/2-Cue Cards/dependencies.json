@@ -3,6 +3,7 @@
   "schema_version": 1,
   "step": "1.2",
   "workflow_dependencies": [
+    "studio/script_docx.py",
     ".agents/skills/studio/1-Pre Production/2-Cue Cards/scripts/make-plans.py",
     ".agents/skills/studio/1-Pre Production/2-Cue Cards/scripts/build-cue-cards.py"
   ],

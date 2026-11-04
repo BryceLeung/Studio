@@ -104,6 +104,8 @@ class ExtractTests(unittest.TestCase):
                     invalidate.assert_called_once()
                 output = project / cut.STAGE / "Extracts/Extract Mappings.json"
                 original = output.read_bytes()
+                self.assertIn("studio/script_docx.py", {
+                    entry["path"] for entry in json.loads(original)["dependencies"]})
                 with patch.object(cut.find, "invalidate") as invalidate:
                     extracts.generate(project, shortlist, [], 50, False)
                     invalidate.assert_not_called()
