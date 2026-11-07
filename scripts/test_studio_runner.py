@@ -8,6 +8,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 PROJECT = 'C:/Users/bryce/OneDrive/Books/Parent Like a Millionaire/Marketing/Studio/01-Love Compounds Too'
 PROJECT_SUFFIX = 'Books/Parent Like a Millionaire/Marketing/Studio/01-Love Compounds Too'
+STUDIO = PROJECT.rsplit('/', 1)[0]
 
 
 def action(rules, value):
@@ -69,23 +70,27 @@ class StudioRunnerTests(unittest.TestCase):
 
     def test_connected_project_edits_allow_both_path_conventions(self):
         relative = '../../OneDrive/Books/Parent Like a Millionaire/Marketing/Studio/01-Love Compounds Too/asset/src/Composition.tsx'
-        for value in (f'{PROJECT}/LOG.md', relative, 'Connected Projects/01-Love Compounds Too/LOG.md'):
+        for value in (f'{PROJECT}/LOG.md', f'{STUDIO}/Another Project/LOG.md',
+                      f'{PROJECT}-other/LOG.md', relative,
+                      'Connected Projects/01-Love Compounds Too/LOG.md'):
             with self.subTest(value=value):
                 self.assertEqual(action(self.permissions['edit'], value), 'allow')
                 self.assertEqual(action(self.permissions['edit'], str(PureWindowsPath(value))), 'allow')
 
     def test_workflow_and_unrelated_project_edits_ask(self):
         for value in ('kilo.json', '.kilo/agents/other.md', 'scripts/new.py',
-                      '.agents/skills/studio/SKILL.md', PROJECT + '-other/LOG.md',
+                      '.agents/skills/studio/SKILL.md', STUDIO + '-other/LOG.md',
                       'C:/Users/bryce/.config/kilo/kilo.jsonc'):
             with self.subTest(value=value):
                 self.assertEqual(action(self.permissions['edit'], value), 'ask')
 
-    def test_external_access_only_covers_the_registered_target(self):
-        for value in (PROJECT, f'{PROJECT}/*', f'{PROJECT}/2-Production/*'):
+    def test_external_access_covers_studio_projects_but_not_outside_folders(self):
+        for value in (STUDIO, f'{STUDIO}/*', PROJECT, f'{PROJECT}/*',
+                      f'{PROJECT}/2-Production/*', f'{STUDIO}/Another Project/*',
+                      PROJECT + '-other/*'):
             self.assertEqual(action(self.permissions['external_directory'], value), 'allow')
             self.assertEqual(action(self.permissions['external_directory'], str(PureWindowsPath(value))), 'allow')
-        for value in (PROJECT + '-other/*', 'C:/Users/bryce/OneDrive/*',
+        for value in (STUDIO + '-other/*', 'C:/Users/bryce/OneDrive/*',
                       'C:/Users/bryce/.config/kilo/*'):
             self.assertEqual(action(self.permissions['external_directory'], value), 'ask')
 
@@ -101,18 +106,22 @@ class StudioRunnerTests(unittest.TestCase):
         self.assertEqual(action(self.permissions['task'], 'studio-runner'), 'allow')
         self.assertEqual(action(self.permissions['task'], 'general'), 'ask')
 
-    def test_macos_onedrive_locations_preserve_project_scope(self):
+    def test_macos_onedrive_locations_preserve_studio_scope(self):
         for prefix in ('/Users/bryce/Library/CloudStorage/OneDrive-Personal',
                        '/Users/another/Library/CloudStorage/OneDrive-Company',
                        '/Users/bryce/OneDrive'):
             project = f'{prefix}/{PROJECT_SUFFIX}'
+            studio = project.rsplit('/', 1)[0]
             with self.subTest(project=project):
                 self.assertEqual(action(self.permissions['external_directory'], project), 'allow')
                 self.assertEqual(action(self.permissions['external_directory'], project + '/*'), 'allow')
                 self.assertEqual(action(self.permissions['edit'], project + '/LOG.md'), 'allow')
                 self.assertEqual(action(self.permissions['external_directory'], prefix + '/*'), 'ask')
-                self.assertEqual(action(self.permissions['external_directory'], project + '-other/*'), 'ask')
-                self.assertEqual(action(self.permissions['edit'], project + '-other/LOG.md'), 'ask')
+                self.assertEqual(action(self.permissions['external_directory'], studio), 'allow')
+                self.assertEqual(action(self.permissions['external_directory'], project + '-other/*'), 'allow')
+                self.assertEqual(action(self.permissions['edit'], project + '-other/LOG.md'), 'allow')
+                self.assertEqual(action(self.permissions['external_directory'], studio + '-other/*'), 'ask')
+                self.assertEqual(action(self.permissions['edit'], studio + '-other/LOG.md'), 'ask')
         for relative in (f'../../Library/CloudStorage/OneDrive-Personal/{PROJECT_SUFFIX}/LOG.md',
                          f'../../../OneDrive/{PROJECT_SUFFIX}/LOG.md'):
             self.assertEqual(action(self.permissions['edit'], relative), 'allow')
