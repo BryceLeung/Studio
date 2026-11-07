@@ -5,7 +5,7 @@ description: Run or resume Studio substage 2.1 by checking that every approved s
 
 # 2.1 — Footage Intake
 
-Use the root skill's shared prerequisite check for normal execution. After the footage validator succeeds, invoke the shared completion recorder with `--stage 2.1`; it rechecks the complete footage groups and records the declared inventories. Do not write `DONE` by hand.
+After resolving the project and preparing the intake directory as described below, use the root skill's shared prerequisite check for normal execution. After the footage validator succeeds, invoke the shared completion recorder with `--stage 2.1`; it rechecks the complete footage groups and records the declared inventories. Do not write `DONE` by hand.
 
 Read the Studio root skill at `.agents/skills/studio/SKILL.md` (relative to the repository root) for project resolution, logging, completion manifests, and invalidation. Run after substage 1.3 in workflow order.
 
@@ -14,6 +14,12 @@ Read the Studio root skill at `.agents/skills/studio/SKILL.md` (relative to the 
 This step checks the footage dropped directly into the project's `2-Production/1-Footage Intake/` folder. It does not inspect media contents or rename, move, hash, or delete footage. Execution failures archive this step's and its dependents' completion markers using the shared graph helper; originals stay in place. The stage has no generator-owned outputs eligible for regeneration archiving.
 
 The approved-script set is the stems of the `.docx` files in `1-Pre Production/1-Script Review/Approved/`, including CTA pickups.
+
+## Directory preparation
+
+On an explicit stage 2.1 run, resolve and verify the real OneDrive project first, then create `2-Production/1-Footage Intake/` and any missing parent directory within that project. Preserve existing directories and their contents; if a required path is a file or cannot be created, report the error and stop. This idempotent preparation happens before prerequisite validation so even a rejected preflight can be recorded through the shared append-only `LOG.md` helper in the intake folder.
+
+Do not create placeholder media, an `Approved/` folder, future stage folders, or a `DONE` marker. Do not create or repair upstream folders. Directory preparation is not stage completion and does not waive prerequisites: if preflight fails, log and report the blocker without running footage validation or claiming footage is missing. Read-only status and audit commands must not create directories.
 
 ## Expected filenames
 
@@ -44,6 +50,16 @@ Treat the validator as the stage's source of truth:
 3. If the validator cannot run because Python or another execution prerequisite is unavailable, report that execution error as the stage result. Do not infer a pass or substitute a different runtime.
 4. Do not edit, relax, reinterpret, or work around the validator during a stage run. Change it only when the user explicitly asks to change the validator.
 5. Never rename or otherwise modify footage to make validation pass unless the user explicitly requests that separate action.
+
+When footage validation reports a missing or incomplete set, tell the user the resolved intake folder and the concrete filenames expected for each affected approved-script stem, not just the generic template or `MISSING` label. If no recognized set exists for a script, show this first-set example with its exact stem:
+
+```text
+<exact approved-script stem>__C01__camA.mov (or .mp4)
+<exact approved-script stem>__C01__camB.mov (or .mp4)
+<exact approved-script stem>__C01__lav.wav
+```
+
+Replace the placeholder with each affected script's actual stem. If recognized partial sets exist, list their actual `C<nn>` numbers and which roles are missing or empty, with the corresponding expected filenames; do not require users to replace a valid clip number with `C01`. Explain that all three non-empty files must share the exact script stem and clip number, with double underscores around the clip number and the allowed role-specific extensions. Keep the validator's errors visible, including suggested separator corrections. Unsupported or otherwise unrecognized filenames do not satisfy the requirement; do not silently rename them or count them as valid footage. If the approved-script set cannot be read, report that blocker and the generic naming convention without inventing script names.
 
 ## Completion and reruns
 
