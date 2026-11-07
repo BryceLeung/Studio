@@ -9,6 +9,10 @@ description: On an explicit save request, copy a selected Studio 2.3 object cand
 
 Use only when the user explicitly asks to save a selected character, background or object to the shared animation library. Positive feedback, rendering success and instructions to move to the next animation are not save requests. Read the parent [Animations skill](../SKILL.md) and follow normal project resolution, prerequisite validation, invalidation, permissions and append-only logging rules. There is no `animations.py` library-save command; do not invent one or bypass filesystem approvals.
 
+"Save" still means copy a selected candidate into the common asset library. It does not mean generate a sketch or render something. A file under `sketches/` is not a candidate: if only a sketch exists, explain that a Remotion candidate has not yet been created and stop. Do not silently render, promote the sketch or change its directory to make it eligible. Historical candidates remain in place and can still be selected explicitly.
+
+AI-generated and AI-edited sketches follow the same boundary: sketch acceptance is not a library-save instruction. Preserve any AI/reference provenance carried into a prepared candidate; neither generation nor saving establishes production licensing rights or creates editable animation layers.
+
 ## Save workflow
 
 1. Resolve the selected `candidates/<object-name>/vNNN/` within the current animation. Check the actual source/resources and provenance, not just a displayed preview. If the chosen candidate or object is ambiguous, obtain the user's selection before writing. A rendered preview is optional for saving editable artwork; never fabricate a visual review or render provenance.

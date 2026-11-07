@@ -242,6 +242,12 @@ def init(project, asset):
         if directory.exists() and (directory / 'Animation.json').exists():
             ledger = load(project, asset)
             current_input(project, asset, ledger, rows[asset])
+            sketches = confined(project, (STAGE / asset / 'sketches').as_posix())
+            if not sketches.exists():
+                transition(project, f'Create sketches directory for animation {asset}')
+                sketches.mkdir()
+                log(project, 'Sketches directory created', f'{asset}: missing sketches directory added; existing work preserved.')
+            require(sketches.is_dir(), f'Expected sketches directory: {sketches}')
             return {'asset': asset, 'status': 'reused', 'stage': audit(project, ROOT, STEP)[STEP]}
         template = confined(ROOT, (LOCAL / 'renderer/template/Composition.tsx').as_posix())
         require(template.is_file(), 'Missing maintained editable composition template')
@@ -257,13 +263,15 @@ def init(project, asset):
             require({'src/Composition.tsx', 'settings.json'} <= actual <= set(expected)
                     and all((directory / name).read_bytes() == expected[name] for name in actual)
                     and {p.name for p in directory.iterdir() if p.is_dir()}
-                        == {'src', 'references', 'renders', 'snapshots', 'APPROVED'},
+                         in ({'src', 'references', 'renders', 'snapshots', 'APPROVED'},
+                             {'src', 'references', 'renders', 'snapshots', 'APPROVED', 'sketches'}),
                     'Interrupted initialization contains edited or unexpected files; preserve and inspect before recovery')
         transition(project, f'Initialize animation {asset}')
         if not recovering:
             directory.mkdir(parents=True)
             for name in ('src', 'references', 'renders', 'snapshots', 'APPROVED'):
                 (directory / name).mkdir()
+        (directory / 'sketches').mkdir(exist_ok=True)
         for relative, contents in expected.items():
             path = directory / relative
             if not path.exists():

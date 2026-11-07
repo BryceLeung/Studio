@@ -140,6 +140,7 @@ class AnimationTests(unittest.TestCase):
         self.assertEqual(list((self.directory / 'APPROVED').iterdir()), [])
         self.assertTrue((self.directory / 'src/Composition.tsx').is_file())
         self.assertTrue((self.directory / 'references').is_dir())
+        self.assertTrue((self.directory / 'sketches').is_dir())
         self.assertTrue(ledger['studio_ready'])
         self.assertTrue((self.directory / 'src/Studio.tsx').is_file())
         self.assertTrue(a.read_json(self.directory / 'package.json')['private'])
@@ -150,6 +151,50 @@ class AnimationTests(unittest.TestCase):
         with patch.object(a, 'audit', return_value={a.STEP: {'status': 'missing'}}):
             self.assertEqual(a.init(self.project, self.asset)['status'], 'reused')
         self.assertEqual(before, self.state())
+
+    def test_init_backfills_sketches_without_changing_existing_files(self):
+        (self.directory / 'sketches').rmdir()
+        before = self.state()
+        self.transition.reset_mock()
+        with patch.object(a, 'audit', return_value={a.STEP: {'status': 'missing'}}):
+            self.assertEqual(a.init(self.project, self.asset)['status'], 'reused')
+            self.assertTrue((self.directory / 'sketches').is_dir())
+            self.assertEqual(before, self.state())
+            self.transition.assert_called_once()
+            self.transition.reset_mock()
+            (self.directory / 'sketches/keep.png').write_bytes(b'human sketch')
+            before = self.state()
+            a.init(self.project, self.asset)
+            self.assertEqual(before, self.state())
+            self.transition.assert_not_called()
+
+    def test_init_refuses_redirected_or_non_directory_sketches(self):
+        sketches = self.directory / 'sketches'
+        sketches.rmdir()
+        sketches.write_text('Human file')
+        with self.assertRaisesRegex(ValueError, 'Expected sketches directory'):
+            a.init(self.project, self.asset)
+        self.assertEqual(sketches.read_text(), 'Human file')
+        sketches.unlink()
+        sketches.symlink_to(self.directory / 'references', target_is_directory=True)
+        with self.assertRaisesRegex(ValueError, 'Redirected path'):
+            a.init(self.project, self.asset)
+
+    def test_init_recovers_legacy_scaffold_without_sketches(self):
+        (self.directory / 'Animation.json').unlink()
+        (self.directory / 'request.01.md').unlink()
+        (self.directory / 'sketches').rmdir()
+        self.assertEqual(a.init(self.project, self.asset)['status'], 'initialized')
+        self.assertTrue((self.directory / 'sketches').is_dir())
+
+    def test_init_recovery_refuses_unregistered_sketches(self):
+        (self.directory / 'Animation.json').unlink()
+        (self.directory / 'request.01.md').unlink()
+        sketch = self.directory / 'sketches/human.png'
+        sketch.write_bytes(b'human sketch')
+        with self.assertRaisesRegex(ValueError, 'edited or unexpected'):
+            a.init(self.project, self.asset)
+        self.assertEqual(sketch.read_bytes(), b'human sketch')
 
     def test_init_recovers_only_pristine_scaffold_before_request_publication(self):
         (self.directory / 'Animation.json').unlink()

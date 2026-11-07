@@ -1,6 +1,6 @@
 ---
 name: studio-animations
-description: Run or resume Studio substage 2.3 interactively, discussing one registry asset at a time, creating authored object candidates on request, saving reusable assets explicitly, and waiting for human-approved videos.
+description: Run or resume Studio substage 2.3 interactively, discussing one registry asset at a time, sketching fast image previews, rendering Remotion candidates and saving reusable assets only on request, and waiting for human-approved videos.
 ---
 
 # 2.3 - Animations
@@ -11,7 +11,9 @@ Use registry IDs as supplied: new projects use `A01`-`A99`; existing projects ke
 
 Create rendered videos for every active, kept `Graphic` or `Animation` in the current 1.4 Asset Registry. Use the canonical Markdown and JSON together, through the maintained registry parser. The approved Asset/Brief is the initial prompt; Why/Notes, linked script passages and extracts supply context. Exclude other types, rejected and inactive rows. The machine-readable dependency and output contract is [dependencies.json](dependencies.json).
 
-Create all new visual assets through authored animation techniques such as React, SVG, CSS and Remotion, including characters, backgrounds and objects. Do not use AI image generation for artwork, references or intermediate assets, and do not substitute it when an illustration is difficult to author. AI image generation is outside this stage's supported workflow unless the user explicitly adds that functionality later.
+Create animation candidates through authored animation techniques such as React, SVG, CSS and Remotion, including characters, backgrounds and objects. AI image generation and editing are permitted for static sketch exploration and design references through the sketch skill. Render requests do not authorize new image-generation calls or AI-generated video; they use the selected design and prepared resources through the authored Remotion workflow.
+
+Quick sketches are static images, not animation renders. A connected image-generation/editing tool may be used for concepts and reference-guided revisions; direct programmatic drawing such as Pillow remains available for suitable tasks. Tool setup and credentials are not implied by this permission. Keep the exact prompt, tool/model when known and input references with each sketch version. An accepted AI sketch still needs explicit preparation into usable animation assets; do not promise that a flat image is automatically a layered rig.
 
 This is an independent branch from 1.4, not a prerequisite of B-roll, footage intake or presenter postproduction. A missing or stale prerequisite blocks execution. A valid approved registry with no eligible assets is a successful empty selection, not a reason to invent graphics.
 
@@ -52,6 +54,9 @@ After successful preflight, create missing working directories for every current
     settings.json
     package.json
     tsconfig.json
+    sketches/
+      piggy-bank/
+        v001/preview.png
     candidates/
       piggy-bank/
         v001/
@@ -66,19 +71,25 @@ After successful preflight, create missing working directories for every current
     ...
 ```
 
-`init` snapshots the approved request and creates a Studio-ready scaffold with a registered entry point, named interactive SVG layer and portable project configuration. Initialize missing eligible assets serially using this helper; create missing library and candidate directories through permitted filesystem operations, not invented helper flags. Every new graphic/animation should retain the Studio-ready format. Existing assets are reused without rewriting their source or setup. A scaffold is setup only, not artwork, a visual proposal or a finished animation. Candidate versions, snapshots and rendered files in the example appear only when requested work produces them; do not populate placeholder versions.
+`init` snapshots the approved request and creates a Studio-ready scaffold with a registered entry point, named interactive SVG layer and portable project configuration. Run it serially for each eligible asset on setup, including existing assets: it creates a missing `sketches/` directory without rewriting existing files or replacing sketch content. Create missing library and candidate directories through permitted filesystem operations, not invented helper flags. Every new graphic/animation should retain the Studio-ready format. A scaffold is setup only, not artwork, a visual proposal or a finished animation. Sketch versions, candidate versions, snapshots and rendered files in the example appear only when requested work produces them; do not populate placeholder versions. Preserve historical sketches stored as candidates; do not migrate or rename earlier work automatically.
 
 ## Interactive workflow
 
 This stage has no automatic first-cut flow. A `studio run 2.3` request authorizes preflight, directory setup, source-context presentation and a text proposal only. It does not authorize creating objects, assembling a composition, rendering a preview, saving reusable assets or proceeding through all animations unattended.
 
-For requested object creation, revisions and isolated previews, follow [Animation Object](object-authoring/SKILL.md). For an explicit save request, follow [Save Animation Object](library-save/SKILL.md). These are subordinate workflows, not additional numbered stages, and do not replace the final animation approval gate.
+Route requests by meaning, without automatically chaining actions:
 
-1. Work on one asset at a time. Resume the asset already under discussion; otherwise start with the first unfinished eligible asset in registry order. Reuse current approved work rather than recreating it. Read its requests, source, references, candidates, renders and approvals before proposing changes.
+- **Sketch:** follow [Sketch Animation Asset](sketching/SKILL.md) for a fast static image in this asset's `sketches/<subject>/vNNN/`, using connected AI generation/editing or appropriate programmatic drawing. No Remotion setup, video render or frame extraction. A quick image preview or ambiguous bare "preview" defaults to this lightweight path; it does not authorize setting up a provider or silently replacing a requested AI sketch with a coded approximation.
+- **Render:** follow [Render Animation Object](object-authoring/SKILL.md) for a requested Remotion object candidate in `candidates/<object-name>/vNNN/`. If the request explicitly targets the whole animation instead, use the maintained full-animation render workflow below. Use a selected sketch as a design reference without moving or promoting it.
+- **Save:** follow [Save Animation Object](library-save/SKILL.md) to copy a selected candidate into the common versioned `ASSETS` library. Saving does not sketch or render. A sketch alone is not a reusable candidate and must not be silently promoted.
+
+These are subordinate workflows, not additional numbered stages, and do not replace the final animation approval gate.
+
+1. Work on one asset at a time. Resume the asset already under discussion; otherwise start with the first unfinished eligible asset in registry order. Reuse current approved work rather than recreating it. Read its requests, source, references, sketches, candidates, renders and approvals before proposing changes.
 2. Show the linked script passage, stage directions, registry brief and Why/Notes, plus relevant extract context. Quote original material accurately and distinguish it from new production decisions. Identify missing context rather than inventing script notes.
 3. Suggest the visual treatment in text: composition, action, approximate timing, characters, background and objects, including reusable library candidates. Then stop for user direction. Do not author artwork or render a first cut automatically.
-4. Create or revise an object only when the user requests it. Keep each object's authored source, resources and requested preview together in its own `candidates/<object-name>/vNNN/` directory within the current asset. Use the next unused version and preserve earlier candidates. Use only authored React, SVG, CSS and Remotion techniques. A request for an object preview does not authorize rendering the whole animation or promoting the object to the library.
-5. Stop after presenting each requested candidate for feedback. Apply requested revisions as new versions; do not silently overwrite a candidate or assume positive feedback means save. Record decisions and candidate paths in the append-only stage log so another session can resume the same discussion.
+4. Sketch or render only the requested subject using the corresponding skill. Sketches live in `sketches/` and Remotion candidates in `candidates/`; retain separate version histories and trace the selected sketch in render provenance. A sketch request does not authorize Remotion rendering or production-ready rigging. Neither object workflow authorizes rendering the whole animation or saving to the library.
+5. Stop after presenting each requested sketch or candidate for feedback. Apply requested revisions as new versions in the appropriate folder; do not silently overwrite earlier work or assume positive feedback means render or save. Record decisions and sketch/candidate paths in the append-only stage log so another session can resume the same discussion.
 6. Only when the user explicitly asks to save an object, copy the selected version into `ASSETS/CHARACTERS/<name>/vNNN/`, `ASSETS/BACKGROUND/<name>/vNNN/` or `ASSETS/OBJECTS/<name>/vNNN/` as appropriate. Preserve the original candidate and existing library versions. If the selected version is ambiguous, resolve that before copying. Retain source, required resources, provenance and any attribution/licensing information with the saved version. Saving an object is not animation approval.
 7. Assemble or revise the animation only when requested, using the agreed objects and treatment. Freeze selected library resources into this animation's `references/`, and copy reusable code into its own `src/`; record the source library version. Never import live code or reference mutable files from the shared library or another animation. Later library updates must not silently change an existing animation.
 8. Render an animation preview only when requested, using the maintained render workflow below. Inspect it and present it for feedback, then stop. Continue revisions interactively. Move to the next animation only on the user's explicit instruction, not because a render succeeded or an object was saved. An instruction to move on is not final video approval; preserve pending approval status and the existing completion gate.
@@ -125,7 +136,7 @@ Record each substantive requested change before editing the composition:
 python "<helper>" revise --project-root "<real-project-root>" --asset-id A10 --request "Slow the deposits, retain the piggy bank longer, and simplify the graph labels."
 ```
 
-Use `--request-file` for longer exact requests. The helper preserves numbered `request.NN.md` history. Update only the source, resources or settings requested by the user; render the next version only when requested. Object-only changes follow the candidate versioning and explicit save gates above. Preserve prior render snapshots and candidate videos; do not overwrite a version to conceal iteration. Keep production refinements local to 2.3; reconcile a changed fundamental purpose, type or source applicability through 1.4 instead of silently changing its approved request.
+Use `--request-file` for longer exact requests. The helper preserves numbered `request.NN.md` history. Update only the source, resources or settings requested by the user; render the next version only when requested. Sketch-only changes use the sketch skill's lightweight image versioning and log record, not canonical composition revisions or render snapshots. Object-only changes follow the candidate versioning and explicit save gates above. Preserve sketches, prior render snapshots and candidate videos; do not overwrite a version to conceal iteration. Keep production refinements local to 2.3; reconcile a changed fundamental purpose, type or source applicability through 1.4 instead of silently changing its approved request.
 
 A revised request, changed source, settings, resources or relevant approved registry fields makes previous approval noncurrent. Keep old approved files in place, report the mismatch and let the human replace their selection. Do not move or delete approval files automatically.
 
@@ -145,7 +156,7 @@ python "<helper>" complete --project-root "<real-project-root>"
 ## Reruns, preservation and safety
 
 - Reuse current assets and approvals. An unrelated registry change may invalidate the stage marker without requiring every animation to be regenerated.
-- Preserve briefs, human edits, source, references, object candidates, shared library versions, snapshots, previous renders and `APPROVED/`. Resume the recorded interactive handoff without replaying completed work or creating an automatic first cut. This stage has no automatic project artifact deletion or regeneration sweep.
+- Preserve briefs, human edits, source, references, sketches, object candidates, shared library versions, snapshots, previous renders and `APPROVED/`. Resume the recorded interactive handoff without replaying completed work or creating an automatic first cut. This stage has no automatic project artifact deletion or regeneration sweep.
 - Keep mutations and rendering serial in this initial stage. Do not parallelize helper calls or delegate workers with shared write access. Shared publication, logs and completion remain coordinator-owned.
 - Record attempts, failures, revisions and handoffs in the normal append-only stage `LOG.md`, using maintained helpers. Do not rewrite logs or fabricate completion evidence.
 - Generated TypeScript is executable code. The renderer does not sandbox composition code or constrain Python/Node filesystem access. Kilo permissions are not an OS security boundary. Use reviewed code, project-specific access, approval for dependency changes and an OS-isolated renderer when stronger containment is required.
