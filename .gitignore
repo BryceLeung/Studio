@@ -2,7 +2,6 @@
 /Connected Projects/
 
 # Local tool environments and Python caches.
-/.venv-sync/
 .venv-tools/
 __pycache__/
 

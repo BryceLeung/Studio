@@ -10,7 +10,7 @@ import venv
 
 
 WORKFLOW_ROOT = Path(__file__).resolve().parents[6]
-ENVIRONMENT = WORKFLOW_ROOT / ".venv-sync"
+ENVIRONMENT = Path(__file__).resolve().parents[1] / ".venv-tools"
 BBC_REVISION = "6b8b12b04104e66d890f8feea080889aa775d9b7"
 BBC_ARCHIVE = f"https://github.com/bbc/audio-offset-finder/archive/{BBC_REVISION}.zip"
 BBC_SHA256 = "6f74eca0f7cfb7ffb2f6036792cc6531f9abb90aceaf83233a6517c82aab1403"

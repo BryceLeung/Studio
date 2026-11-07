@@ -85,6 +85,14 @@ class SyncValidationTests(unittest.TestCase):
     def test_matching_json_success_is_read_only(self):
         self.check_unchanged()
 
+    def test_installer_and_generator_use_stage_local_environment(self):
+        helper, pins = validation.read_helpers()
+        expected = SOURCE.parents[1] / '.venv-tools'
+        self.assertEqual(pins.ENVIRONMENT, expected)
+        self.assertEqual(helper.ENVIRONMENT, expected)
+        self.assertEqual(pins.environment_python(), expected / (
+            'Scripts/python.exe' if os.name == 'nt' else 'bin/python'))
+
     def test_wav_fractional_timestamp_changes_accept_seconds_and_legacy_records(self):
         wav = self.footage / "A__C01__lav.wav"
         second = wav.stat().st_mtime_ns // 1_000_000_000
