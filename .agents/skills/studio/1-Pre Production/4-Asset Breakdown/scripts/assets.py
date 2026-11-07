@@ -22,7 +22,6 @@ from studio.script_docx import (HEADERS as SCRIPT_HEADERS, document_xml, is_dire
 
 STAGE = Path("1-Pre Production/4-Asset Breakdown")
 SCRIPTS = Path("1-Pre Production/1-Script Review/Approved")
-SHORTLIST = Path("1-Pre Production/3-Extracts/APPROVED/Short-Form Excerpt Shortlist.md")
 TYPES = ("B-roll", "Graphic", "Still", "Animation", "Screen Recording", "Audio", "Other")
 REVIEWS = ("Pending Review", "Keep", "Reject")
 FIELDS = ("script", "start", "end", "passage", "extracts", "type", "brief", "notes")
@@ -152,61 +151,6 @@ def read_docx(path):
     return words, imported
 
 
-def extract_context(text, scripts):
-    """Follow 1.3's existing numbered shortlist format without postproduction imports."""
-    result = []
-    for match in re.finditer(r"^## (\d+)\. ([^\n]+)\n(.*?)(?=^## |\Z)", text, re.M | re.S):
-        number, title, body = match.groups()
-        status = re.search(r"\*\*Review status:\*\* (.+)", body)
-        if not status or status.group(1).strip() != "Approved":
-            continue
-        source = re.search(r"\*\*Source:\*\* (.+)", body)
-        if not source or "### Provisional spoken script" not in body:
-            raise ValueError(f"Extract {number} lacks source/spoken script")
-        paths = [path for path in scripts if Path(path).name == source.group(1).strip()]
-        if len(paths) != 1:
-            raise ValueError(f"Unknown/ambiguous extract source: {number}")
-        path = paths[0]
-        words = scripts[path]["words"]
-        alternatives = []
-        jump = False
-        for paragraph in re.split(r"\n\s*\n", body.split("### Provisional spoken script", 1)[1].strip()):
-            if paragraph.strip() == "> [PROPOSED JUMP]":
-                jump = True
-                continue
-            if paragraph.startswith(">"):
-                raise ValueError("Unknown extract directive")
-            wanted = paragraph.split()
-            if not wanted:
-                continue
-            alternatives.append([(i, i + len(wanted) - 1) for i in range(len(words) - len(wanted) + 1)
-                                 if words[i:i + len(wanted)] == wanted])
-            jump = False
-        solutions = []
-
-        def walk(index, spans):
-            if len(solutions) > 1:
-                return
-            if index == len(alternatives):
-                solutions.append(spans)
-                return
-            for start, end in alternatives[index]:
-                if not spans or start > spans[-1][1]:
-                    walk(index + 1, spans + [[start, end]])
-
-        walk(0, [])
-        if not alternatives or jump or len(solutions) != 1:
-            raise ValueError(f"Extract {number} passages need unique ordered source anchors")
-        identity = "EXTRACT-" + str(int(number))
-        if any(item["id"] == identity for item in result):
-            raise ValueError("Duplicate extract number")
-        result.append({"id": identity, "title": title.strip(), "script": path, "spans": solutions[0]})
-    # Do not mistake a differently formatted approved entry for a no-extract decision.
-    if len(re.findall(r"\*\*Review status:\*\*\s*Approved\b", text)) != len(result):
-        raise ValueError("Approved extract is outside the supported numbered shortlist format")
-    return result
-
-
 def stage_directions(path, words):
     """Expose explicit three-column directions without inventing spoken anchors."""
     document = document_xml(path)
@@ -239,18 +183,17 @@ def context(project):
                    key=lambda p: p.name) if directory.is_dir() else []
     if not paths:
         raise ValueError("No approved scripts")
-    paths.append(project / SHORTLIST)
     for path in paths:
         if not path.resolve(strict=True).is_relative_to(project):
             raise ValueError("Input escapes project")
     scripts = {}
-    for path in paths[:-1]:
+    for path in paths:
         words, comments = read_docx(path)
         scripts[path.relative_to(project).as_posix()] = {
             "words": words, "comments": comments, "directions": stage_directions(path, words)}
     return {"inputs": [completion.fingerprint(p, project, "project") for p in paths],
             "scripts": scripts,
-            "extracts": extract_context(paths[-1].read_text(encoding="utf-8-sig"), scripts)}
+            "extracts": []}
 
 
 def validate_proposal(proposal, ctx):
@@ -270,11 +213,7 @@ def validate_proposal(proposal, ctx):
     refs = proposal["extracts"]
     if not isinstance(refs, list) or any(not isinstance(ref, str) for ref in refs) or len(set(refs)) != len(refs):
         raise ValueError("Invalid extract references")
-    for ref in refs:
-        extract = next((item for item in ctx["extracts"] if item["id"] == ref), None)
-        if (extract is None or extract["script"] != proposal["script"] or
-                not any(start <= right and end >= left for left, right in extract["spans"])):
-            raise ValueError("Extract does not intersect asset passage")
+    # Retained registry references are inert metadata, never resolved against 1.3.
 
 
 def proposals(ctx, envelope):
@@ -291,20 +230,16 @@ def proposals(ctx, envelope):
     for path, script in ctx["scripts"].items():
         for comment in script["comments"]:
             key = "comment:" + path + "#" + comment["comment_id"]
-            refs = [e["id"] for e in ctx["extracts"] if e["script"] == path and
-                    any(comment["start"] <= end and comment["end"] >= start for start, end in e["spans"])]
             proposal = {field: comment[field] for field in ("start", "end", "passage", "brief")}
-            proposal.update(script=path, extracts=refs, type="Other", notes="Imported Word comment; review asset type and rationale.")
+            proposal.update(script=path, extracts=[], type="Other", notes="Imported Word comment; review asset type and rationale.")
             result[key] = {"origin": "User", "provenance": comment, "fields": proposal}
         if envelope.get("script_only"):
             for direction in script.get("directions", []):
                 if direction["end"] < direction["start"]:
                     raise ValueError(f"Stage direction {direction['row_id']} in {path} has no spoken dialogue; "
                                      "move it to the relevant dialogue row before importing")
-                refs = [e["id"] for e in ctx["extracts"] if e["script"] == path and any(
-                    direction["start"] <= end and direction["end"] >= start for start, end in e["spans"])]
                 proposal = {field: direction[field] for field in ("start", "end", "passage", "brief")}
-                proposal.update(script=path, extracts=refs,
+                proposal.update(script=path, extracts=[],
                                 type="Animation" if direction["brief"].lstrip().lower().startswith("animation:") else "Other",
                                 notes="Imported script stage direction; review asset type and rationale.")
                 validate_proposal(proposal, ctx)
@@ -314,6 +249,8 @@ def proposals(ctx, envelope):
         raise ValueError("Missing suggestions list (use [] for an analyzed empty slate)")
     for item in envelope["suggestions"]:
         validate_proposal(item, ctx)
+        if item["extracts"]:
+            raise ValueError("New suggestions must use extracts: []; intake reads approved scripts only")
         key = item.get("key")
         if not isinstance(key, str) or not key.strip():
             raise ValueError("Agent suggestion requires a stable key")
@@ -424,6 +361,8 @@ def set_control(registry, key, value):
     registry["control"][key] = value
 
 
+# Keep the shipped header byte-for-byte: it is part of the registry parser contract.
+# Its Extracts field is now inert metadata, not an instruction to resolve 1.3 inputs.
 INTRO = ("# Asset Registry\n\n"
          "Set Review to Pending Review, Keep, or Reject. Edit Type, Extracts, Passage, Asset, and Why in place.\n"
          "Extracts: use explicit IDs separated by commas, or Full film only. Keep rejected cards and stable IDs.\n"
@@ -643,7 +582,8 @@ def reconcile(project, envelope):
     for key, identity in allocation(registry, incoming):
         item = incoming[key]
         values = {"ID": identity, "Origin": item["origin"], "Source Key": key,
-                  "Review": "Pending Review", "Active": "Yes", "Change": "New proposal",
+                  "Review": "Keep" if item["origin"] == "User" else "Pending Review",
+                  "Active": "Yes", "Change": "New proposal",
                   "Provenance": encoded(item["provenance"]), "Proposal": encoded(item)}
         values.update({COLUMNS[field]: field_value(field, value) for field, value in item["fields"].items()})
         registry["assets"].append(values)
@@ -652,12 +592,20 @@ def reconcile(project, envelope):
         previous = json.loads(row["Proposal"])
         active = "Yes" if item else "No"
         changed = item is not None and item != previous
-        if inputs_changed or changed or active != row["Active"]:
+        source_changed = inputs_changed or changed or active != row["Active"]
+        # Explicit script imports are approved intent, but never undo a human Reject.
+        imported = item is not None and item["origin"] == "User"
+        review = "Pending Review"
+        change = "Review changed inputs/proposal" if item else "Removed from current slate; reject"
+        if imported:
+            review = "Reject" if row["Review"] == "Reject" else "Keep"
+            change = ("Explicit script import; human Reject preserved" if review == "Reject" else
+                      "Auto-approved explicit script import")
+        if source_changed or (imported and row["Review"] == "Pending Review"):
             registry["history"].append([datetime.now(timezone.utc).isoformat(), row["ID"],
-                                  "Inputs/proposal/applicability changed", encoded(row)])
-            for name, value in (("Review", "Pending Review"), ("Active", active),
-                                ("Change", "Review changed inputs/proposal" if item else "Removed from current slate; reject")):
-                row[name] = value
+                                  "Inputs/proposal/applicability changed" if source_changed else
+                                  "Auto-approved explicit script import", encoded(row)])
+            row.update(Review=review, Active=active, Change=change)
         if changed:
             # Three-way merge: never overwrite a human modification.
             for field, value in item["fields"].items():
@@ -690,7 +638,6 @@ def coverage(registry, ctx, *, reviews=("Keep",), entries=None):
     if entries is None:
         _, entries = rows(registry)
     covered = {path: set() for path in ctx["scripts"]}
-    extract_covered = {item["id"]: set() for item in ctx["extracts"]}
     for _, row in entries:
         if row["Review"] not in reviews or row["Active"] != "Yes":
             continue
@@ -698,13 +645,8 @@ def coverage(registry, ctx, *, reviews=("Keep",), entries=None):
         validate_proposal(proposal, ctx)
         span = set(range(proposal["start"], proposal["end"] + 1))
         covered[proposal["script"]].update(span)
-        for ref in proposal["extracts"]:
-            extract_covered[ref].update(span)
-    return {"advisory_only": True, "full_script_target": 0.25, "extract_target": 1.0,
-            "scripts": {path: len(covered[path]) / len(script["words"]) for path, script in ctx["scripts"].items()},
-            "extracts": {item["id"]: len(extract_covered[item["id"]] &
-                {i for start, end in item["spans"] for i in range(start, end + 1)}) /
-                sum(end - start + 1 for start, end in item["spans"]) for item in ctx["extracts"]}}
+    return {"advisory_only": True, "full_script_target": 0.25,
+            "scripts": {path: len(covered[path]) / len(script["words"]) for path, script in ctx["scripts"].items()}}
 
 
 def input_status(registry, ctx):
@@ -824,18 +766,13 @@ def inspect(project):
 
 
 def indexed_context(ctx):
-    lines = ["Word indices are zero-based and inclusive."]
+    lines = ["Approved scripts only. Word indices are zero-based and inclusive."]
     for path, script in ctx["scripts"].items():
         lines.extend(("", f"Script: {path}", " ".join(f"[{i}] {word}" for i, word in enumerate(script["words"]))))
         for comment in script["comments"]:
             lines.append(f"Comment {comment['comment_id']} [{comment['start']}-{comment['end']}]: {comment['brief']}")
         for direction in script.get("directions", []):
             lines.append(f"Direction {direction['row_id']} [{direction['start']}-{direction['end']}]: {direction['brief']}")
-    for extract in ctx["extracts"]:
-        lines.append(f"\n{extract['id']}: {extract['title']} ({extract['script']})")
-        words = ctx["scripts"][extract["script"]]["words"]
-        for start, end in extract["spans"]:
-            lines.append(f"[{start}-{end}] " + " ".join(words[start:end + 1]))
     return "\n".join(lines)
 
 

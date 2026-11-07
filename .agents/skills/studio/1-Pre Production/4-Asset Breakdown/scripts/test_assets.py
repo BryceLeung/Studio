@@ -67,7 +67,7 @@ class AssetTests(unittest.TestCase):
         self.project = Path(self.tmp.name).resolve()
         self.script = self.project / assets.SCRIPTS / "A.docx"
         docx(self.script)
-        self.shortlist = self.project / assets.SHORTLIST
+        self.shortlist = self.project / "1-Pre Production/3-Extracts/APPROVED/Short-Form Excerpt Shortlist.md"
         self.shortlist.parent.mkdir(parents=True)
         self.shortlist.write_text("# Extracts\n\n## 1. Short\n**Review status:** Approved\n"
             "**Source:** A.docx\n\n### Provisional spoken script\n\nOne two three\n", encoding="utf-8")
@@ -80,7 +80,7 @@ class AssetTests(unittest.TestCase):
 
     def suggestion(self, **changes):
         item = {"key": "diagram", "script": self.script.relative_to(self.project).as_posix(),
-                "start": 0, "end": 1, "passage": "One two", "extracts": ["EXTRACT-1"],
+                "start": 0, "end": 1, "passage": "One two", "extracts": [],
                 "type": "Graphic", "brief": "Comparison diagram", "notes": "Clarifies the contrast"}
         item.update(changes)
         return item
@@ -113,11 +113,10 @@ class AssetTests(unittest.TestCase):
                          ["[Show family footage]", "Show a diagram."])
         self.assertEqual([row["Start"] for row in directions], [0, 6])
         self.assertEqual([row["End"] for row in directions], [5, 8])
-        self.assertTrue(all(row["Origin"] == "User" and row["Review"] == "Pending Review"
+        self.assertTrue(all(row["Origin"] == "User" and row["Review"] == "Keep"
                             and row["Type"] == "Other" for row in directions))
-        self.assertEqual(json.loads(directions[0]["Extracts"]), ["EXTRACT-1"])
+        self.assertEqual(json.loads(directions[0]["Extracts"]), [])
         self.assertTrue(assets.inspect(self.project)["input_status"]["comments"]["complete"])
-        self.edit("Review", "Keep")
         assets.check(self.project)
         before = readonly_state(self.project)
         assets.reconcile(self.project, envelope)
@@ -137,6 +136,107 @@ class AssetTests(unittest.TestCase):
                 self.assertEqual(direction["Brief"], brief.strip())
                 self.assertEqual(direction["Origin"], "User")
                 self.assertTrue(assets.inspect(self.project)["input_status"]["comments"]["complete"])
+
+    def test_sixteen_unchanged_pending_imports_auto_keep_once_with_history(self):
+        docx(self.script, three_column=True, directions="Show footage", extra_rows=tuple(
+            (f"L{n:02d}", f"Dialogue row {n}.", f"Show diagram {n}.") for n in range(2, 16)))
+        envelope = assets.script_only_envelope(self.project)
+        assets.reconcile(self.project, envelope)
+        self.edit("Review", "Pending Review")  # Existing pre-policy registry.
+        self.edit("Brief", "Human brief")
+        self.edit("Type", "Still")
+        self.edit("Notes", "Human rationale\n\nPreserve this.")
+        self.edit("Extracts", '["EXTRACT-99"]')
+        registry = assets.load(self.project)
+        registry["history"].append(["previous history"])
+        assets.save(registry, self.project)
+        old_rows = self.records()
+        self.assertEqual(len(old_rows), 16)
+        before = readonly_state(self.project)
+        self.assertFalse(assets.inspect(self.project)["completion_ready"])
+        self.assertTrue(assets.dry_run(self.project, envelope)["valid_snapshot"])
+        self.assertEqual(readonly_state(self.project), before)
+        assets.reconcile(self.project, envelope)
+        for old, current in zip(old_rows, self.records()):
+            self.assertEqual(current["Review"], "Keep")
+            self.assertEqual({k: v for k, v in current.items() if k not in ("Review", "Change")},
+                             {k: v for k, v in old.items() if k not in ("Review", "Change")})
+        history = assets.load(self.project)["history"]
+        self.assertEqual(history[0], ["previous history"])
+        self.assertEqual([json.loads(entry[3]) for entry in history[1:]], old_rows)
+        self.assertTrue(assets.inspect(self.project)["completion_ready"])
+        assets.check(self.project)
+        before = readonly_state(self.project)
+        assets.reconcile(self.project, envelope)
+        self.assertEqual(readonly_state(self.project), before)
+
+    def test_import_reject_survives_changes_retirement_and_return_with_human_fields(self):
+        docx(self.script, three_column=True, directions="Show footage")
+        assets.reconcile(self.project, assets.script_only_envelope(self.project))
+        self.edit("Review", "Reject")
+        self.edit("Brief", "Human brief")
+        self.edit("Type", "Still")
+        self.edit("Notes", "Human rationale")
+        self.edit("Extracts", '["EXTRACT-99"]')
+        old = self.records()
+        assets.reconcile(self.project, assets.script_only_envelope(self.project))
+        self.assertEqual(self.records(), old)
+        docx(self.script, text="Changed spoken words here.", brief="Asset: Revised comment",
+             three_column=True, directions="Animation: Revised direction")
+        assets.reconcile(self.project, assets.script_only_envelope(self.project))
+        for row in self.records():
+            self.assertEqual(row["Review"], "Reject")
+            self.assertEqual((row["Brief"], row["Type"], row["Notes"], row["Extracts"]),
+                             ("Human brief", "Still", "Human rationale", '["EXTRACT-99"]'))
+        self.assertEqual([json.loads(entry[3]) for entry in assets.load(self.project)["history"]], old)
+        with self.assertRaisesRegex(ValueError, "confirmation"):
+            assets.check(self.project)
+        assets.confirm_empty(self.project, "Human", "Confirmed all rejected")
+        assets.check(self.project)
+        # Mode change retires the direction under the normal review policy.
+        self.reconcile()
+        direction = next(row for row in self.records() if row["Source Key"].startswith("direction:"))
+        self.assertEqual((direction["Active"], direction["Review"]), ("No", "Pending Review"))
+        self.edit("Review", "Reject")
+        docx(self.script, text="Changed spoken words here.", brief="Asset: Returned comment",
+             three_column=True, directions="Animation: Returned direction")
+        assets.reconcile(self.project, assets.script_only_envelope(self.project))
+        self.assertTrue(all(row["Active"] == "Yes" and row["Review"] == "Reject" for row in self.records()))
+        with self.assertRaisesRegex(ValueError, "confirmation"):
+            assets.check(self.project)
+
+    def test_auto_kept_imports_still_require_valid_fields_and_current_processed_inputs(self):
+        self.reconcile()
+        self.assertEqual((self.records()[0]["Type"], self.records()[0]["Review"]), ("Other", "Keep"))
+        assets.check(self.project)
+        original = assets.load(self.project)
+        for field, value, message in (("Passage", "wrong", "Passage no longer matches"),
+                                      ("Type", "Video", "Invalid type/brief"),
+                                      ("Brief", "", "Invalid type/brief")):
+            with self.subTest(field=field):
+                self.edit(field, value)
+                with self.assertRaisesRegex(ValueError, message):
+                    assets.check(self.project)
+                assets.save(original, self.project)
+        registry = assets.load(self.project)
+        registry["control"]["processed"] = "[]"
+        assets.save(registry, self.project)
+        with self.assertRaisesRegex(ValueError, "current inputs"):
+            assets.check(self.project)
+        assets.save(original, self.project)
+        docx(self.script, brief="Asset: Changed")
+        with self.assertRaisesRegex(ValueError, "current inputs"):
+            assets.check(self.project)
+
+    def test_script_only_imports_complete_through_shared_recorder_in_one_pass(self):
+        docx(self.script, three_column=True, directions="Show footage")
+        completion.record_done(self.project, assets.ROOT, "1.1",
+                               completion.build_manifest(self.project, assets.ROOT, "1.1"))
+        assets.reconcile(self.project, assets.script_only_envelope(self.project))
+        assets.check(self.project)
+        completion.record_done(self.project, assets.ROOT, "1.4",
+                               completion.build_manifest(self.project, assets.ROOT, "1.4"))
+        self.assertEqual(validation.audit(self.project, target="1.4")["1.4"]["status"], "current")
 
     def test_script_only_retires_ai_and_preserves_human_edits(self):
         docx(self.script, three_column=True, directions="Show footage")
@@ -160,7 +260,7 @@ class AssetTests(unittest.TestCase):
             assets.dry_run(self.project, assets.script_only_envelope(self.project))
         self.assertEqual(readonly_state(self.project), before)
 
-    def test_script_only_changed_direction_reuses_identity_and_requires_review(self):
+    def test_script_only_changed_direction_reuses_identity_and_auto_keeps(self):
         docx(self.script, three_column=True, directions="Show footage")
         assets.reconcile(self.project, assets.script_only_envelope(self.project))
         self.edit("Review", "Keep")
@@ -171,10 +271,13 @@ class AssetTests(unittest.TestCase):
         direction = next(row for row in self.records() if row["Source Key"].startswith("direction:"))
         self.assertEqual(direction["ID"], old["ID"])
         self.assertEqual((direction["Brief"], direction["Review"]),
-                         ("Show revised footage", "Pending Review"))
+                          ("Show revised footage", "Keep"))
         self.reconcile()
         direction = next(row for row in self.records() if row["Source Key"].startswith("direction:"))
         self.assertEqual(direction["Active"], "No")
+        self.assertEqual(direction["Review"], "Pending Review")
+        with self.assertRaisesRegex(ValueError, "Pending Review"):
+            assets.check(self.project)
         self.edit("Review", "Keep")
         registry = assets.load(self.project)
         for row in registry["assets"]:
@@ -268,8 +371,8 @@ class AssetTests(unittest.TestCase):
         words = ctx["scripts"][self.suggestion()["script"]]["words"]
         self.assertEqual(numbered, [(str(i), word) for i, word in enumerate(words)])
         self.assertIn("Comment 7 [0-5]: Show the diagram", result.stdout)
-        self.assertIn("EXTRACT-1: Short", result.stdout)
-        self.assertIn("[0-2] One two three", result.stdout)
+        self.assertNotIn("EXTRACT-1", result.stdout)
+        self.assertIn("Approved scripts only", result.stdout)
 
     def test_indexed_context_utf8_and_numbering_restarts_for_each_script(self):
         second = self.script.with_name("B.docx")
@@ -345,8 +448,8 @@ class AssetTests(unittest.TestCase):
         report = json.loads(result.stdout)
         self.assertFalse(report["completion_ready"])
         self.assertEqual(report["errors"], [])
-        self.assertEqual(sum(issue["kind"] == "pending" for issue in report["issues"]), 2)
-        self.assertEqual(report["counts"]["review"]["Pending Review"], 2)
+        self.assertEqual(sum(issue["kind"] == "pending" for issue in report["issues"]), 1)
+        self.assertEqual(report["counts"]["review"]["Pending Review"], 1)
         self.assertTrue(report["input_status"]["inputs_current"])
         self.assertTrue(report["input_status"]["comments"]["complete"])
         self.assertNotEqual(self.cli("check").returncode, 0)
@@ -356,19 +459,19 @@ class AssetTests(unittest.TestCase):
         self.reconcile([self.suggestion(), self.suggestion(key="second")])
         registry = assets.load(self.project)
         registry["assets"][0]["Passage"] = "wrong first"
-        registry["assets"][1]["Extracts"] = '["EXTRACT-99"]'
+        registry["assets"][1]["Extracts"] = '["EXTRACT-99", "EXTRACT-99"]'
         registry["assets"][2]["Type"] = "Video"
         assets.save(registry, self.project)
         before = readonly_state(self.project)
         result = self.cli("inspect")
         self.assertEqual(result.returncode, 1, result.stderr)
         report = json.loads(result.stdout)
-        self.assertEqual(sum(issue["kind"] == "pending" for issue in report["issues"]), 3)
+        self.assertEqual(sum(issue["kind"] == "pending" for issue in report["issues"]), 2)
         self.assertEqual({error["asset"] for error in report["errors"]},
                          {row["ID"] for row in registry["assets"]})
         messages = " ".join(error["message"] for error in report["errors"])
         self.assertIn("Passage no longer matches", messages)
-        self.assertIn("Extract does not intersect", messages)
+        self.assertIn("Invalid extract references", messages)
         self.assertIn("Invalid type/brief", messages)
         self.assertEqual(before, readonly_state(self.project))
 
@@ -394,8 +497,8 @@ class AssetTests(unittest.TestCase):
         self.assertFalse(report["coverage"]["proposed_is_approved"])
         self.assertEqual(report["coverage"]["proposed"]["scripts"][self.suggestion()["script"]], 0.5)
         self.assertEqual(report["coverage"]["kept"]["scripts"][self.suggestion()["script"]], 1 / 3)
-        self.assertEqual(report["coverage"]["proposed"]["extracts"]["EXTRACT-1"], 1)
-        self.assertEqual(report["coverage"]["kept"]["extracts"]["EXTRACT-1"], 2 / 3)
+        self.assertNotIn("extracts", report["coverage"]["proposed"])
+        self.assertNotIn("extracts", report["coverage"]["kept"])
         self.assertEqual(before, readonly_state(self.project))
 
     def test_inspect_missing_malformed_and_stale_inputs_return_summary(self):
@@ -435,7 +538,7 @@ class AssetTests(unittest.TestCase):
         assets.save(registry, self.project)
         report = assets.inspect(self.project)
         self.assertFalse(report["input_status"]["processed_valid"])
-        self.assertEqual(sum(issue["kind"] == "pending" for issue in report["issues"]), 2)
+        self.assertEqual(sum(issue["kind"] == "pending" for issue in report["issues"]), 1)
         self.assertEqual(sum("Passage no longer matches" in issue["message"] for issue in report["errors"]), 2)
         self.assertIsNotNone(report["coverage"])
         self.assertFalse(report["completion_ready"])
@@ -553,7 +656,8 @@ class AssetTests(unittest.TestCase):
         rows = self.records()
         self.assertEqual({r["Origin"] for r in rows}, {"AI", "User"})
         self.assertEqual({r["ID"] for r in rows}, {"A01", "A02"})
-        self.assertTrue(all(r["Review"] == "Pending Review" for r in rows))
+        self.assertEqual({r["Origin"]: r["Review"] for r in rows},
+                         {"User": "Keep", "AI": "Pending Review"})
         self.assertIn("## A01 | Comparison diagram\n", self.path.read_text(encoding="utf-8"))
         text = self.path.read_text(encoding="utf-8")
         self.assertIn("**Review:** Pending Review\n", text)
@@ -602,16 +706,17 @@ class AssetTests(unittest.TestCase):
         row = self.records()[0]
         self.assertEqual(row["ID"], old_id)
         self.assertEqual(row["Brief"], "Revised request")
-        self.assertEqual(row["Review"], "Pending Review")
+        self.assertEqual(row["Review"], "Keep")
 
-    def test_input_change_and_applicability_change_require_review(self):
+    def test_script_input_change_requires_review(self):
         self.reconcile([self.suggestion()])
         self.edit("Review", "Keep")
-        self.shortlist.write_text(self.shortlist.read_text() + "\n", encoding="utf-8")
+        docx(self.script, brief="Asset: Changed script request")
         with self.assertRaisesRegex(ValueError, "current inputs"):
             assets.check(self.project)
         self.reconcile([self.suggestion(extracts=[])])
-        self.assertTrue(all(r["Review"] == "Pending Review" for r in self.records()))
+        self.assertEqual({r["Origin"]: r["Review"] for r in self.records()},
+                         {"User": "Keep", "AI": "Pending Review"})
 
     def test_removed_and_returned_suggestion_retains_rejection_identity(self):
         self.reconcile([self.suggestion()])
@@ -648,7 +753,7 @@ class AssetTests(unittest.TestCase):
             assets.check(self.project)
 
     def test_empty_confirmation_cannot_approve_pending_or_kept(self):
-        self.reconcile()
+        self.reconcile([self.suggestion()])
         with self.assertRaisesRegex(ValueError, "Pending Review"):
             assets.confirm_empty(self.project, "Human", "yes")
         self.edit("Review", "Keep")
@@ -661,7 +766,8 @@ class AssetTests(unittest.TestCase):
         self.edit("Review", "Keep")
         report = assets.check(self.project)
         self.assertLess(report["scripts"][self.suggestion()["script"]], 0.25)
-        self.assertAlmostEqual(report["extracts"]["EXTRACT-1"], 1 / 3)
+        self.assertNotIn("extract_target", report)
+        self.assertNotIn("extracts", report)
 
     def test_invalid_suggestions_and_stale_envelope_do_not_write(self):
         for changes in ({"start": -1}, {"start": True}, {"passage": "fake"}, {"extracts": ["EXTRACT-9"]},
@@ -680,7 +786,7 @@ class AssetTests(unittest.TestCase):
 
     def test_invalid_review_id_reference_and_deleted_rows_rejected(self):
         for column, value in (("ID", "bad"), ("Review", "Approved"), ("Passage", "fake"),
-                              ("Extracts", '["EXTRACT-9"]'), ("Origin", "AI")):
+                              ("Extracts", '["EXTRACT-9", "EXTRACT-9"]'), ("Origin", "AI")):
             with self.subTest(column=column):
                 if self.path.exists():
                     self.path.unlink()
@@ -733,7 +839,6 @@ class AssetTests(unittest.TestCase):
         text = self.path.read_text(encoding="utf-8")
         text = text.replace("**Review:** Pending Review", "**Review:** Keep")
         text = text.replace("**Type:** Graphic", "**Type:** Animation")
-        text = text.replace("**Extracts:** EXTRACT-1", "**Extracts:** Full film only")
         text = text.replace("**Asset:** Comparison diagram", "**Asset:** Human brief\n\nSecond paragraph\n")
         text = text.replace("**Why:** Clarifies the contrast", "**Why:** Human rationale\nAnd another line")
         self.path.write_text(text, encoding="utf-8")
@@ -755,7 +860,8 @@ class AssetTests(unittest.TestCase):
         self.assertEqual(registry["assets"][0]["Passage"], "A changed\n\npassage\n")
         self.assertEqual(assets.parse(assets.render(registry), assets.render_evidence(registry)), registry)
         self.path.write_text(text, encoding="utf-8")
-        self.reconcile()
+        with self.assertRaisesRegex(ValueError, "Passage no longer matches"):
+            self.reconcile()
         self.assertEqual(assets.load(self.project), registry)
         self.edit("Review", "Keep")
         with self.assertRaisesRegex(ValueError, "Passage no longer matches"):
@@ -796,7 +902,7 @@ class AssetTests(unittest.TestCase):
                          ("**Source:** A", "**Source:** B"),
                          ("**Origin:** AI", "**Origin:** User"),
                           ("**Asset:** Comparison diagram", "**Asset:** **Why:**\nAmbiguous"),
-                         ("**Extracts:** EXTRACT-1", "**Extracts:** EXTRACT-9, unknown")):
+                         ("**Extracts:** Full film only", "**Extracts:** EXTRACT-9, unknown")):
             with self.subTest(old=old):
                 changed = text.replace(old, new, 1)
                 self.path.write_text(changed, encoding="utf-8")
@@ -813,17 +919,71 @@ class AssetTests(unittest.TestCase):
         self.assertEqual(before, self.path.read_bytes())
         self.assertEqual(list(self.path.parent.glob(".assets-*")), [])
 
-    def test_extract_jump_ambiguity_and_explicit_no_extract(self):
-        text = self.shortlist.read_text()
-        self.shortlist.write_text(text.replace("One two three", "One two\n\n> [PROPOSED JUMP]\n\nfive six."))
+    def test_extract_files_irrelevant_to_context_and_both_intake_modes(self):
+        docx(self.script, three_column=True, directions="Animation: Show a tree")
+        second = self.script.with_name("B.docx")
+        docx(second, text="Another approved script.", three_column=True, directions="Show footage")
         ctx = assets.context(self.project)
-        self.assertEqual(ctx["extracts"][0]["spans"], [[0, 1], [4, 5]])
-        docx(self.script, text="One two One two", comment=False)
-        self.shortlist.write_text(text.replace("One two three", "One two"))
-        with self.assertRaisesRegex(ValueError, "unique"):
-            assets.context(self.project)
-        self.shortlist.write_text("# No viable extracts\nHuman-approved empty shortlist.\n")
-        self.assertEqual(assets.context(self.project)["extracts"], [])
+        expected = {p.relative_to(self.project).as_posix() for p in (self.script, second)}
+        self.assertEqual(set(ctx["scripts"]), expected)
+        self.assertEqual({item["path"] for item in ctx["inputs"]}, expected)
+        self.assertEqual(ctx["scripts"][second.relative_to(self.project).as_posix()]["words"],
+                         ["Another", "approved", "script."])
+        self.assertEqual(ctx["extracts"], [])
+        for script_only in (False, True):
+            envelope = (assets.script_only_envelope(self.project) if script_only else
+                        self.envelope([self.suggestion()]))
+            assets.reconcile(self.project, envelope)
+            registry = assets.load(self.project)
+            for row in registry["assets"]:
+                row["Review"] = "Keep" if row["Active"] == "Yes" else "Reject"
+                self.assertEqual(json.loads(row["Extracts"]), [])
+            assets.save(registry, self.project)
+            before = assets.snapshot(self.project)
+            mtimes = [p.stat().st_mtime_ns for p in (self.path, self.path.with_suffix(".json"))]
+            for content in (None, b"\xff\x00 malformed extracts", b"Changed approved extract content"):
+                with self.subTest(script_only=script_only, content=content):
+                    if content is None:
+                        self.shortlist.unlink(missing_ok=True)
+                    else:
+                        self.shortlist.write_bytes(content)
+                    self.assertEqual(assets.context(self.project), ctx)
+                    self.assertTrue(assets.dry_run(self.project, envelope)["valid_snapshot"])
+                    assets.reconcile(self.project, envelope)
+                    assets.check(self.project)
+                    self.assertTrue(assets.inspect(self.project)["completion_ready"])
+                    self.assertEqual(assets.snapshot(self.project), before)
+                    self.assertEqual([p.stat().st_mtime_ns for p in
+                                      (self.path, self.path.with_suffix(".json"))], mtimes)
+
+    def test_historical_extract_metadata_preserves_human_edits_and_history(self):
+        self.reconcile([self.suggestion()])
+        registry = assets.load(self.project)
+        for row in registry["assets"]:
+            previous = json.loads(row["Proposal"])
+            previous["fields"]["extracts"] = ["EXTRACT-1"]
+            row["Proposal"] = assets.encoded(previous)
+            row["Extracts"] = assets.encoded(["EXTRACT-99"])
+            row["Brief"] = "Human edited historical brief"
+            row["Review"] = "Keep"
+        registry["control"]["proposal_hashes"] = assets.encoded(assets.proposal_hashes(registry))
+        assets.save(registry, self.project)
+        self.shortlist.unlink()
+        for row in registry["assets"]:
+            assets.validate_proposal(assets.row_proposal(row), assets.context(self.project))
+        with self.assertRaisesRegex(ValueError, "proposal is stale"):
+            assets.check(self.project)
+        self.reconcile([self.suggestion()])
+        registry = assets.load(self.project)
+        self.assertEqual(len(registry["history"]), 2)
+        for row in registry["assets"]:
+            self.assertEqual(row["Extracts"], assets.encoded(["EXTRACT-99"]))
+            self.assertEqual(row["Brief"], "Human edited historical brief")
+            self.assertEqual(row["Review"], "Keep" if row["Origin"] == "User" else "Pending Review")
+            self.assertEqual(json.loads(row["Proposal"])["fields"]["extracts"], [])
+        self.edit("Review", "Keep")
+        assets.check(self.project)
+        self.assertNotIn("extracts", assets.coverage(registry, assets.context(self.project)))
 
     def test_portability_and_read_only_validation(self):
         self.reconcile()
@@ -859,15 +1019,11 @@ class AssetTests(unittest.TestCase):
 
     def test_shared_recorder_rejects_pending_and_uses_real_ancestors(self):
         docx(self.script, three_column=True)
-        # These inventory stages use their normal shared recorders, not mock DONEs.
-        for step in ("1.1", "1.2", "1.3"):
-            if step == "1.2":
-                deck = self.project / "1-Pre Production/2-Cue Cards/A.pptx"
-                deck.parent.mkdir(parents=True)
-                deck.write_bytes(b"inventory fixture")
-            manifest = completion.build_manifest(self.project, assets.ROOT, step)
-            completion.record_done(self.project, assets.ROOT, step, manifest)
-        self.reconcile()
+        # Only script approval is required; there are no cue-card/extract markers.
+        self.shortlist.unlink()
+        manifest = completion.build_manifest(self.project, assets.ROOT, "1.1")
+        completion.record_done(self.project, assets.ROOT, "1.1", manifest)
+        self.reconcile([self.suggestion()])
         manifest = completion.build_manifest(self.project, assets.ROOT, "1.4")
         with self.assertRaisesRegex(ValueError, "Pending Review"):
             completion.record_done(self.project, assets.ROOT, "1.4", manifest)
@@ -876,6 +1032,7 @@ class AssetTests(unittest.TestCase):
         manifest = completion.build_manifest(self.project, assets.ROOT, "1.4")
         completion.record_done(self.project, assets.ROOT, "1.4", manifest)
         self.assertEqual(validation.audit(self.project, target="1.4")["1.4"]["status"], "current")
+        self.assertEqual(validation.order_stages(validation.load_stages(), "1.4"), ["1.1", "1.4"])
         # A changed source invalidates this branch, not the independent presenter pipeline.
         docx(self.script, brief="Asset: New request")
         self.assertEqual(validation.audit(self.project, target="1.4")["1.4"]["status"], "blocked")
@@ -886,6 +1043,7 @@ class AssetTests(unittest.TestCase):
 
     def test_noncurrent_layouts_rejected_without_publication(self):
         self.reconcile()
+        self.edit("Review", "Pending Review")
         text = self.path.read_text(encoding="utf-8")
         sidecar = self.path.with_suffix(".json").read_bytes()
         layouts = {
@@ -1098,7 +1256,7 @@ class AssetTests(unittest.TestCase):
         ctx = run("context")
         self.assertEqual(ctx.returncode, 0, ctx.stderr)
         self.assertEqual(json.loads(ctx.stdout)["registry"][0]["Origin"], "User")
-        self.assertNotEqual(run("check").returncode, 0)
+        self.assertEqual(run("check").returncode, 0)
         self.edit("Review", "Reject")
         self.assertNotEqual(run("check").returncode, 0)
         result = run("confirm-empty", "--by", "Human", "--reason", "Explicit human confirmation in test")
