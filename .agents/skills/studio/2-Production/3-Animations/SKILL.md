@@ -1,6 +1,6 @@
 ---
 name: studio-animations
-description: Run or resume Studio substage 2.3, creating Studio-ready Remotion graphics and animations from approved asset briefs, refining them through chat or visual controls, and waiting for human-approved videos.
+description: Run or resume Studio substage 2.3 interactively, discussing one registry asset at a time, creating authored object candidates on request, saving reusable assets explicitly, and waiting for human-approved videos.
 ---
 
 # 2.3 - Animations
@@ -10,6 +10,8 @@ Use registry IDs as supplied: new projects use `A01`-`A99`; existing projects ke
 ## Purpose and inputs
 
 Create rendered videos for every active, kept `Graphic` or `Animation` in the current 1.4 Asset Registry. Use the canonical Markdown and JSON together, through the maintained registry parser. The approved Asset/Brief is the initial prompt; Why/Notes, linked script passages and extracts supply context. Exclude other types, rejected and inactive rows. The machine-readable dependency and output contract is [dependencies.json](dependencies.json).
+
+Create all new visual assets through authored animation techniques such as React, SVG, CSS and Remotion, including characters, backgrounds and objects. Do not use AI image generation for artwork, references or intermediate assets, and do not substitute it when an illustration is difficult to author. AI image generation is outside this stage's supported workflow unless the user explicitly adds that functionality later.
 
 This is an independent branch from 1.4, not a prerequisite of B-roll, footage intake or presenter postproduction. A missing or stale prerequisite blocks execution. A valid approved registry with no eligible assets is a successful empty selection, not a reason to invent graphics.
 
@@ -34,33 +36,64 @@ python "<helper>" init --project-root "<real-project-root>" --asset-id A10
 
 Do not run a different stage to repair failed preflight. Do not install packages or download browsers during normal execution or status. Missing Node, dependencies or rendering browser is an explicit setup blocker. The shared renderer package is `renderer/`; its dependencies and lockfile are maintained in Git, with one installation serving all assets. Explicit setup uses `npm ci` and `npm run remotion -- browser ensure` from that directory.
 
-## Working files and initial cut
+## Directory setup
 
-Each eligible asset gets its own working directory:
+After successful preflight, create missing working directories for every currently eligible registry asset and the shared library below. Use the existing registry IDs, including legacy IDs, without renumbering. Keep this library inside stage 2.3, separate from the project's root-level `Assets/`. Preserve existing directories and files; setup is not permission to create artwork or render.
 
 ```text
-2-Production/3-Animations/A10/
-  Animation.json
-  request.01.md
-  settings.json
-  package.json
-  tsconfig.json
-  src/Composition.tsx
-  src/Studio.tsx
-  references/
-  snapshots/v001/
-  renders/v001.mp4
-  APPROVED/
+2-Production/3-Animations/
+  ASSETS/
+    CHARACTERS/
+    BACKGROUND/
+    OBJECTS/
+  A10/
+    Animation.json
+    request.01.md
+    settings.json
+    package.json
+    tsconfig.json
+    candidates/
+      piggy-bank/
+        v001/
+        v002/
+    src/Composition.tsx
+    src/Studio.tsx
+    references/
+    snapshots/v001/
+    renders/v001.mp4
+    APPROVED/
+  A11/
+    ...
 ```
 
-`init` snapshots the approved request and creates a Studio-ready scaffold with a registered entry point, named interactive SVG layer and portable project configuration. Every new graphic/animation should retain this format so it can open in Studio immediately. The scaffold is not an interpretation of the brief: author the requested visual before presenting a first cut. Existing assets are reused without rewriting their source or setup.
+`init` snapshots the approved request and creates a Studio-ready scaffold with a registered entry point, named interactive SVG layer and portable project configuration. Initialize missing eligible assets serially using this helper; create missing library and candidate directories through permitted filesystem operations, not invented helper flags. Every new graphic/animation should retain the Studio-ready format. Existing assets are reused without rewriting their source or setup. A scaffold is setup only, not artwork, a visual proposal or a finished animation. Candidate versions, snapshots and rendered files in the example appear only when requested work produces them; do not populate placeholder versions.
 
-1. Read the complete asset context and inspect existing requests, source, references, renders and approval files.
-2. Turn the approved brief into a short visual sequence. Make sensible production choices without an unnecessary questionnaire; ask only when missing facts or delivery requirements materially affect the result.
-3. Author `src/Composition.tsx` as a default-exported React component. Preserve `src/Studio.tsx`, registering exactly one composition. Keep local code imports inside `src/`. Use React, Remotion, CSS and SVG for charts, diagrams, motion graphics and illustrative cartoons. Build independently editable elements as named timeline nodes and expose useful controls for the particular brief. Read [Studio authoring](references/studio-authoring.md) before composing or restructuring these controls. Remotion animates authored artwork; it is not a generative image model.
-4. Put local media, fonts and other visual resources in `references/`; reference them with Remotion's `staticFile()`. Do not use unpinned remote media or import project code from elsewhere. Preserve attribution/licensing information with resources.
-5. Set the composition metadata in `src/Studio.tsx`. Initial defaults are 1920x1080, 30 fps, 150 frames, opaque H.264 MP4 without added audio. Adjust to the passage and known delivery requirements. The render helper resolves this same Studio composition and captures its width, height, fps and duration into `settings.json` before snapshotting. Optional `settings.json` component `props` remain explicit overrides; avoid duplicating editable controls there and in source. A Studio entry is required; unsupported older layouts must not be silently converted or rendered.
-6. Render through the maintained helper:
+## Interactive workflow
+
+This stage has no automatic first-cut flow. A `studio run 2.3` request authorizes preflight, directory setup, source-context presentation and a text proposal only. It does not authorize creating objects, assembling a composition, rendering a preview, saving reusable assets or proceeding through all animations unattended.
+
+For requested object creation, revisions and isolated previews, follow [Animation Object](object-authoring/SKILL.md). For an explicit save request, follow [Save Animation Object](library-save/SKILL.md). These are subordinate workflows, not additional numbered stages, and do not replace the final animation approval gate.
+
+1. Work on one asset at a time. Resume the asset already under discussion; otherwise start with the first unfinished eligible asset in registry order. Reuse current approved work rather than recreating it. Read its requests, source, references, candidates, renders and approvals before proposing changes.
+2. Show the linked script passage, stage directions, registry brief and Why/Notes, plus relevant extract context. Quote original material accurately and distinguish it from new production decisions. Identify missing context rather than inventing script notes.
+3. Suggest the visual treatment in text: composition, action, approximate timing, characters, background and objects, including reusable library candidates. Then stop for user direction. Do not author artwork or render a first cut automatically.
+4. Create or revise an object only when the user requests it. Keep each object's authored source, resources and requested preview together in its own `candidates/<object-name>/vNNN/` directory within the current asset. Use the next unused version and preserve earlier candidates. Use only authored React, SVG, CSS and Remotion techniques. A request for an object preview does not authorize rendering the whole animation or promoting the object to the library.
+5. Stop after presenting each requested candidate for feedback. Apply requested revisions as new versions; do not silently overwrite a candidate or assume positive feedback means save. Record decisions and candidate paths in the append-only stage log so another session can resume the same discussion.
+6. Only when the user explicitly asks to save an object, copy the selected version into `ASSETS/CHARACTERS/<name>/vNNN/`, `ASSETS/BACKGROUND/<name>/vNNN/` or `ASSETS/OBJECTS/<name>/vNNN/` as appropriate. Preserve the original candidate and existing library versions. If the selected version is ambiguous, resolve that before copying. Retain source, required resources, provenance and any attribution/licensing information with the saved version. Saving an object is not animation approval.
+7. Assemble or revise the animation only when requested, using the agreed objects and treatment. Freeze selected library resources into this animation's `references/`, and copy reusable code into its own `src/`; record the source library version. Never import live code or reference mutable files from the shared library or another animation. Later library updates must not silently change an existing animation.
+8. Render an animation preview only when requested, using the maintained render workflow below. Inspect it and present it for feedback, then stop. Continue revisions interactively. Move to the next animation only on the user's explicit instruction, not because a render succeeded or an object was saved. An instruction to move on is not final video approval; preserve pending approval status and the existing completion gate.
+
+## Requested composition and rendering
+
+These technical instructions apply only after the corresponding interactive request, not automatically on stage entry.
+
+Author `src/Composition.tsx` as a default-exported React component. Preserve `src/Studio.tsx`, registering exactly one composition. Keep local code imports inside `src/`. Use React, Remotion, CSS and SVG for charts, diagrams, motion graphics and illustrative cartoons. Build independently editable elements as named timeline nodes and expose useful controls for the particular brief. Read [Studio authoring](references/studio-authoring.md) before composing or restructuring these controls. Remotion animates authored artwork; it is not a generative image model.
+
+Put local media, fonts and other visual resources in `references/`; reference them with Remotion's `staticFile()`. Do not use unpinned remote media or import project code from elsewhere. Preserve attribution/licensing information with resources.
+
+Set the composition metadata in `src/Studio.tsx`. Initial defaults are 1920x1080, 30 fps, 150 frames, opaque H.264 MP4 without added audio. Adjust to the agreed treatment, passage and known delivery requirements. The render helper resolves this same Studio composition and captures its width, height, fps and duration into `settings.json` before snapshotting. Optional `settings.json` component `props` remain explicit overrides; avoid duplicating editable controls there and in source. A Studio entry is required; unsupported older layouts must not be silently converted or rendered.
+
+Render requested animation previews through the maintained helper:
 
 ```text
 python "<helper>" render --project-root "<real-project-root>" --asset-id A10
@@ -68,7 +101,7 @@ python "<helper>" render --project-root "<real-project-root>" --asset-id A10
 
 The helper snapshots source, references, requests, context and settings, then creates a numbered render without overwriting previous versions. It records exact render identity and renderer fingerprints. Reuse an unchanged current render instead of generating a duplicate.
 
-Inspect the resulting video for legibility, composition, timing, motion, clipping, factual accuracy and correspondence to the script. Technical validation is not a substitute for visual review. Present the first cut and stop for user feedback; never call an untouched title scaffold a finished interpretation.
+Inspect each requested preview for legibility, composition, timing, motion, clipping, factual accuracy and correspondence to the script. Technical validation is not a substitute for visual review. Present the preview and stop for user feedback; never call an untouched title scaffold a finished interpretation. Object candidates are exploratory working assets, not registered final animation videos. The Python helper has no object-candidate render or library-save command: follow the object skill's existing isolated Node renderer interface and the save skill's verified copy workflow. Do not invent helper commands, register an object preview as the completed animation, or overwrite the canonical composition to render an isolated object. Direct Node execution retains its normal approval requirements.
 
 ## Opening Remotion Studio
 
@@ -80,7 +113,7 @@ python "<helper>" studio --project-root "<real-project-root>" --asset-id A10
 
 This starts a foreground local server, opens the browser, and chooses a free port. Optional `--port 3000` selects a port; `--no-open` leaves the browser closed. Return the actual URL printed by the server. The launcher uses the asset as its editable project root and the shared renderer installation for dependencies. It does not install packages. Missing entry/configuration files are an error; no migration or automatic retrofit is supported.
 
-Studio edits save directly to source and make older render provenance noncurrent. Test the generated controls by changing and resetting one value, and check timeline timing after restructuring. Keep previous candidates and snapshots. A Studio export is an exploratory video until rendered and registered through `animations.py render`; it does not bypass the human approval gate. Include Studio readiness in the first-cut handoff; generating assets does not require opening a separate browser/server for every asset.
+Studio edits save directly to source and make older render provenance noncurrent. Test the generated controls by changing and resetting one value, and check timeline timing after restructuring. Keep previous candidates and snapshots. A Studio export is an exploratory video until rendered and registered through `animations.py render`; it does not bypass the human approval gate. Include Studio readiness when handing off a requested animation preview; do not open a separate browser/server for every asset automatically.
 
 For graphs and charts, use supplied facts or explicitly agreed assumptions. Identify illustrative data and return assumptions. Do not invent financial outcomes, imply guaranteed growth or disguise a conceptual curve as measured data.
 
@@ -92,7 +125,7 @@ Record each substantive requested change before editing the composition:
 python "<helper>" revise --project-root "<real-project-root>" --asset-id A10 --request "Slow the deposits, retain the piggy bank longer, and simplify the graph labels."
 ```
 
-Use `--request-file` for longer exact requests. The helper preserves numbered `request.NN.md` history. Update source, resources or settings and render the next version. Preserve prior render snapshots and candidate videos; do not overwrite a version to conceal iteration. Keep production refinements local to 2.3; reconcile a changed fundamental purpose, type or source applicability through 1.4 instead of silently changing its approved request.
+Use `--request-file` for longer exact requests. The helper preserves numbered `request.NN.md` history. Update only the source, resources or settings requested by the user; render the next version only when requested. Object-only changes follow the candidate versioning and explicit save gates above. Preserve prior render snapshots and candidate videos; do not overwrite a version to conceal iteration. Keep production refinements local to 2.3; reconcile a changed fundamental purpose, type or source applicability through 1.4 instead of silently changing its approved request.
 
 A revised request, changed source, settings, resources or relevant approved registry fields makes previous approval noncurrent. Keep old approved files in place, report the mismatch and let the human replace their selection. Do not move or delete approval files automatically.
 
@@ -112,7 +145,7 @@ python "<helper>" complete --project-root "<real-project-root>"
 ## Reruns, preservation and safety
 
 - Reuse current assets and approvals. An unrelated registry change may invalidate the stage marker without requiring every animation to be regenerated.
-- Preserve briefs, human edits, source, references, snapshots, previous renders and `APPROVED/`. This initial version has no automatic project artifact deletion or regeneration sweep.
+- Preserve briefs, human edits, source, references, object candidates, shared library versions, snapshots, previous renders and `APPROVED/`. Resume the recorded interactive handoff without replaying completed work or creating an automatic first cut. This stage has no automatic project artifact deletion or regeneration sweep.
 - Keep mutations and rendering serial in this initial stage. Do not parallelize helper calls or delegate workers with shared write access. Shared publication, logs and completion remain coordinator-owned.
 - Record attempts, failures, revisions and handoffs in the normal append-only stage `LOG.md`, using maintained helpers. Do not rewrite logs or fabricate completion evidence.
 - Generated TypeScript is executable code. The renderer does not sandbox composition code or constrain Python/Node filesystem access. Kilo permissions are not an OS security boundary. Use reviewed code, project-specific access, approval for dependency changes and an OS-isolated renderer when stronger containment is required.
