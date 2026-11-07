@@ -12,6 +12,34 @@ SPEC.loader.exec_module(APPEND_LOG)
 
 
 class AppendLogTests(unittest.TestCase):
+    def test_creates_missing_log_and_parent_directories(self):
+        with tempfile.TemporaryDirectory() as directory:
+            for log in (Path(directory) / "LOG.md", Path(directory) / "stage" / "step" / "LOG.md"):
+                with self.subTest(log=log):
+                    APPEND_LOG.append_entry(log, "Started", ["Result: Pending"], date(2026, 10, 7))
+
+                    self.assertEqual(
+                        log.read_text(encoding="utf-8"),
+                        "\n## 2026-10-07 — Started\n\n- Result: Pending\n",
+                    )
+
+    def test_refuses_missing_non_log_file_without_creating_directories(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "missing" / "notes.md"
+
+            with self.assertRaises(ValueError):
+                APPEND_LOG.append_entry(path, "Title", ["Item"], date.today())
+
+            self.assertFalse(path.parent.exists())
+
+    def test_refuses_log_directory(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "LOG.md"
+            path.mkdir()
+
+            with self.assertRaises(ValueError):
+                APPEND_LOG.append_entry(path, "Title", ["Item"], date.today())
+
     def test_appends_structured_entry_without_rewriting_existing_text(self):
         with tempfile.TemporaryDirectory() as directory:
             log = Path(directory) / "LOG.md"

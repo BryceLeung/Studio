@@ -639,6 +639,50 @@ class BrollTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'stage-owned'):
             completion.build_manifest(self.project, broll.ROOT, '2.2')
 
+    def test_empty_selection_completes_and_watches_registry_and_history(self):
+        original = self.fixture.path.read_text(encoding='utf-8')
+        self.fixture.path.write_text(original.replace('**Type:** B-roll', '**Type:** Animation'), encoding='utf-8')
+        definition = validation.load_stages()['2.2']
+        for historical in (True, False):
+            with self.subTest(historical=historical):
+                if not historical:
+                    shutil.rmtree(self.directory)
+                before = fixture_module.readonly_state(self.project)
+                self.assertEqual(broll.check(self.project), {})
+                self.assertEqual(before, fixture_module.readonly_state(self.project))
+                manifest = broll.evidence(self.project)
+                self.assertEqual(bool(manifest['outputs']), historical)
+                argv = ['broll.py', 'complete', '--project-root', str(self.project)]
+                with patch.object(validation, 'require_prerequisites'), \
+                        patch.object(broll, 'require_prerequisites'), patch.object(sys, 'argv', argv):
+                    broll.main()
+                marker = self.directory.parent / 'DONE'
+                saved = json.loads(marker.read_text(encoding='utf-8'))
+                self.assertEqual(validation.validate_evidence(self.project, broll.ROOT, definition, saved)[0], 'current')
+                self.assertIn('No eligible B-roll assets', (marker.parent / 'LOG.md').read_text(encoding='utf-8'))
+                if historical:
+                    journal = self.directory / 'search.01.md'
+                    content = journal.read_bytes()
+                    journal.write_bytes(content + b'Untracked edit\n')
+                    with self.assertRaises(ValueError):
+                        broll.check(self.project)
+                    self.assertEqual(validation.validate_evidence(self.project, broll.ROOT, definition, saved)[0], 'stale')
+                    journal.write_bytes(content)
+                self.fixture.path.write_text(original, encoding='utf-8')
+                self.assertEqual(validation.validate_evidence(self.project, broll.ROOT, definition, saved)[0], 'stale')
+                with self.assertRaises((ValueError, OSError)):
+                    broll.check(self.project)
+                self.fixture.path.write_text(original.replace('**Type:** B-roll', '**Type:** Animation'), encoding='utf-8')
+
+    def test_empty_selection_still_requires_prerequisites(self):
+        original = self.fixture.path.read_text(encoding='utf-8')
+        self.fixture.path.write_text(original.replace('**Type:** B-roll', '**Type:** Animation'), encoding='utf-8')
+        before = fixture_module.readonly_state(self.project)
+        argv = ['broll.py', 'complete', '--project-root', str(self.project)]
+        with patch.object(sys, 'argv', argv), self.assertRaises(validation.PrerequisiteError):
+            broll.main()
+        self.assertEqual(before, fixture_module.readonly_state(self.project))
+
     def test_path_and_provenance_guards(self):
         for path in ('../escape.mp4', '/absolute', 'C:/elsewhere/file'):
             with self.subTest(path=path), self.assertRaises(ValueError):

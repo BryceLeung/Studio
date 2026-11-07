@@ -687,7 +687,6 @@ def inventory(project):
 
 def check(project, rows=None):
     rows = eligible(project) if rows is None else rows
-    require(bool(rows), 'No eligible B-roll assets; ask the user how to proceed')
     counts = {}
     for asset, row in rows.items():
         ledger = load(project, asset)
@@ -783,8 +782,11 @@ def main():
         if args.action == 'complete':
             manifest = evidence(project)
             completion.record_done(project, ROOT, '2.2', manifest)
-            log(project, 'B-roll completed', 'All current B-roll assets have at least three usable candidates and required shot coverage; shared completion checks passed.')
-            print(json.dumps({'status': 'complete', 'assets': check(project)}, indent=2))
+            counts = check(project)
+            message = ('All current B-roll assets have at least three usable candidates and required shot coverage'
+                       if counts else 'No eligible B-roll assets; no sourcing required')
+            log(project, 'B-roll completed', message + '; shared completion checks passed.')
+            print(json.dumps({'status': 'complete', 'assets': counts}, indent=2))
             return
         rows = eligible(project)
         require(bool(rows), 'No eligible B-roll assets; ask the user how to proceed')

@@ -192,6 +192,8 @@ Ranges use source seconds, start-inclusive/end-exclusive, within verified durati
 
 ## Check and complete
 
+An empty eligible B-roll selection passes `check` and `complete` with `assets: {}`; skip `init` and sourcing in this case. Completion still requires current prerequisites and fingerprints both registry files and any preserved historical artifacts, so later registry changes invalidate the snapshot normally.
+
 `check` is read-only, including prerequisite validation. It checks the complete current eligible set, required shots, current assessments, exact-byte journal integrity and logical request history, duplicate sources/bytes, candidate identities and video metadata. It stops on the first actionable problem. `Candidates.json` is schema `studio.broll.candidates`, version 3; no older-schema migration is performed during active development.
 
 `complete` runs the same checks, builds portable input/output/workflow fingerprints and passes them to shared `record_done`. The nested output inventory watches all `search.NN.md` files, `Candidates.json`, root candidate videos and all nested numbered-run artifacts, including historical ASSET folders too. It detects added and removed artifacts; the provider `cache/` is excluded. Nested preview videos never count as candidates. It never writes a custom DONE or approves anything. Common read-only `scripts/validation.py --stage 2.2` checks the resulting evidence. New media, journal entries or candidate changes make prior completion stale; search-only entries do not change candidate applicability against the brief. Failed prerequisite checks never invalidate ancestors.

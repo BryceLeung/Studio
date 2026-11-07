@@ -204,7 +204,7 @@ Include the visual review method in assessment notes: which thumbnail/samples/se
 
 Completion requires a current 1.4 prerequisite, all current eligible assets processed, valid request/candidate records, and at least three distinct usable local video candidates per included ASSET ID assessed against its latest logical request revision. Required shot coverage and the editorial diversity review must be resolved. Missing family footage or unanswered requirements prevent completion for that asset. Superseded/unsuitable clips and historical brief entries remain preserved but do not satisfy the current minimum.
 
-If no eligible B-roll assets remain, report that condition and ask how the user wants to proceed; do not invent assets or infer an empty-stage completion policy.
+If no eligible B-roll assets remain, the stage passes without sourcing footage or requiring human input. Skip initialization and worker dispatch, then run the normal `check` and `complete` helpers. Record that no B-roll was required in the stage log. Prerequisites, registry fingerprints and any preserved historical artifact checks still apply; do not invent assets or write DONE directly. A later registry change makes this completion stale through the normal input checks.
 
 Later requests reopen only affected work editorially: append a logical request revision when requirements change, or retain the current brief revision when simply collecting more footage or changing search terms. Reassess old candidates after creative changes and acquire additional candidates as needed. Search-only journal entries do not require reassessment. Valid candidates may count toward the revised request; do not regenerate three new files unnecessarily. Continue beyond three when explicitly asked for more.
 
