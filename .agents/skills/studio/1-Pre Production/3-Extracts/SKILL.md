@@ -9,6 +9,8 @@ Read the Studio root skill at `.agents/skills/studio/SKILL.md` for project resol
 
 ## Work and output
 
+After the shared prerequisite check passes and this stage is selected for execution, ensure the project's `1-Pre Production/3-Extracts/` folder exists and create its `APPROVED/` subfolder if missing, even before a shortlist is ready. On rerun, create a missing `APPROVED/` folder without changing an existing folder or its contents. Folder creation is setup only, not approval: never move the shortlist into it automatically, and do not create folders during read-only status or a rejected prerequisite check.
+
 Read the approved three-column script through `studio/script_docx.py`: use `document_xml(path)`, `spoken_paragraphs(root)`, and `spoken_text(paragraph)` for canonical spoken text, or `script_rows(root)` to inspect line IDs and directions separately. Copy only the `Spoken Dialog` wording into extracts. IDs, `Stage Directions`, table headers, and review front matter are not spoken passages. Directions can inform editorial feasibility but do not authorize new dialogue. Do not flatten all table cells into script text. Line IDs may have been reassigned during stage 1.1; retain the approved source filename/version as provenance.
 
 Use the maintained read-only CLI rather than a one-off DOCX extraction script:

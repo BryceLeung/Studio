@@ -17,7 +17,8 @@ ROOT = Path(__file__).resolve().parents[6]
 sys.path.insert(0, str(ROOT))
 from scripts import stage_completion as completion
 from scripts.validation import audit
-from studio.script_docx import HEADERS as SCRIPT_HEADERS, is_direction, paragraph_text, spoken_paragraphs
+from studio.script_docx import (HEADERS as SCRIPT_HEADERS, document_xml, is_direction,
+                               paragraph_text, script_rows, spoken_paragraphs, spoken_text)
 
 STAGE = Path("1-Pre Production/4-Asset Breakdown")
 SCRIPTS = Path("1-Pre Production/1-Script Review/Approved")
@@ -206,6 +207,31 @@ def extract_context(text, scripts):
     return result
 
 
+def stage_directions(path, words):
+    """Expose explicit three-column directions without inventing spoken anchors."""
+    document = document_xml(path)
+    header = document.find(W + "body/" + W + "tbl/" + W + "tr")
+    if header is None or tuple(
+        "\n".join(paragraph_text(p) for p in cell.findall(W + "p")).strip()
+        for cell in header.findall(W + "tc")
+    ) != SCRIPT_HEADERS:
+        return []
+    result, offset, identities = [], 0, set()
+    for row in script_rows(document):
+        dialogue = " ".join(spoken_text(p) for p in row.dialogue).split()
+        brief = "\n".join(paragraph_text(p) for p in row.directions).strip()
+        if brief:
+            if not row.line_id or row.line_id in identities:
+                raise ValueError("Stage directions require unique nonempty script row IDs")
+            identities.add(row.line_id)
+            result.append({"row_id": row.line_id, "brief": brief, "start": offset,
+                           "end": offset + len(dialogue) - 1, "passage": " ".join(dialogue)})
+        if words[offset:offset + len(dialogue)] != dialogue:
+            raise ValueError("Stage-direction dialogue does not match spoken word indices")
+        offset += len(dialogue)
+    return result
+
+
 def context(project):
     project = Path(project).resolve(strict=True)
     directory = project / SCRIPTS
@@ -220,7 +246,8 @@ def context(project):
     scripts = {}
     for path in paths[:-1]:
         words, comments = read_docx(path)
-        scripts[path.relative_to(project).as_posix()] = {"words": words, "comments": comments}
+        scripts[path.relative_to(project).as_posix()] = {
+            "words": words, "comments": comments, "directions": stage_directions(path, words)}
     return {"inputs": [completion.fingerprint(p, project, "project") for p in paths],
             "scripts": scripts,
             "extracts": extract_context(paths[-1].read_text(encoding="utf-8-sig"), scripts)}
@@ -257,6 +284,10 @@ def proposals(ctx, envelope):
             sorted(envelope.get("processed", [])) != sorted(item["path"] for item in ctx["inputs"])):
         raise ValueError("Agent must process exactly the current input snapshot")
     result = {}
+    if type(envelope.get("script_only", False)) is not bool:
+        raise ValueError("script_only must be a boolean")
+    if envelope.get("script_only") and envelope.get("suggestions") != []:
+        raise ValueError("Script-only intake cannot include AI suggestions")
     for path, script in ctx["scripts"].items():
         for comment in script["comments"]:
             key = "comment:" + path + "#" + comment["comment_id"]
@@ -265,6 +296,20 @@ def proposals(ctx, envelope):
             proposal = {field: comment[field] for field in ("start", "end", "passage", "brief")}
             proposal.update(script=path, extracts=refs, type="Other", notes="Imported Word comment; review asset type and rationale.")
             result[key] = {"origin": "User", "provenance": comment, "fields": proposal}
+        if envelope.get("script_only"):
+            for direction in script.get("directions", []):
+                if direction["end"] < direction["start"]:
+                    raise ValueError(f"Stage direction {direction['row_id']} in {path} has no spoken dialogue; "
+                                     "move it to the relevant dialogue row before importing")
+                refs = [e["id"] for e in ctx["extracts"] if e["script"] == path and any(
+                    direction["start"] <= end and direction["end"] >= start for start, end in e["spans"])]
+                proposal = {field: direction[field] for field in ("start", "end", "passage", "brief")}
+                proposal.update(script=path, extracts=refs,
+                                type="Animation" if direction["brief"].lstrip().lower().startswith("animation:") else "Other",
+                                notes="Imported script stage direction; review asset type and rationale.")
+                validate_proposal(proposal, ctx)
+                result["direction:" + path + "#" + direction["row_id"]] = {
+                    "origin": "User", "provenance": direction, "fields": proposal}
     if not isinstance(envelope.get("suggestions"), list):
         raise ValueError("Missing suggestions list (use [] for an analyzed empty slate)")
     for item in envelope["suggestions"]:
@@ -339,13 +384,13 @@ def validate_registry_row(row, ids, keys):
         raise ValueError("Invalid asset ID")
     key = row["Source Key"]
     if (row["ID"] in ids or not isinstance(key, str) or key in keys or
-            not key.startswith(("comment:", "agent:"))):
+            not key.startswith(("comment:", "direction:", "agent:"))):
         raise ValueError("Duplicate ID or invalid/duplicate source key")
     ids.add(row["ID"])
     keys.add(key)
     if row["Review"] not in REVIEWS or row["Active"] not in ("Yes", "No"):
         raise ValueError("Invalid review/activity")
-    if row["Origin"] != ("User" if key.startswith("comment:") else "AI"):
+    if row["Origin"] != ("User" if key.startswith(("comment:", "direction:")) else "AI"):
         raise ValueError("Invalid asset origin")
     if row["Type"] not in TYPES or not isinstance(row["Brief"], str) or not row["Brief"].strip():
         raise ValueError("Invalid type/brief")
@@ -624,6 +669,8 @@ def reconcile(project, envelope):
     registry["inputs"] = ctx["inputs"]
     set_control(registry, "schema", "studio.asset-registry.v1")
     set_control(registry, "processed", encoded(envelope["processed"]))
+    if envelope.get("script_only") or "script_only" in controls(registry):
+        set_control(registry, "script_only", envelope.get("script_only", False))
     set_control(registry, "identities", encoded({
         row["Source Key"]: row["ID"] for row in registry["assets"]}))
     set_control(registry, "proposal_hashes", encoded(proposal_hashes(registry)))
@@ -667,12 +714,12 @@ def input_status(registry, ctx):
         processed_valid = isinstance(processed, list) and all(isinstance(path, str) for path in processed)
     except (ValueError, TypeError):
         processed, processed_valid = [], False
-    expected = {"comment:" + path + "#" + item["comment_id"]
-                for path, script in ctx["scripts"].items() for item in script["comments"]}
     active = [row["Source Key"] for row in registry["assets"]
               if row["Origin"] == "User" and row["Active"] == "Yes"]
     imported = proposals(ctx, {"inputs": ctx["inputs"],
-                             "processed": [e["path"] for e in ctx["inputs"]], "suggestions": []})
+                             "processed": [e["path"] for e in ctx["inputs"]], "suggestions": [],
+                             "script_only": control.get("script_only", False)})
+    expected = set(imported)
     stale = [row["ID"] for row in registry["assets"] if row["Origin"] == "User" and
              row["Active"] == "Yes" and json.loads(row["Proposal"]) != imported.get(row["Source Key"])]
     return {"inputs_current": registry["inputs"] == ctx["inputs"],
@@ -698,7 +745,7 @@ def registry_issues(registry, ctx, *, require_confirmation=True, entries=None):
         _, entries = rows(registry)
     comments = status["comments"]
     if comments["missing"] or comments["unexpected"] or comments["active_imported"] != comments["expected"]:
-        yield {"kind": "error", "asset": None, "message": "Current Word comments have not all been imported exactly once"}
+        yield {"kind": "error", "asset": None, "message": "Current Word comments/stage directions have not all been imported exactly once"}
     for _, row in entries:
         if row["Review"] == "Pending Review":
             yield {"kind": "pending", "asset": row["ID"], "message": f"Pending Review: {row['ID']}"}
@@ -728,7 +775,7 @@ def validate_current_row(row, ctx, stale_comments):
     else:
         validate_proposal(row_proposal(row), ctx)
         if row["ID"] in stale_comments:
-            raise ValueError("Word comment proposal is stale; reconcile first")
+            raise ValueError("Word comment/stage direction proposal is stale; reconcile first")
 
 
 def check(project, *, require_confirmation=True):
@@ -782,6 +829,8 @@ def indexed_context(ctx):
         lines.extend(("", f"Script: {path}", " ".join(f"[{i}] {word}" for i, word in enumerate(script["words"]))))
         for comment in script["comments"]:
             lines.append(f"Comment {comment['comment_id']} [{comment['start']}-{comment['end']}]: {comment['brief']}")
+        for direction in script.get("directions", []):
+            lines.append(f"Direction {direction['row_id']} [{direction['start']}-{direction['end']}]: {direction['brief']}")
     for extract in ctx["extracts"]:
         lines.append(f"\n{extract['id']}: {extract['title']} ({extract['script']})")
         words = ctx["scripts"][extract["script"]]["words"]
@@ -813,11 +862,20 @@ def confirm_empty(project, by, reason):
     save(registry, project, expected_snapshot=original)
 
 
+def script_only_envelope(project):
+    ctx = context(project)
+    return {"inputs": ctx["inputs"], "processed": [item["path"] for item in ctx["inputs"]],
+            "suggestions": [], "script_only": True}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=("context", "reconcile", "inspect", "check", "confirm-empty"))
     parser.add_argument("--project-root", type=Path, required=True)
-    parser.add_argument("--suggestions", type=Path)
+    source = parser.add_mutually_exclusive_group()
+    source.add_argument("--suggestions", type=Path)
+    source.add_argument("--script-only", action="store_true",
+                        help="Import stage directions and Asset: comments without AI suggestions")
     parser.add_argument("--by")
     parser.add_argument("--reason")
     parser.add_argument("--indexed", action="store_true")
@@ -826,12 +884,13 @@ def main():
     for supplied, allowed, flag in ((args.indexed, "context", "--indexed"),
                                     (args.dry_run, "reconcile", "--dry-run"),
                                     (args.suggestions is not None, "reconcile", "--suggestions"),
+                                    (args.script_only, "reconcile", "--script-only"),
                                     (args.by is not None, "confirm-empty", "--by"),
                                     (args.reason is not None, "confirm-empty", "--reason")):
         if supplied and args.action != allowed:
             parser.error(f"{flag} is only supported for {allowed}")
-    if args.action == "reconcile" and not args.suggestions:
-        parser.error("reconcile requires --suggestions")
+    if args.action == "reconcile" and not (args.suggestions or args.script_only):
+        parser.error("reconcile requires --suggestions or --script-only")
     project = args.project_root.resolve(strict=True)
     if args.action == "context":
         ctx = context(project)
@@ -848,7 +907,8 @@ def main():
         if report["errors"]:
             raise SystemExit(1)
     elif args.action == "reconcile" and args.dry_run:
-        envelope = json.loads(args.suggestions.read_text(encoding="utf-8-sig"))
+        envelope = (script_only_envelope(project) if args.script_only else
+                    json.loads(args.suggestions.read_text(encoding="utf-8-sig")))
         print(json.dumps(dry_run(project, envelope), indent=2))
     elif args.action == "check":
         print(json.dumps(check(project), indent=2))
@@ -859,7 +919,8 @@ def main():
                 raise ValueError("Prerequisites are not current; use shared validation")
             from scripts.stage_invalidation import invalidate
             if args.action == "reconcile":
-                envelope = json.loads(args.suggestions.read_text(encoding="utf-8-sig"))
+                envelope = (script_only_envelope(project) if args.script_only else
+                            json.loads(args.suggestions.read_text(encoding="utf-8-sig")))
                 incoming = proposals(context(project), envelope)  # Reject bad/stale proposals before invalidating.
                 registry = load(project)  # Reject missing/tampered evidence before invalidating.
                 allocation(registry, incoming)  # Reject exhausted IDs before invalidating completed work.

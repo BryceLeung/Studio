@@ -22,7 +22,7 @@ SPEC.loader.exec_module(assets)
 
 
 def docx(path, text="One two three four five six.", brief="Asset: Show the diagram", comment=True, body=None,
-         three_column=False):
+         three_column=False, directions="", extra_rows=()):
     path.parent.mkdir(parents=True, exist_ok=True)
     if body is None:
         body = ('<w:commentRangeStart w:id="7"/>' if comment else '')
@@ -33,7 +33,8 @@ def docx(path, text="One two three four five six.", brief="Asset: Show the diagr
         def paragraph(value):
             return '<w:p><w:r><w:t>' + escape(value) + '</w:t></w:r></w:p>'
         rows = [[paragraph(value) for value in ("ID", "Spoken Dialog", "Stage Directions")],
-                [paragraph("L01"), story, paragraph("")]]
+                [paragraph("L01"), story, paragraph(directions)]]
+        rows.extend([[paragraph(value) for value in row] for row in extra_rows])
         story = paragraph("Spoken script") + '<w:tbl>' + ''.join(
             '<w:tr>' + ''.join('<w:tc>' + cell + '</w:tc>' for cell in row) + '</w:tr>'
             for row in rows) + '</w:tbl>'
@@ -97,6 +98,106 @@ class AssetTests(unittest.TestCase):
 
     def records(self):
         return [row for _, row in assets.rows(assets.load(self.project))[1]]
+
+    def test_script_only_imports_verbatim_directions_and_comments_without_ai(self):
+        docx(self.script, three_column=True, directions="[Show family footage]",
+             extra_rows=(("L02", "More dialogue here.", "Show a diagram."),))
+        envelope = assets.script_only_envelope(self.project)
+        before = readonly_state(self.project)
+        report = assets.dry_run(self.project, envelope)
+        self.assertEqual(report["counts"], {"total": 3, "User": 3, "AI": 0})
+        self.assertEqual(readonly_state(self.project), before)
+        assets.reconcile(self.project, envelope)
+        directions = [row for row in self.records() if row["Source Key"].startswith("direction:")]
+        self.assertEqual([row["Brief"] for row in directions],
+                         ["[Show family footage]", "Show a diagram."])
+        self.assertEqual([row["Start"] for row in directions], [0, 6])
+        self.assertEqual([row["End"] for row in directions], [5, 8])
+        self.assertTrue(all(row["Origin"] == "User" and row["Review"] == "Pending Review"
+                            and row["Type"] == "Other" for row in directions))
+        self.assertEqual(json.loads(directions[0]["Extracts"]), ["EXTRACT-1"])
+        self.assertTrue(assets.inspect(self.project)["input_status"]["comments"]["complete"])
+        self.edit("Review", "Keep")
+        assets.check(self.project)
+        before = readonly_state(self.project)
+        assets.reconcile(self.project, envelope)
+        self.assertEqual(readonly_state(self.project), before)
+
+    def test_script_only_animation_prefix_sets_type_and_preserves_brief(self):
+        for brief, expected in (("Animation: Show a growing tree", "Animation"),
+                                ("  animation: Show a diagram", "Animation"),
+                                ("ANIMATION: Show a timeline", "Animation"),
+                                ("Show Animation: in a caption", "Other"),
+                                ("Animation without a colon", "Other")):
+            with self.subTest(brief=brief):
+                docx(self.script, three_column=True, directions=brief)
+                assets.reconcile(self.project, assets.script_only_envelope(self.project))
+                direction = next(row for row in self.records() if row["Source Key"].startswith("direction:"))
+                self.assertEqual(direction["Type"], expected)
+                self.assertEqual(direction["Brief"], brief.strip())
+                self.assertEqual(direction["Origin"], "User")
+                self.assertTrue(assets.inspect(self.project)["input_status"]["comments"]["complete"])
+
+    def test_script_only_retires_ai_and_preserves_human_edits(self):
+        docx(self.script, three_column=True, directions="Show footage")
+        self.reconcile([self.suggestion()])
+        envelope = assets.script_only_envelope(self.project)
+        assets.reconcile(self.project, envelope)
+        ai = next(row for row in self.records() if row["Origin"] == "AI")
+        self.assertEqual((ai["Active"], ai["Review"]), ("No", "Pending Review"))
+        self.edit("Brief", "Human revised brief", origin="User")
+        assets.reconcile(self.project, envelope)
+        self.assertTrue(all(row["Brief"] == "Human revised brief"
+                            for row in self.records() if row["Origin"] == "User"))
+        envelope["suggestions"] = [self.suggestion()]
+        with self.assertRaisesRegex(ValueError, "cannot include AI"):
+            assets.dry_run(self.project, envelope)
+
+    def test_script_only_does_not_guess_anchor_for_direction_only_row(self):
+        docx(self.script, three_column=True, extra_rows=(("L02", "", "Show diagram"),))
+        before = readonly_state(self.project)
+        with self.assertRaisesRegex(ValueError, "no spoken dialogue"):
+            assets.dry_run(self.project, assets.script_only_envelope(self.project))
+        self.assertEqual(readonly_state(self.project), before)
+
+    def test_script_only_changed_direction_reuses_identity_and_requires_review(self):
+        docx(self.script, three_column=True, directions="Show footage")
+        assets.reconcile(self.project, assets.script_only_envelope(self.project))
+        self.edit("Review", "Keep")
+        old = next(row for row in self.records() if row["Source Key"].startswith("direction:"))
+        docx(self.script, three_column=True, directions="Show revised footage")
+        self.assertFalse(assets.inspect(self.project)["completion_ready"])
+        assets.reconcile(self.project, assets.script_only_envelope(self.project))
+        direction = next(row for row in self.records() if row["Source Key"].startswith("direction:"))
+        self.assertEqual(direction["ID"], old["ID"])
+        self.assertEqual((direction["Brief"], direction["Review"]),
+                         ("Show revised footage", "Pending Review"))
+        self.reconcile()
+        direction = next(row for row in self.records() if row["Source Key"].startswith("direction:"))
+        self.assertEqual(direction["Active"], "No")
+        self.edit("Review", "Keep")
+        registry = assets.load(self.project)
+        for row in registry["assets"]:
+            if row["Active"] == "No":
+                row["Review"] = "Reject"
+        assets.save(registry, self.project)
+        assets.check(self.project)
+
+    def test_script_only_cli_dry_run_and_publication(self):
+        docx(self.script, three_column=True, directions="Show diagram")
+        before = readonly_state(self.project)
+        result = self.cli("reconcile", "--script-only", "--dry-run")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)["counts"], {"total": 2, "User": 2, "AI": 0})
+        self.assertEqual(readonly_state(self.project), before)
+        with patch.object(sys, "argv", [assets.__file__, "reconcile", "--project-root", str(self.project),
+                                        "--script-only"]), patch.object(assets, "audit", return_value={}), \
+                patch.object(invalidation, "invalidate") as invalidate:
+            assets.main()
+            invalidate.assert_called_once()
+        self.assertEqual(len(self.records()), 2)
+        self.assertNotEqual(self.cli("reconcile", "--script-only", "--suggestions", "unused.json").returncode, 0)
+        self.assertNotEqual(self.cli("context", "--script-only").returncode, 0)
 
     def test_compact_ids_limit_includes_comments_and_rejects_without_writes(self):
         suggestions = [self.suggestion(key=f"idea-{n:03d}") for n in range(98)]
