@@ -29,12 +29,12 @@
           "*": "ask",
           "Connected Projects/*": "allow",
           "Connected Projects\\*": "allow",
-          "../../OneDrive/Books/Parent Like a Millionaire/Marketing/Studio/01-Love Compounds Too/*": "allow",
-          "..\\..\\OneDrive\\Books\\Parent Like a Millionaire\\Marketing\\Studio\\01-Love Compounds Too\\*": "allow",
-          "C:/Users/bryce/OneDrive/Books/Parent Like a Millionaire/Marketing/Studio/01-Love Compounds Too/*": "allow",
-          "C:\\Users\\bryce\\OneDrive\\Books\\Parent Like a Millionaire\\Marketing\\Studio\\01-Love Compounds Too\\*": "allow",
-          "*/Library/CloudStorage/OneDrive*/Books/Parent Like a Millionaire/Marketing/Studio/01-Love Compounds Too/*": "allow",
-          "*/OneDrive/Books/Parent Like a Millionaire/Marketing/Studio/01-Love Compounds Too/*": "allow"
+          "../../OneDrive*/Books/Parent Like a Millionaire/Marketing/Studio/*": "allow",
+          "..\\..\\OneDrive*\\Books\\Parent Like a Millionaire\\Marketing\\Studio\\*": "allow",
+          "*:/Users/*/OneDrive*/Books/Parent Like a Millionaire/Marketing/Studio/*": "allow",
+          "*:\\Users\\*\\OneDrive*\\Books\\Parent Like a Millionaire\\Marketing\\Studio\\*": "allow",
+          "*/Library/CloudStorage/OneDrive*/Books/Parent Like a Millionaire/Marketing/Studio/*": "allow",
+          "*/OneDrive*/Books/Parent Like a Millionaire/Marketing/Studio/*": "allow"
         },
         "external_directory": {
           "*": "ask",
