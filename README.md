@@ -8,20 +8,21 @@ tool, for mapping transcript word groupings to approved script word groupings.
 
 Open this repository folder or `Studio.code-workspace` in VS Code, then choose
 **Terminal → Run Task… → Run Studio Dashboard**. The checked-in
-`.vscode/tasks.json` uses `.venv-dashboard/bin/python` on macOS/Linux and
-`.venv-dashboard\Scripts\python.exe` on Windows. Create the environment below
+`.vscode/tasks.json` uses `.venv-tools/bin/python` on macOS/Linux and
+`.venv-tools\Scripts\python.exe` on Windows. Create the environment below
 once on each machine before running the task.
 
-The local environment is `.venv-dashboard`. From this repository on macOS/Linux:
+The dashboard shares the repository-root `.venv-tools` environment with the
+common workflow helpers. From this repository on macOS/Linux:
 
 ```sh
-.venv-dashboard/bin/python -m studio
+.venv-tools/bin/python -m studio
 ```
 
 To open a specific synced project:
 
 ```sh
-.venv-dashboard/bin/python -m studio gui --project "01-Love Compounds Too"
+.venv-tools/bin/python -m studio gui --project "01-Love Compounds Too"
 ```
 
 Use **Project → Available Projects** or **Open Project** to choose a project.
@@ -29,16 +30,18 @@ Projects are discovered through `Connected Projects/` and the usual macOS and
 Windows OneDrive locations. An explicit full project path also works. Selecting
 a workspace link resolves it to its OneDrive destination.
 
-For a fresh environment, use Python 3.9 or newer (3.11 or newer recommended):
+For a fresh shared environment, use Python 3.10 or newer (3.11 or newer recommended).
+Reuse an existing `.venv-tools` rather than recreating it:
 
 ```sh
-python3 -m venv .venv-dashboard
-.venv-dashboard/bin/python -m pip install --upgrade pip
-.venv-dashboard/bin/python -m pip install -e .
+python3 -m venv .venv-tools
+.venv-tools/bin/python -m pip install --upgrade pip
+.venv-tools/bin/python -m pip install -r requirements-tools.txt
+.venv-tools/bin/python -m pip install -e .
 ```
 
 On Windows, substitute `python` for `python3` and
-`.venv-dashboard\Scripts\python.exe` for `.venv-dashboard/bin/python`.
+`.venv-tools\Scripts\python.exe` for `.venv-tools/bin/python`.
 The GUI uses PySide6 and the operating system's desktop window system.
 
 ## Review with Line!
@@ -126,7 +129,7 @@ matches approved scripts from 1.1 against all corresponding 3.2 transcript JSON
 files. Run it from the repository:
 
 ```sh
-.venv-dashboard/bin/python ".agents/skills/studio/3-Post Production/3-Find Takes/scripts/find_takes.py" "/path/to/OneDrive/project"
+.venv-tools/bin/python ".agents/skills/studio/3-Post Production/3-Find Takes/scripts/find_takes.py" "/path/to/OneDrive/project"
 ```
 
 It creates `3-Post Production/3-Find Takes/<Script>__Takes.v1.json` only when no
@@ -193,14 +196,14 @@ GUI controls, shortcuts, and CLI calls dispatch the same registered functions.
 List projects and action signatures:
 
 ```sh
-.venv-dashboard/bin/python -m studio projects
-.venv-dashboard/bin/python -m studio actions
+.venv-tools/bin/python -m studio projects
+.venv-tools/bin/python -m studio actions
 ```
 
 For example, create a versioned link from two selected groupings:
 
 ```sh
-.venv-dashboard/bin/python -m studio action line.link \
+.venv-tools/bin/python -m studio action line.link \
   --project "01-Love Compounds Too" \
   --script "1-Pre Production/1-Script Review/Approved/Love Compounds Too.docx" \
   --transcript "3-Post Production/2-Transcribe/Love Compounds Too__C01__lav.json" \

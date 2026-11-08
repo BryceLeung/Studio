@@ -5,8 +5,7 @@
 .venv-tools/
 __pycache__/
 
-# Native dashboard dependencies and packaging metadata.
-/.venv-dashboard/
+# Native dashboard packaging metadata.
 *.egg-info/
 /build/
 /dist/
