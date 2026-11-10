@@ -41,7 +41,7 @@ from .playback import LinePlayback, audio_clip
 
 
 _COLORS = COLORS
-_INK = {"exact": "#21643a", "partial": "#715000", "flub": "#8b2525"}
+_INK = {status: "#000000" for status in _COLORS}
 
 
 def _status_icon(status: str) -> QIcon:
@@ -909,7 +909,10 @@ class LineWidget(QWidget):
                 font = sentence.font()
                 font.setStrikeOut(status == "discarded")
                 sentence.setFont(font)
-                sentence.setForeground(QBrush(QColor("#888888")) if status == "discarded" else QBrush())
+                sentence.setForeground(
+                    QBrush(QColor(_INK[color_status])) if color_status in _INK
+                    else QBrush(QColor("#888888")) if status == "discarded" else QBrush()
+                )
                 sentence.setBackground(QBrush(QColor(_COLORS[color_status])) if color_status in _COLORS else QBrush())
 
     def _refresh_visuals(self, script_status: dict, transcript_status: dict) -> None:
