@@ -32,6 +32,12 @@ For each input audio file, write at least these two files with the same stem dir
 
 ## Transcription behavior
 
+### Dependencies
+
+Use Python 3.10 through 3.13 (3.13 recommended) to run `scripts/install_dependencies.py` in this skill directory. It creates the stage-local `.venv-tools`, pins WhisperX 3.8.6 and its compatible Torch stack, and checks package consistency, CLI startup and FFmpeg on PATH without downloading models or transcribing. Add `--check` for read-only verification. A healthy installation is reused without reinstalling. Pip reuses its package cache where possible. Keep the shared root `.venv-tools` for common helpers; do not add its Python 3.14 binary packages to this Python 3.13 environment. The legacy root `.venv-whisperx` and its model cache are preserved, not required by the new installer.
+
+Run new transcriptions with this stage's `.venv-tools/Scripts/python.exe -m whisperx` on Windows or `.venv-tools/bin/python -m whisperx` on macOS, supplying the agreed model/settings explicitly. Use an existing model-cache directory with WhisperX's `--model_dir` when appropriate; do not download models during dependency setup. No GPU or CUDA availability is implied by a successful dependency check.
+
 Use the installed WhisperX CLI as the initial provider. Select the model and processing settings for each run through CLI arguments; record the CLI options, provider version, model, settings, source paths, and source SHA-256 fingerprints in `LOG.md`. When the user requests all intake WAVs, pass them together to one CLI invocation so the model is loaded once. If the model or processing settings have not been agreed, clarify them before processing audio rather than treating library defaults as an editorial decision.
 
 Preserve repetitions, restarts, fillers, flubs, partial sentences, and pauses. Do not deduplicate readings, rewrite speech to match the approved script, or silently clean the transcript. Script matching, occurrence labels, and take selection belong to later stages. Generated transcripts are estimates until checked against the original audio.

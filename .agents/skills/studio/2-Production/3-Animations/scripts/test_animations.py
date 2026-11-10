@@ -70,6 +70,7 @@ class AnimationTests(unittest.TestCase):
         self.real_transition = a.transition
         self.real_renderer = a.run_renderer
         self.real_inspector = a.inspect_settings
+        self.real_log = a.log
         self.inspector = self.start_patch(a, 'inspect_settings', return_value=dict(a.DEFAULT_SETTINGS))
         self.start_patch(a, 'log')
         self.transition = self.start_patch(a, 'transition')
@@ -145,7 +146,7 @@ class AnimationTests(unittest.TestCase):
         self.assertTrue((self.directory / 'src/Studio.tsx').is_file())
         self.assertTrue(a.read_json(self.directory / 'package.json')['private'])
         self.assertEqual(a.read_json(self.directory / 'tsconfig.json')['include'], ['src/**/*'])
-        with self.assertRaisesRegex(ValueError, 'exactly one'):
+        with self.assertRaisesRegex(ValueError, 'at least one'):
             a.check(self.project)
         before = self.state()
         with patch.object(a, 'audit', return_value={a.STEP: {'status': 'missing'}}):
@@ -176,7 +177,10 @@ class AnimationTests(unittest.TestCase):
             a.init(self.project, self.asset)
         self.assertEqual(sketches.read_text(), 'Human file')
         sketches.unlink()
-        sketches.symlink_to(self.directory / 'references', target_is_directory=True)
+        try:
+            sketches.symlink_to(self.directory / 'references', target_is_directory=True)
+        except OSError:
+            self.skipTest('Symlink creation unavailable on this host')
         with self.assertRaisesRegex(ValueError, 'Redirected path'):
             a.init(self.project, self.asset)
 
@@ -281,21 +285,21 @@ class AnimationTests(unittest.TestCase):
     def test_approval_matches_moved_and_renamed_bytes_and_is_readonly(self):
         approved = self.approve()
         before = self.state()
-        self.assertEqual(a.check(self.project)[self.asset], approved.relative_to(self.project).as_posix())
+        self.assertEqual(a.check(self.project)[self.asset], [approved.relative_to(self.project).as_posix()])
         self.assertEqual(before, self.state())
         renamed = approved.with_name('Another name.MP4')
         approved.rename(renamed)
-        self.assertEqual(a.check(self.project)[self.asset], renamed.relative_to(self.project).as_posix())
+        self.assertEqual(a.check(self.project)[self.asset], [renamed.relative_to(self.project).as_posix()])
 
-    def test_multiple_or_unregistered_approvals_rejected(self):
+    def test_duplicate_or_unregistered_approvals_rejected(self):
         approved = self.approve()
         extra = approved.with_name('extra.mp4')
         shutil.copyfile(approved, extra)
-        with self.assertRaisesRegex(ValueError, 'exactly one'):
+        with self.assertRaisesRegex(ValueError, 'duplicate approved'):
             a.check(self.project)
         extra.unlink()
         approved.write_bytes(b'arbitrary video')
-        with self.assertRaisesRegex(ValueError, 'unregistered or stale'):
+        with self.assertRaisesRegex(ValueError, 'unregistered'):
             a.check(self.project)
 
     def test_approved_folder_rejects_nonvideo_and_nested_entries(self):
@@ -336,7 +340,7 @@ class AnimationTests(unittest.TestCase):
         self.assertEqual(a.load(self.project, self.asset)['requests'][-1]['registry']['Notes'],
                          'Different reason for this animation')
 
-    def test_settings_source_resources_and_renderer_changes_stale_approval(self):
+    def test_settings_source_resources_and_renderer_changes_preserve_approval(self):
         approved = self.approve()
         changes = [(self.directory / 'src/Composition.tsx', b'export default () => "Changed";'),
                    (self.directory / 'references/image.png', b'image'),
@@ -347,8 +351,7 @@ class AnimationTests(unittest.TestCase):
             with self.subTest(path=path):
                 previous = path.read_bytes() if path.exists() else None
                 path.write_bytes(contents)
-                with self.assertRaisesRegex(ValueError, 'unregistered or stale'):
-                    a.check(self.project)
+                self.assertEqual(len(a.check(self.project)[self.asset]), 1)
                 self.assertTrue(approved.exists())
                 if previous is None:
                     path.unlink()
@@ -356,7 +359,7 @@ class AnimationTests(unittest.TestCase):
                     path.write_bytes(previous)
         a.check(self.project)
 
-    def test_chat_revision_preserves_all_history_and_invalidates_approval(self):
+    def test_chat_revision_preserves_history_and_multiple_approvals(self):
         approved = self.approve()
         previous = (self.directory / 'request.01.md').read_bytes()
         text = 'Human request verbatim\r\n\nMake the title blue.\n'
@@ -365,11 +368,181 @@ class AnimationTests(unittest.TestCase):
         self.assertEqual((self.directory / 'request.01.md').read_bytes(), previous)
         self.assertTrue(approved.exists())
         self.assertTrue((self.directory / 'snapshots/v001/src/Composition.tsx').is_file())
-        with self.assertRaisesRegex(ValueError, 'unregistered or stale'):
-            a.check(self.project)
+        self.assertEqual(len(a.check(self.project)[self.asset]), 1)
         self.approve(name='revised.mp4')
-        with self.assertRaisesRegex(ValueError, 'exactly one'):
+        self.assertEqual(len(a.check(self.project)[self.asset]), 2)
+
+    def test_chat_approval_moves_exact_version_records_feedback_and_is_idempotent(self):
+        first = a.render(self.project, self.asset)
+        a.revise(self.project, self.asset, 'Try another treatment')
+        a.render(self.project, self.asset)
+        result = a.approve(self.project, self.asset, 1, 'I like this animation')
+        self.assertEqual(result['status'], 'approved')
+        self.assertFalse((self.project / first['candidate']).exists())
+        target = self.project / result['approved']
+        self.assertTrue(target.is_file())
+        self.assertTrue((self.directory / 'renders/v002.mp4').is_file())
+        record = a.load(self.project, self.asset)['renders'][0]
+        self.assertEqual(record['approvals'][0]['feedback'], 'I like this animation')
+        self.assertEqual(record['approvals'][0]['sha256'], a.sha(target))
+        before = self.state()
+        transitions = self.transition.call_count
+        self.assertEqual(a.approve(self.project, self.asset, 1, 'Approve this')['status'], 'already approved')
+        self.assertEqual(before, self.state())
+        self.assertEqual(transitions, self.transition.call_count)
+        a.approve(self.project, self.asset, 2, 'Approve the alternative too')
+        self.assertEqual(len(a.check(self.project)[self.asset]), 2)
+        target.rename(target.with_name('Renamed.MP4'))
+        self.assertEqual(a.approve(self.project, self.asset, 1, 'Approve this')['status'], 'already approved')
+
+    def test_approval_requires_exact_ready_version_and_feedback(self):
+        a.render(self.project, self.asset)
+        for version, feedback in ((None, 'Approve'), (0, 'Approve'), (2, 'Approve'), (1, ' ')):
+            before = self.state()
+            with self.subTest(version=version, feedback=feedback), self.assertRaises(ValueError):
+                a.approve(self.project, self.asset, version, feedback)
+            self.assertEqual(before, self.state())
+        ledger = a.load(self.project, self.asset)
+        ledger['renders'][0]['status'] = 'failed'
+        self.save(ledger)
+        with self.assertRaisesRegex(ValueError, 'Only a ready'):
+            a.approve(self.project, self.asset, 1, 'Approve')
+
+    def test_identical_render_bytes_share_one_option_without_implicit_reapproval(self):
+        a.render(self.project, self.asset)
+        a.approve(self.project, self.asset, 1, 'Approve the original')
+        contents = (self.directory / 'APPROVED/v001.mp4').read_bytes()
+        self.fixture.edit('Brief', 'Changed purpose')
+        a.revise(self.project, self.asset, 'Try the same visual for this new purpose')
+        def identical(snapshot, output):
+            output.write_bytes(contents)
+            return {}
+        with patch.object(a, 'run_renderer', side_effect=identical):
+            a.render(self.project, self.asset)
+        with self.assertRaisesRegex(ValueError, 'matching current registry context'):
             a.check(self.project)
+        a.approve(self.project, self.asset, 2, 'This visual also works here')
+        self.assertEqual(len(a.check(self.project)[self.asset]), 1)
+        self.assertEqual(len(list((self.directory / 'APPROVED').iterdir())), 1)
+        self.assertFalse((self.directory / 'renders/v002.mp4').exists())
+
+    def test_approval_copy_failure_preserves_existing_approvals_and_can_retry(self):
+        self.approve()
+        a.revise(self.project, self.asset, 'Another version')
+        a.render(self.project, self.asset)
+        with patch.object(a.shutil, 'copyfileobj', side_effect=OSError('Disk full')):
+            with self.assertRaisesRegex(OSError, 'Disk full'):
+                a.approve(self.project, self.asset, 2, 'Approve alternative')
+        self.assertFalse((self.directory / 'APPROVED/v002.mp4').exists())
+        self.assertFalse(list(self.directory.glob('.approval-*')))
+        self.assertEqual(len(a.check(self.project)[self.asset]), 1)
+        a.approve(self.project, self.asset, 2, 'Approve alternative')
+        self.assertEqual(len(a.check(self.project)[self.asset]), 2)
+
+    def test_approval_verification_failure_does_not_publish_video(self):
+        a.render(self.project, self.asset)
+        def corrupt_copy(stream, output):
+            output.write(b'corrupt copy')
+        with patch.object(a.shutil, 'copyfileobj', side_effect=corrupt_copy):
+            with self.assertRaisesRegex(ValueError, 'changed while publishing'):
+                a.approve(self.project, self.asset, 1, 'Approve')
+        self.assertEqual(list((self.directory / 'APPROVED').iterdir()), [])
+        self.assertTrue((self.directory / 'renders/v001.mp4').exists())
+
+    def test_approval_recovers_after_ledger_publication_and_log_failure(self):
+        a.render(self.project, self.asset)
+        with patch.object(a, 'log', side_effect=OSError('Log unavailable')):
+            with self.assertRaisesRegex(OSError, 'Log unavailable'):
+                a.approve(self.project, self.asset, 1, 'Original feedback')
+        with self.assertRaisesRegex(ValueError, 'approval publication unfinished'):
+            a.evidence(self.project)
+        with patch.object(a, 'log') as logger:
+            a.approve(self.project, self.asset, 1, 'Repeated feedback')
+            self.assertIn('Original feedback', logger.call_args.args[2])
+        approvals = a.load(self.project, self.asset)['renders'][0]['approvals']
+        self.assertEqual(len(approvals), 1)
+        self.assertTrue(approvals[0]['logged'])
+        a.evidence(self.project)
+
+    def test_approval_recovers_after_source_removal_failure_and_writes_real_log(self):
+        a.render(self.project, self.asset)
+        source = self.directory / 'renders/v001.mp4'
+        unlink = Path.unlink
+        def fail_source(path, *args, **kwargs):
+            if path == source:
+                raise OSError('Source busy')
+            return unlink(path, *args, **kwargs)
+        with patch.object(Path, 'unlink', autospec=True, side_effect=fail_source):
+            with self.assertRaisesRegex(OSError, 'Source busy'):
+                a.approve(self.project, self.asset, 1, 'Original approval')
+        self.assertTrue(source.exists())
+        with patch.object(a, 'log', side_effect=self.real_log):
+            a.approve(self.project, self.asset, 1, 'Retry approval')
+        self.assertFalse(source.exists())
+        self.assertEqual(len(a.load(self.project, self.asset)['renders'][0]['approvals']), 1)
+        log = (self.project / a.STAGE / 'LOG.md').read_text(encoding='utf-8')
+        self.assertIn('Original approval', log)
+        self.assertIn('APPROVED/v001.mp4', log)
+
+    def test_approval_cli_routes_version_and_verbatim_feedback(self):
+        request = self.workflow / 'feedback.txt'
+        request.write_text('I like this animation', encoding='utf-8')
+        for flags in (['--request', 'I like this animation'], ['--request-file', str(request)]):
+            argv = ['animations.py', 'approve', '--project-root', str(self.project),
+                    '--asset-id', self.asset, '--version', '1', *flags]
+            with patch.object(a.sys, 'argv', argv), patch.object(a, 'approve', return_value={}) as approve, patch('builtins.print'):
+                a.main()
+            approve.assert_called_once_with(self.project, self.asset, 1, 'I like this animation')
+        for flags in (['--request', 'Approve'], ['--version', '1']):
+            argv = ['animations.py', 'approve', '--project-root', str(self.project),
+                    '--asset-id', self.asset, *flags]
+            before = self.state()
+            with patch.object(a.sys, 'argv', argv), self.assertRaises(ValueError):
+                a.main()
+            self.assertEqual(before, self.state())
+
+    def test_approval_refuses_collision_and_changed_render_without_mutation(self):
+        a.render(self.project, self.asset)
+        target = self.directory / 'APPROVED/v001.mp4'
+        target.write_bytes(b'Human file')
+        before = self.state()
+        with self.assertRaisesRegex(ValueError, 'refusing replacement'):
+            a.approve(self.project, self.asset, 1, 'Approve')
+        self.assertEqual(before, self.state())
+        target.unlink()
+        (self.directory / 'renders/v001.mp4').write_bytes(b'Altered render')
+        before = self.state()
+        with self.assertRaisesRegex(ValueError, 'candidate changed'):
+            a.approve(self.project, self.asset, 1, 'Approve')
+        self.assertEqual(before, self.state())
+
+    def test_registry_change_requires_explicit_reapproval_or_new_compatible_variant(self):
+        a.render(self.project, self.asset)
+        a.approve(self.project, self.asset, 1, 'I like this animation')
+        self.fixture.edit('Brief', 'Changed purpose')
+        a.revise(self.project, self.asset, 'Use the updated purpose')
+        with self.assertRaisesRegex(ValueError, 'matching current registry context'):
+            a.check(self.project)
+        a.render(self.project, self.asset)
+        a.approve(self.project, self.asset, 2, 'Approve the replacement')
+        self.assertEqual(len(a.check(self.project)[self.asset]), 1)
+        self.assertTrue((self.directory / 'APPROVED/v001.mp4').exists())
+        a.approve(self.project, self.asset, 1, 'The original also works for this new purpose')
+        self.assertEqual(len(a.check(self.project)[self.asset]), 2)
+        self.assertEqual(len(a.load(self.project, self.asset)['renders'][0]['approvals']), 2)
+
+    def test_approved_variants_use_their_own_snapshot_settings(self):
+        self.approve()
+        a.revise(self.project, self.asset, 'Use a longer portrait alternative')
+        value = dict(width=1080, height=1920, fps=24, durationInFrames=240)
+        metadata = dict(width=1080, height=1920, fps=24, durationInSeconds=10)
+        with patch.object(a, 'inspect_settings', return_value=value), patch.object(a, 'probe', return_value=metadata):
+            a.render(self.project, self.asset)
+            a.approve(self.project, self.asset, 2, 'Approve the portrait alternative')
+        def probe(path):
+            return metadata if path.name == 'v002.mp4' else dict(width=1920, height=1080, fps=30, durationInSeconds=5)
+        with patch.object(a, 'probe', side_effect=probe):
+            self.assertEqual(len(a.check(self.project)[self.asset]), 2)
 
     def test_request_history_and_untracked_request_rejected(self):
         request = self.directory / 'request.01.md'
@@ -446,7 +619,8 @@ class AnimationTests(unittest.TestCase):
         self.prerequisites.side_effect = ValueError('1.4 is stale')
         for action in (lambda: a.init(self.project, self.asset),
                        lambda: a.revise(self.project, self.asset, 'new request'),
-                       lambda: a.render(self.project, self.asset), lambda: a.complete(self.project),
+                        lambda: a.render(self.project, self.asset), lambda: a.complete(self.project),
+                        lambda: a.approve(self.project, self.asset, 1, 'Approve'),
                        lambda: a.studio(self.project, self.asset)):
             with self.assertRaisesRegex(ValueError, '1.4 is stale'):
                 action()

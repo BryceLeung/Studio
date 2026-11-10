@@ -4,9 +4,9 @@
     {
       "label": "Run Studio Dashboard",
       "type": "process",
-      "command": "${workspaceFolder}/.venv-dashboard/bin/python",
+      "command": "${workspaceFolder}/.venv-tools/bin/python",
       "windows": {
-        "command": "${workspaceFolder}\\.venv-dashboard\\Scripts\\python.exe"
+        "command": "${workspaceFolder}\\.venv-tools\\Scripts\\python.exe"
       },
       "args": [
         "-m",
