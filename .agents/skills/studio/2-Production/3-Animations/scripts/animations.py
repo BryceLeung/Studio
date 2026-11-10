@@ -183,6 +183,13 @@ def load(project, asset):
     for version, render in enumerate(ledger['renders'], 1):
         require(render['version'] == version and render['status'] in ('rendering', 'failed', 'ready'),
                 'Invalid render sequence/status')
+        require(isinstance(render.get('approvals', []), list), 'Invalid approval history')
+        for approval in render.get('approvals', []):
+            require(render['status'] == 'ready' and approval['sha256'] == render['sha256']
+                    and approval['registry']['ID'] == asset
+                    and isinstance(approval['feedback'], str) and approval['feedback'].strip()
+                    and isinstance(approval['approved_at'], str) and approval['approved_at'],
+                    'Invalid approval record')
     return ledger
 
 
@@ -325,7 +332,7 @@ def revise(project, asset, text):
             stream.write(text)
         ledger['requests'].append({'version': version, 'registry': rows[asset], 'sha256': sha(path)})
         atomic_json(folder(project, asset) / 'Animation.json', ledger)
-        log(project, 'Animation revision', f'{asset}: preserved verbatim request {version}; earlier candidates and human approvals remain in place but are not current.')
+        log(project, 'Animation revision', f'{asset}: preserved verbatim request {version}; earlier candidates and approvals retained. Creative revisions do not revoke approvals; changed registry context requires review.')
         return {'asset': asset, 'request': version}
 
 
@@ -376,7 +383,7 @@ def inspect_settings(directory):
 
 def approved_videos(project, asset):
     directory = confined(project, (STAGE / asset / 'APPROVED').as_posix())
-    require(directory.is_dir(), f'{asset}: missing human-only APPROVED folder')
+    require(directory.is_dir(), f'{asset}: missing APPROVED folder')
     result = []
     for child in sorted(directory.iterdir()):
         confined(project, child.relative_to(project).as_posix())
@@ -406,6 +413,61 @@ def validate_render(project, asset, record):
     require(not candidate.exists() or (sha(candidate) == record['sha256']
             and candidate.stat().st_size == record['size']), 'Registered candidate changed')
     return candidate
+
+
+def approve(project, asset, version, text):
+    require_prerequisites(project, ROOT, STEP)
+    require(type(version) is int and version > 0, 'Approval requires an explicit positive render version')
+    require(isinstance(text, str) and text.strip(), 'Approval requires verbatim nonempty human feedback')
+    with completion.mutation_guard(project):
+        require_prerequisites(project, ROOT, STEP)
+        rows = eligible(project)
+        require(asset in rows, 'Asset is no longer selected')
+        ledger = load(project, asset)
+        require(all(r['status'] != 'rendering' for r in ledger['renders']), 'Render active or interrupted')
+        require(version <= len(ledger['renders']), 'Unregistered render version')
+        record = ledger['renders'][version - 1]
+        require(record['status'] == 'ready', 'Only a ready registered full-animation render can be approved')
+        source = validate_render(project, asset, record)
+        matches = [p for p in approved_videos(project, asset)
+                   if sha(p) == record['sha256'] and p.stat().st_size == record['size']]
+        require(len(matches) <= 1, 'Duplicate approved render identity')
+        target = matches[0] if matches else confined(project, (STAGE / asset / 'APPROVED' / f'v{version:03d}.mp4').as_posix())
+        require(matches or not target.exists(), 'Approval destination exists; refusing replacement')
+        video = target if matches else source
+        require(video.is_file() and sha(video) == record['sha256']
+                and video.stat().st_size == record['size'], 'Missing or changed registered render')
+        valid_video(video, settings(read_json(folder(project, asset) / 'snapshots' / f'v{version:03d}' / 'settings.json')))
+        approvals = record.setdefault('approvals', [])
+        continuing = bool(matches and approvals and approvals[-1]['registry'] == rows[asset])
+        if continuing and approvals[-1].get('logged', False):
+            return {'asset': asset, 'status': 'already approved', 'approved': target.relative_to(project).as_posix()}
+        transition(project, f'Approve animation {asset} v{version:03d}')
+        if not matches:
+            descriptor, temporary = tempfile.mkstemp(prefix='.approval-', dir=folder(project, asset))
+            temporary = Path(temporary)
+            try:
+                with os.fdopen(descriptor, 'wb') as output, source.open('rb') as stream:
+                    shutil.copyfileobj(stream, output)
+                    output.flush()
+                    os.fsync(output.fileno())
+                require(sha(temporary) == record['sha256'] and temporary.stat().st_size == record['size'],
+                        'Render changed while publishing approval; retry after editing stops')
+                # Atomic no-clobber publication; removing the temporary name leaves an independent file.
+                os.link(temporary, target)
+            finally:
+                temporary.unlink(missing_ok=True)
+        if not continuing:
+            approvals.append({'approved_at': datetime.now(timezone.utc).isoformat(), 'feedback': text,
+                              'registry': rows[asset], 'sha256': record['sha256'],
+                              'path': target.relative_to(project).as_posix(), 'logged': False})
+            atomic_json(folder(project, asset) / 'Animation.json', ledger)
+        if source.exists():
+            source.unlink()
+        log(project, 'Animation approved', f'{asset} v{version:03d}: {approvals[-1]["feedback"]}\nApproved file: {target.relative_to(project).as_posix()}. Other approved versions preserved.')
+        approvals[-1]['logged'] = True
+        atomic_json(folder(project, asset) / 'Animation.json', ledger)
+        return {'asset': asset, 'status': 'approved', 'approved': target.relative_to(project).as_posix()}
 
 
 def render(project, asset):
@@ -484,7 +546,7 @@ def render(project, asset):
             log(project, 'Animation render failed', f'{asset} {name}: {error}. Retained source snapshot and any partial output; no approval changed.')
             raise
         atomic_json(directory / 'Animation.json', ledger)
-        log(project, 'Animation candidate rendered', f'{asset} {name}: candidate ready for human review; move the chosen MP4 into this asset\'s APPROVED folder manually.')
+        log(project, 'Animation candidate rendered', f'{asset} {name}: candidate ready for human review; approve the selected full-animation version through chat feedback.')
         return {'asset': asset, 'status': 'rendered',
                 'candidate': output.relative_to(project).as_posix(), 'sha256': record['sha256']}
 
@@ -517,7 +579,8 @@ def check(project):
     result = {}
     for asset, row in rows.items():
         ledger = load(project, asset)
-        provenance = current_input(project, asset, ledger, row)
+        require(ledger['requests'][-1]['registry'] == row,
+                f'{asset}: registry context changed; record a new chat revision')
         directory = folder(project, asset)
         require(all(r['status'] != 'rendering' for r in ledger['renders']),
                 f'{asset}: render active or interrupted')
@@ -536,14 +599,28 @@ def check(project):
         require(snapshot_root.is_dir() and {p.name for p in snapshot_root.iterdir()} <= snapshots,
                 'Unregistered render snapshot; inspect before completion')
         approved = approved_videos(project, asset)
-        require(len(approved) == 1, f'{asset}: exactly one human-approved MP4 is required')
-        video = approved[0]
-        matches = [r for r in ledger['renders'] if r['status'] == 'ready'
-                   and r['input'] == provenance and r['sha256'] == sha(video)
-                   and r['size'] == video.stat().st_size]
-        require(matches, f'{asset}: approved video is unregistered or stale for current inputs')
-        valid_video(video, settings(read_json(directory / 'settings.json')))
-        result[asset] = video.relative_to(project).as_posix()
+        selected = []
+        identities = set()
+        for video in approved:
+            identity = sha(video)
+            require(identity not in identities, f'{asset}: duplicate approved render identity')
+            identities.add(identity)
+            matches = [r for r in ledger['renders'] if r['status'] == 'ready'
+                       and r['sha256'] == identity and r['size'] == video.stat().st_size]
+            require(matches, f'{asset}: approved video is unregistered')
+            compatible = False
+            accepted = [r for r in matches if r.get('approvals')] or matches[:1]
+            for record in matches:
+                valid_video(video, settings(read_json(directory / 'snapshots' / f'v{record["version"]:03d}' / 'settings.json')))
+                approvals = record.get('approvals', [])
+                require(not approvals or approvals[-1].get('logged', False),
+                        f'{asset}: approval publication unfinished; retry approve for version {record["version"]}')
+                context = approvals[-1]['registry'] if approvals else record['input']['registry']
+                compatible = compatible or (record in accepted and context == row)
+            if compatible:
+                selected.append(video.relative_to(project).as_posix())
+        require(selected, f'{asset}: at least one approved MP4 matching current registry context is required; review existing approvals')
+        result[asset] = selected
     return result
 
 
@@ -569,19 +646,20 @@ def complete(project):
         confined(project, STAGE.as_posix()).mkdir(parents=True, exist_ok=True)
         manifest = evidence(project)
         completion.record_done(project, ROOT, STEP, manifest)
-        log(project, 'Animations completed', 'All selected Graphic/Animation assets have one current registered human-approved video; empty selections are valid.')
+        log(project, 'Animations completed', 'All selected Graphic/Animation assets have at least one registered human-approved video matching current registry context; multiple versions and empty selections are valid.')
         return {'status': 'complete', 'assets': check(project)}
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=('context', 'init', 'revise', 'render', 'studio', 'check', 'complete'))
+    parser.add_argument('action', choices=('context', 'init', 'revise', 'render', 'approve', 'studio', 'check', 'complete'))
     parser.add_argument('--project-root', required=True, type=Path)
     parser.add_argument('--asset-id')
+    parser.add_argument('--version', type=int, help='Exact registered render version to approve')
     parser.add_argument('--port', type=int, help='Optional Studio port; otherwise choose a free port')
     parser.add_argument('--no-open', action='store_true', help='Start Studio without opening a browser')
     request = parser.add_mutually_exclusive_group()
-    request.add_argument('--request', help='Verbatim chat revision text')
+    request.add_argument('--request', help='Verbatim chat revision or approval text')
     request.add_argument('--request-file', type=Path, help='UTF-8 file containing verbatim chat revision')
     args = parser.parse_args()
     project = args.project_root.resolve(strict=True)
@@ -602,7 +680,8 @@ def main():
             result = studio(project, args.asset_id, args.port, args.no_open)
         else:
             text = args.request_file.read_bytes().decode('utf-8') if args.request_file else args.request
-            result = revise(project, args.asset_id, text)
+            result = (approve(project, args.asset_id, args.version, text) if args.action == 'approve'
+                      else revise(project, args.asset_id, text))
     print(json.dumps(result, indent=2))
 
 
