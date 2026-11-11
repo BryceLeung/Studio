@@ -6,6 +6,7 @@ import re
 from scripts import stage_completion as completion
 from scripts.validation import StageValidation
 from studio.fingerprints import matches, matches_identity
+from studio.transcript_versions import is_repair_evidence, transcript_evidence, transcript_selection
 
 
 class Validation(StageValidation):
@@ -88,6 +89,10 @@ class Validation(StageValidation):
                     raise ValueError("Malformed historical transcript fingerprint")
                 path = completion.relative_path(entry["path"])
                 self.confined(path)
+                if section == "outputs" and is_repair_evidence(path):
+                    if not isinstance(entry.get("sha256"), str) or not re.fullmatch(r"[0-9a-fA-F]{64}", entry["sha256"]):
+                        raise ValueError("Malformed historical repair hash")
+                    continue
                 if (path.as_posix() != entry["path"] or path.parent.as_posix() != inventory["folder"]
                         or not re.fullmatch(inventory["filename_regex"], path.name, re.I)
                         or entry["path"] in indexed):
@@ -135,4 +140,11 @@ class Validation(StageValidation):
                     raise ValueError(f"Audio changed; regenerate unchanged transcript JSON: {path}")
         self.historical_pairing(wavs, outputs)
         self.require_inventory("inputs", wavs, exact=True)
-        self.require_inventory("outputs", outputs, exact=True)
+        self.require_inventory("outputs", sorted(set(outputs) | set(transcript_evidence(self.project))), exact=True)
+        selected = transcript_selection(self.project)
+        recorded = self.manifest.get("conditions", {}).get("effective_transcripts")
+        if recorded != selected:
+            # Legacy flat-only evidence remains usable until a repair is published.
+            canonical = [path.relative_to(self.project).as_posix() for path in outputs]
+            if recorded is not None or selected != canonical:
+                raise ValueError("Effective transcript selection differs from DONE")

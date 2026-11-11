@@ -39,6 +39,9 @@ def _describe_line(operation: str):
             verb = {"unlink": "Unlinked", "discard": "Discarded", "restore": "Restored"}[operation]
             panel = inputs.get("panel", "transcript")
             return f"{verb} {panel} group {group_number(panel)}"
+        if operation == "override_classification":
+            label = inputs.get("classification") or "automatic"
+            return f"Classification override for transcript group {group_number('transcript')}: {label}"
         if operation in ("split", "merge"):
             return f"{operation.title()} {inputs['panel']} word grouping"
         if operation == "load_mapping":
@@ -212,6 +215,7 @@ def link(project: Any, state: dict) -> dict:
     if previous and previous["script"] != mapping.word_range(script):
         raise ValueError("This reading is linked to another script grouping. Unlink it first.")
     if previous:
+        classification = previous.get("classification_override", classification)
         if previous["classification"] != classification:
             previous["classification"] = classification
             state["dirty"] = True
@@ -220,6 +224,31 @@ def link(project: Any, state: dict) -> dict:
             "script": mapping.word_range(script), "transcript": mapping.word_range(transcript),
             "classification": classification,
         })
+        state["dirty"] = True
+    return state
+
+
+@action("line.override_classification", description="Override a linked reading's quality, or restore automatic classification.", describe=_describe_line("override_classification"))
+def override_classification(project: Any, state: dict, classification: str | None) -> dict:
+    if classification is not None and (not isinstance(classification, str) or classification not in mapping.CLASSIFICATIONS):
+        raise ValueError("Choose exact, partial, flub, or automatic (null).")
+    transcript = _selected_row(state, "transcript")
+    linked = mapping.linked_group(state, "transcript", transcript)
+    if linked is None:
+        raise ValueError("Link this transcript group to a script group before overriding its classification.")
+    if classification is None:
+        script = mapping.active_source(state, "script")
+        source = mapping.active_source(state, "transcript")
+        automatic = infer_classification(mapping.range_text(script, linked["script"]),
+                                         mapping.range_text(source, linked["transcript"]))
+        changed = "classification_override" in linked or linked["classification"] != automatic
+        linked.pop("classification_override", None)
+        linked["classification"] = automatic
+    else:
+        changed = linked.get("classification_override") != classification or linked["classification"] != classification
+        linked["classification_override"] = classification
+        linked["classification"] = classification
+    if changed:
         state["dirty"] = True
     return state
 

@@ -26,6 +26,7 @@ Pair transcripts by filename:
 ```
 
 Include every matching recording, such as C01 and C02, in the script's output.
+Use the shared `studio/transcript_versions.py` resolver to select one effective transcript per canonical lav stem. Explicit repairs live at `2-Transcribe/REPAIRS/<canonical stem>/vN/<same stem>.json`; only successful versions with a valid final `COMMITTED.json` are eligible. Select the highest committed numeric version, verifying candidate bytes and same-stem source provenance. Never scan reports or arbitrary nested JSON as transcripts, use orphan candidates, or fall back from a malformed committed version. Stage evidence retains canonical flat transcript fingerprints plus committed repair/marker evidence; mapping snapshots reference the exact selected repaired path. Old mappings still open their exact historical sources, but do not satisfy current stage selection after a newer repair is committed.
 Missing transcripts, conflicting script stems, or a supported transcript with no
 approved script fail validation. Audio, SRT, and sync offsets are not inputs.
 Retain unknown word times as null; timestamps are relative to each original
@@ -96,6 +97,10 @@ spacing. Exact requires identical normalized wording. Other readings use
 full-sentence `rapidfuzz.fuzz.ratio`: Partial ≥75, Flub <75.
 Normalization also accepts English digit/written-number forms and hyphen/space
 variants, preserving audible number signs, decimal digits, and symbols.
+These are the automatic labels. An explicit human per-link
+`classification_override` (`exact`, `partial`, or `flub`) takes precedence on
+validation, reopening, and quality refresh; removing it restores automatic
+classification. Do not invent overrides to clear coverage requirements.
 These rules do not change
 the span matcher's token-distance scores or candidate thresholds.
 
@@ -204,7 +209,9 @@ searches only that output directory.
 
 Checking validates the selected mapping's schema, ranges, source fingerprints
 and snapshots, and complete matching-transcript inventory; it recalculates
-quality and checks the success condition below. Valid human grouping edits and
+automatic quality while honoring explicit human per-link classification overrides
+and checks the success condition below, without rewriting the saved mapping.
+Valid human grouping edits and
 script discards are accepted. Old generator metadata alone does not fail a
 review. Invalid latest files fail the check and remain preserved for inspection.
 

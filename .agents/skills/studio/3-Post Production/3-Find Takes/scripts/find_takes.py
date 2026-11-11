@@ -25,6 +25,7 @@ def workflow_root() -> Path:
 ROOT = workflow_root()
 sys.path.insert(0, str(ROOT))
 from studio import fingerprints  # noqa: E402
+from studio.transcript_versions import resolve_transcripts, transcript_evidence  # noqa: E402
 from studio.tools.line import boundaries, combined, mapping, sources, quality  # noqa: E402
 from studio.tools.line.actions import infer_classification  # noqa: E402
 from scripts.stage_completion import record_done, same_manifest  # noqa: E402
@@ -185,7 +186,6 @@ def match_recording(script: dict, transcript: dict, settings: dict | None = None
 
 def discover(project: Path) -> list[tuple[Path, list[Path]]]:
     approved = project / APPROVED
-    transcribed = project / TRANSCRIBED
     scripts = sorted(p for p in approved.iterdir() if p.is_file() and p.suffix.lower() in (".docx", ".txt", ".json"))
     if not scripts:
         raise ValueError("No approved scripts found in 1.1 Approved/.")
@@ -195,9 +195,8 @@ def discover(project: Path) -> list[tuple[Path, list[Path]]]:
         if key in by_name:
             raise ValueError(f"Approved scripts have conflicting output names: {script.name}")
         by_name[key] = (script, [])
-    for transcript in sorted(transcribed.iterdir()):
-        if not transcript.is_file() or transcript.suffix.lower() != ".json":
-            continue
+    for item in resolve_transcripts(project):
+        transcript = item["effective"]
         match = re.fullmatch(r"(.+)__C\d{2,}__lav", transcript.stem, re.IGNORECASE)
         if match is None:
             continue
@@ -436,7 +435,9 @@ def completion_manifest(project: Path, result: dict) -> dict:
                     Path(__file__).with_name("validation.py").relative_to(ROOT),
                     Path("scripts/validation.py"), Path("scripts/stage_completion.py"),
                     Path("scripts/stage_invalidation.py"),
-                    Path("scripts/append-log.py"), Path("studio/fingerprints.py"), Path("studio/script_docx.py")]
+                    Path("scripts/append-log.py"), Path("studio/fingerprints.py"), Path("studio/script_docx.py"),
+                    Path("studio/transcript_versions.py"), Path("studio/tools/line/repair.py"),
+                    Path("scripts/repair_transcription.py")]
     dependencies.extend(Path("studio/tools/line") / name for name in
                         ("sources.py", "mapping.py", "actions.py", "quality.py", "combined.py", "boundaries.py"))
     def fingerprint(path: Path, root: Path, scope: str) -> dict:
@@ -444,7 +445,8 @@ def completion_manifest(project: Path, result: dict) -> dict:
     return {
         "project": project.name, "step": "3.3",
         "dependencies": [fingerprint(ROOT / path, ROOT, "workflow") for path in dependencies],
-        "inputs": [fingerprint(path, project, "project") for script, transcripts in inventory for path in (script, *transcripts)],
+        "inputs": [fingerprint(path, project, "project") for path in
+                   sorted({script for script, _ in inventory} | set(transcript_evidence(project)))],
         "outputs": [fingerprint(Path(item["path"]), project, "project") for item in result["outputs"]],
         "conditions": {
             "approved_scripts": [path.relative_to(project).as_posix() for path, _ in inventory],

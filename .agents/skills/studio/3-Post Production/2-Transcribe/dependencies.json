@@ -9,7 +9,10 @@
   "workflow_dependencies": [
     ".agents/skills/studio/3-Post Production/2-Transcribe/scripts/check_transcripts.py",
     ".agents/skills/studio/2-Production/1-Footage Intake/scripts/validate-footage.py",
-    "scripts/append-log.py"
+    "scripts/append-log.py",
+    "studio/transcript_versions.py",
+    "studio/tools/line/repair.py",
+    "scripts/repair_transcription.py"
   ],
   "validation": {"script": "scripts/validation.py"},
   "folder": "3-Post Production/2-Transcribe",

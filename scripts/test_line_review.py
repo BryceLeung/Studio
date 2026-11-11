@@ -114,6 +114,35 @@ class FingerprintTests(unittest.TestCase):
 
 
 class QualityTests(unittest.TestCase):
+    def test_explicit_override_survives_refresh_and_relink_until_reset(self):
+        state = review_state()
+        actions.link(None, state)
+        actions.override_classification(None, state, "partial")
+        linked = state["links"][0]
+        self.assertEqual(linked["classification_override"], "partial")
+        self.assertEqual(linked["classification"], "partial")
+        state["dirty"] = False
+        self.assertEqual(mapping.refresh_quality(state), 0)
+        actions.link(None, state)
+        self.assertEqual(linked["classification"], "partial")
+        self.assertFalse(state["dirty"])
+        actions.close_script(None, state)
+        actions.override_classification(None, state, None)
+        self.assertEqual(linked["classification"], "exact")
+        self.assertNotIn("classification_override", linked)
+        self.assertTrue(state["dirty"])
+
+    def test_override_requires_link_and_valid_label(self):
+        state = review_state()
+        with self.assertRaisesRegex(ValueError, "Link this transcript"):
+            actions.override_classification(None, state, "partial")
+        actions.link(None, state)
+        original = deepcopy(state)
+        for invalid in ("discarded", "good", "", [], True):
+            with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                actions.override_classification(None, state, invalid)
+            self.assertEqual(state, original)
+
     def test_normalized_full_sentence_similarity(self):
         for script, transcript, expected in (
             ("Hello world.", "Hello world.", "exact"),
@@ -632,6 +661,43 @@ class ReviewUiTests(QtTests):
             self.widget.link_selected()
             self.widget.discard_selected()
         self.assertEqual(self.widget.state["selected"]["transcript"], 0)
+
+    def test_override_submenu_sets_each_quality_and_restores_automatic(self):
+        actions.link(None, self.widget.state)
+        self.widget._refresh()
+        table = self.widget._panels["transcript"]["table"]
+        point = table.visualRect(table.model().index(0, 1)).center()
+        for label in ("Partial", "Flub", "Exact", "Automatic"):
+            with patch("studio.tools.line.ui.QMenu") as factory:
+                menu = factory.return_value
+                menu.isEmpty.return_value = False
+                submenu = menu.addMenu.return_value
+                options = {}
+                def add_option(text):
+                    options[text] = Mock()
+                    return options[text]
+                submenu.addAction.side_effect = add_option
+                menu.exec.side_effect = lambda *_args: options[label].triggered.connect.call_args.args[0]()
+                self.widget._group_menu("transcript", point)
+                menu.addMenu.assert_called_once_with("Override")
+                submenu.setEnabled.assert_called_once_with(True)
+                self.assertEqual(list(options), ["Exact", "Partial", "Flub", "Automatic"])
+            linked = self.widget.state["links"][0]
+            if label == "Automatic":
+                self.assertNotIn("classification_override", linked)
+                self.assertNotIn("*", table.item(0, 2).text())
+            else:
+                self.assertEqual(linked["classification_override"], label.lower())
+                self.assertIn("*", table.item(0, 2).text())
+                self.assertIn("Human classification override", table.item(0, 2).toolTip())
+            self.assertEqual(linked["classification"], "exact" if label == "Automatic" else label.lower())
+
+    def test_override_submenu_is_disabled_without_a_link(self):
+        table = self.widget._panels["transcript"]["table"]
+        point = table.visualRect(table.model().index(0, 1)).center()
+        with patch("studio.tools.line.ui.QMenu") as factory:
+            self.widget._group_menu("transcript", point)
+            factory.return_value.addMenu.return_value.setEnabled.assert_called_once_with(False)
 
     def test_split_picker_and_merge_context_menu(self):
         table = self.widget._panels["transcript"]["table"]

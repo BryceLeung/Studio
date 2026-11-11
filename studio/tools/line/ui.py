@@ -38,6 +38,7 @@ from .shortcuts import KeyboardMappingsDialog, load_mappings, save_mappings
 from .visuals import COLORS, ConnectionBands, OverviewStrip
 from . import combined
 from .playback import LinePlayback, audio_clip
+from .repair_ui import TranscriptionRepair
 
 
 _COLORS = COLORS
@@ -212,6 +213,7 @@ class LineWidget(QWidget):
         self._playback = None
         self._playing_selection = None
         self.keyboard_mappings = load_mappings()
+        self._transcription_repair = TranscriptionRepair(self)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 12, 16, 12)
@@ -512,6 +514,28 @@ class LineWidget(QWidget):
         menu = QMenu(table)
         if len(indexes) == 1:
             group = self.state["groupings"][panel][indexes[0]]
+            if panel == "transcript":
+                linked = linked_group(self.state, "transcript", group)
+                override_menu = menu.addMenu("Override")
+                override_menu.setEnabled(linked is not None and self._split_mode is None)
+                override_menu.setToolTip("Link this transcript group to a script group before overriding its quality.")
+                for classification in ("exact", "partial", "flub"):
+                    action = override_menu.addAction(classification.title())
+                    action.setCheckable(True)
+                    action.setChecked(linked is not None and linked.get("classification_override") == classification)
+                    action.triggered.connect(
+                        lambda _checked=False, value=classification: self._dispatch("line.override_classification", classification=value)
+                    )
+                override_menu.addSeparator()
+                action = override_menu.addAction("Automatic")
+                action.setCheckable(True)
+                action.setChecked(linked is not None and "classification_override" not in linked)
+                action.triggered.connect(lambda: self._dispatch("line.override_classification", classification=None))
+                menu.addSeparator()
+                action = menu.addAction("Repair transcription…")
+                action.setEnabled(self._split_mode is None and not self._transcription_repair.busy)
+                action.triggered.connect(lambda: self._run_ui(self._transcription_repair.start))
+                menu.addSeparator()
             if panel == "script":
                 discarded = word_range(group) in self.state.get("script_discarded", [])
                 action = menu.addAction("Restore script" if discarded else "Discard script")
@@ -736,6 +760,9 @@ class LineWidget(QWidget):
 
     def confirm_close(self) -> bool:
         """Called by the dashboard before releasing a project or closing."""
+        if self._transcription_repair.busy:
+            QMessageBox.information(self, "Transcription repair", "Wait for transcription repair to finish before closing this project.")
+            return False
         return self._dirty_choice("close this project") != "cancel"
 
     def _prepare_replacement(self, purpose: str, keep_other: str | None = None) -> bool:
@@ -899,6 +926,9 @@ class LineWidget(QWidget):
                     color_status = link["classification"]
                     text = f"{color_status.title()} → S{script_lines.get(range_key(link['script']), '?')}"
                     tooltip = "Classification of this individual reading."
+                    if link.get("classification_override"):
+                        text += " *"
+                        tooltip = "Human classification override. Use Override > Automatic to restore automatic quality."
                 cell = table.item(display, 2)
                 cell.setText(text)
                 cell.setToolTip(tooltip)
@@ -956,7 +986,7 @@ class LineWidget(QWidget):
             item = QListWidgetItem(
                 _status_icon(classification),
                 (f"{row['filename']} · " if len(combined.recordings(transcript)) > 1 else "")
-                + f"T{row['line']} · {classification.title()} · {_timestamp(row.get('start_ms'))} — {row['text']}",
+                + f"T{row['line']} · {classification.title()}{' (override)' if link.get('classification_override') else ''} · {_timestamp(row.get('start_ms'))} — {row['text']}",
             )
             item.setData(Qt.ItemDataRole.UserRole, index)
             item.setBackground(QColor(_COLORS[classification]))
@@ -1023,7 +1053,7 @@ class LineWidget(QWidget):
             script_status = coverage(self.state)
             transcript_status = review_status(self.state)
             review_key = (
-                tuple((range_key(link["script"]), range_key(link["transcript"]), link["classification"]) for link in self.state["links"]),
+                tuple((range_key(link["script"]), range_key(link["transcript"]), link["classification"], link.get("classification_override")) for link in self.state["links"]),
                 tuple(range_key(group) for group in self.state["discarded"]),
                 tuple(range_key(group) for group in self.state.get("script_discarded", [])),
             )

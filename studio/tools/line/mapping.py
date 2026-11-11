@@ -144,8 +144,8 @@ def refresh_quality(state: dict) -> int:
         raise ValueError("Load a script and transcript before recalculating quality.")
     changed = 0
     for link in state["links"]:
-        classification = quality.classify(range_text(script, link["script"]),
-                                          range_text(transcript, link["transcript"]))
+        classification = link.get("classification_override") or quality.classify(
+            range_text(script, link["script"]), range_text(transcript, link["transcript"]))
         if link["classification"] != classification:
             link["classification"] = classification
             changed += 1
@@ -327,7 +327,8 @@ def validate_document(project_root: Any, document: Any, *, verify_inputs: bool =
         raise ValueError("Discarded word ranges must be unique.")
     linked = set()
     for link in links:
-        if not isinstance(link, dict) or set(link) != {"script", "transcript", "classification"}:
+        required = {"script", "transcript", "classification"}
+        if not isinstance(link, dict) or not required <= set(link) or set(link) - required - {"classification_override"}:
             raise ValueError("Every link must contain script and transcript word ranges, and classification.")
         for panel in PANELS:
             key = _validate_range(link[panel], len(sources[panel]["words"]))
@@ -335,6 +336,11 @@ def validate_document(project_root: Any, document: Any, *, verify_inputs: bool =
                 raise ValueError("Mapping link ranges must match word groupings.")
         if not isinstance(link.get("classification"), str) or link["classification"] not in (*CLASSIFICATIONS, "good"):
             raise ValueError("Link classification must be exact, partial, or flub (legacy good is accepted).")
+        if "classification_override" in link:
+            override = link["classification_override"]
+            if not isinstance(override, str) or override not in CLASSIFICATIONS:
+                raise ValueError("Classification override must be exact, partial, or flub.")
+            link["classification"] = override
         key = range_key(link["transcript"])
         if key in linked:
             raise ValueError("Each transcript word grouping can link to only one script grouping.")

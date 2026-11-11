@@ -9,6 +9,7 @@ import re
 from typing import Any
 
 from studio.fingerprints import sha256
+from studio.transcript_versions import transcript_selection
 from studio.script_docx import document_xml, paragraph_text, script_title, spoken_paragraphs, spoken_text
 
 
@@ -299,8 +300,7 @@ def load_transcript(project_root: Any, path: Any) -> dict:
 def discover_sources(project_root: Any) -> dict[str, list[str]]:
     root = Path(project_root).resolve(strict=True)
     approved = root / "1-Pre Production" / "1-Script Review" / "Approved"
-    transcripts = root / "3-Post Production" / "2-Transcribe"
     return {
         "scripts": sorted(path.relative_to(root).as_posix() for path in approved.glob("*") if path.is_file() and path.suffix.lower() == ".docx"),
-        "transcripts": sorted(path.relative_to(root).as_posix() for path in transcripts.glob("*") if path.is_file() and path.suffix.lower() == ".json"),
+        "transcripts": transcript_selection(root),
     }

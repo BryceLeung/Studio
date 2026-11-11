@@ -66,7 +66,11 @@ the highest score independently for each sentence may still switch between
 runs. Apply the approved recency precedence below when run lengths tie; an
 additional preference to stay in the currently selected run has not been defined.
 
-Keep the existing Exact/Partial/Flub labels intact. The known imperfect Partial
+Keep the existing Exact/Partial/Flub labels intact, honoring an explicit human
+per-link `classification_override` (`exact`, `partial`, or `flub`) as the effective
+label during shared validation. Scoring does not automatically reclassify takes;
+an overridden Flub breaks a run and an overridden Exact or Partial can join one.
+The known imperfect Partial
 mapping in the Find Takes benchmark remains a reviewed input; selection scoring
 does not authorize changing its boundaries. Exact and Partial have equal scoring
 weight. There is no wording-quality or delivery-quality bonus in version 1;
@@ -124,7 +128,9 @@ python "<workflow-root>/.agents/skills/studio/3-Post Production/4-Take Selection
 
 The script validates the supplied inventory, 1.1 approval, 3.3 completion
 fingerprints, current script/transcript snapshots and coverage, mapping schemas,
-and recording chronology. It preserves saved labels and ranges. The reviewed
+and recording chronology. It preserves ranges and uses saved labels unless an
+explicit human per-link classification override takes precedence; it does not
+rewrite the input mapping. The reviewed
 script grouping order defines the sentence sequence, as in 3.3. Ambiguous or
 missing latest versions, unsupported schemas, and unparseable or duplicate
 recording numbers fail explicitly. It never falls back to an older mapping.

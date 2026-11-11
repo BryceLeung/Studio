@@ -46,7 +46,8 @@ class Validation(StageValidation):
             inputs.extend((script_path, *transcript_paths))
             outputs.append(path)
             latest.append({"script": script_path.relative_to(self.project).as_posix(),
-                           "version": version, "path": path.relative_to(self.project).as_posix()})
+                            "version": version, "path": path.relative_to(self.project).as_posix()})
+        inputs = [script for script, _ in inventory] + find.transcript_evidence(self.project)
         self.require_inventory("inputs", inputs, exact=True)
         self.require_inventory("outputs", outputs, exact=True)
         conditions = self.manifest.get("conditions", {})

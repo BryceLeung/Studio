@@ -22,6 +22,7 @@ PACKAGES = {
 if sys.platform == 'win32':
     PACKAGES['torchcodec'] = '0.7.0'
 REQUIREMENTS = tuple(f'{name}=={pin}' for name, pin in PACKAGES.items())
+REPAIR_REQUIREMENTS = ('RapidFuzz>=3,<4', 'num2words>=0.5.14,<0.6', 'python-docx>=1.1,<2')
 
 
 def environment_python():
@@ -35,6 +36,10 @@ def dependency_info():
             raise RuntimeError(f'{name} must be {pin}; found {installed[name]}')
     for name in ('torch', 'torchaudio', 'torchvision', 'whisperx.asr', 'whisperx.alignment', 'whisperx.diarize'):
         import_module(name)
+    # Local repair rebuilds Takes headlessly in this same isolated environment.
+    for distribution, module in (('RapidFuzz', 'rapidfuzz'), ('num2words', 'num2words'), ('python-docx', 'docx')):
+        installed[distribution] = version(distribution)
+        import_module(module)
     ffmpeg = shutil.which('ffmpeg')
     if not ffmpeg:
         raise RuntimeError('WhisperX requires FFmpeg on PATH; install it before continuing')
@@ -82,7 +87,7 @@ def main():
                 raise RuntimeError(f'Incomplete environment at {ENVIRONMENT}; inspect it before retrying')
             print(f'Creating {ENVIRONMENT}', flush=True)
             venv.EnvBuilder(with_pip=True).create(ENVIRONMENT)
-        subprocess.run([str(environment_python()), '-m', 'pip', 'install', *REQUIREMENTS], check=True)
+        subprocess.run([str(environment_python()), '-m', 'pip', 'install', *REQUIREMENTS, *REPAIR_REQUIREMENTS], check=True)
         print(json.dumps(probe_environment(), indent=2))
         return 0
     except (OSError, RuntimeError, ValueError, ImportError, subprocess.CalledProcessError) as error:

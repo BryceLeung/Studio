@@ -12,7 +12,10 @@
     "studio/tools/line/actions.py",
     "studio/tools/line/quality.py",
     "studio/tools/line/combined.py",
-    "studio/tools/line/boundaries.py"
+    "studio/tools/line/boundaries.py",
+    "studio/transcript_versions.py",
+    "studio/tools/line/repair.py",
+    "scripts/repair_transcription.py"
   ],
   "validation": {"script": "scripts/validation.py"},
   "folder": "3-Post Production/3-Find Takes",

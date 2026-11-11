@@ -13,6 +13,7 @@ import sys
 ROOT = next(p for p in Path(__file__).resolve().parents if (p / "studio/tools/line/mapping.py").is_file())
 sys.path.insert(0, str(ROOT))
 from studio.fingerprints import matches, matches_identity, sha256  # noqa: E402
+from studio.transcript_versions import transcript_evidence, transcript_selection  # noqa: E402
 from scripts import stage_completion as completion  # noqa: E402
 from scripts.validation import require_prerequisites  # noqa: E402
 DEFINITION_FILE = Path(__file__).parents[1] / "dependencies.json"
@@ -53,13 +54,16 @@ def manifest(project, wavs, outputs):
     dependencies = [Path(__file__), Path(__file__).parents[1] / "SKILL.md", FOOTAGE_VALIDATOR, LOG_HELPER,
                     ROOT / "studio/fingerprints.py", ROOT / "scripts/stage_completion.py", DEFINITION_FILE,
                     Path(__file__).with_name("validation.py"), ROOT / "scripts/validation.py",
-                    ROOT / "scripts/stage_invalidation.py"]
+                    ROOT / "scripts/stage_invalidation.py", ROOT / "studio/transcript_versions.py",
+                    ROOT / "studio/tools/line/repair.py", ROOT / "scripts/repair_transcription.py"]
     return {"step": "3.2", "schema": "studio.transcribe.done", "schema_version": 1,
             "dependencies": [completion.fingerprint(p, ROOT, "workflow") for p in dependencies],
             "inputs": [completion.fingerprint(p, project, "project") for p in wavs],
-            "outputs": [completion.fingerprint(p, project, "project") for p in outputs],
+            "outputs": [completion.fingerprint(p, project, "project") for p in
+                        sorted(set(outputs) | set(transcript_evidence(project)))],
             "conditions": {"lav_wavs": [p.relative_to(project).as_posix() for p in wavs],
-                           "json_transcripts": [p.relative_to(project).as_posix() for p in outputs]}}
+                           "json_transcripts": [p.relative_to(project).as_posix() for p in outputs],
+                           "effective_transcripts": transcript_selection(project)}}
 
 
 def run(project):
