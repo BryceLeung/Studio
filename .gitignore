@@ -3,6 +3,7 @@
 
 # Local tool environments and Python caches.
 .venv-tools/
+.model-cache/
 __pycache__/
 
 # Native dashboard packaging metadata.
