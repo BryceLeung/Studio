@@ -145,6 +145,19 @@ class FaceTrackingTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "crops a reviewed script group"):
             track.passage_groups(script, groups, ["Hello", "Goodbye."], 1)
 
+    def test_approved_shortlist_accepts_source_version_and_blockquote_format(self):
+        text = (
+            "## 1. Blockquoted\n\n- **Review status:** Approved. Added during review.\n"
+            "- **Source/version:** `Approved/A.docx`, current approved master.\n\n"
+            "### Provisional spoken script\n\n"
+            "> Hello world.\n>\n> Goodbye.\n\n"
+            "**[PROPOSED JUMP — omit source L02. Nonspoken edit note.]**\n\n"
+            "> Second part.\n"
+            "\n## 2. Pending\n\n- **Review status:** Pending Review\n"
+            "- **Source/version:** `Approved/A.docx`\n\n### Provisional spoken script\n\n> Nope.\n")
+        self.assertEqual(track.approved_passages(text),
+                         [(1, "A.docx", ["Hello world.", "Goodbye.", "Second part."])])
+
     def test_all_matching_takes_cover_both_cameras_in_source_time(self):
         with TemporaryDirectory() as directory:
             project = Path(directory).resolve()

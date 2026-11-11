@@ -16,25 +16,41 @@ def parse_shortlist(text):
     for match in re.finditer(r"^## (\d+)\. ([^\n]+)\n(.*?)(?=^## |\Z)", text, re.M | re.S):
         number, title, body = match.groups()
         status = re.search(r"\*\*Review status:\*\* (.+)", body)
-        if not status or status.group(1).strip() != "Approved":
+        if not status or not re.match(r"Approved\b", status.group(1).strip()):
             continue
-        source = re.search(r"\*\*Source:\*\* (.+)", body)
+        source = re.search(r"\*\*Source(?:/version)?:\*\* (.+)", body)
         if not source or "### Provisional spoken script" not in body:
             raise ValueError(f"Extract {number} lacks source or spoken script.")
+        quoted = re.search(r"`([^`]+)`", source.group(1))
         passages, jump = [], False
         spoken = body.split("### Provisional spoken script", 1)[1]
         for paragraph in re.split(r"\n\s*\n", spoken.strip()):
-            if paragraph.strip() == "> [PROPOSED JUMP]":
+            if re.fullmatch(r"\*\*\[.*\]\*\*", paragraph.strip()) or paragraph.strip() == "> [PROPOSED JUMP]":
                 jump = True
                 continue
-            if paragraph.startswith(">"):
-                raise ValueError(f"Unknown extract directive: {paragraph}")
-            passages.append({"text": paragraph.strip(), "jump_before": jump})
-            jump = False
+            current = []
+            def flush():
+                nonlocal jump
+                if current:
+                    passages.append({"text": " ".join(current), "jump_before": jump})
+                    current.clear()
+                    jump = False
+            for line in paragraph.splitlines():
+                line = line.strip()
+                if not line or line == ">":
+                    flush()
+                elif line.startswith(">"):
+                    current.append(line[1:].strip())
+                elif line.startswith(("- ", "* ")):
+                    flush()
+                else:
+                    current.append(line)
+            flush()
         if not passages or jump:
             raise ValueError(f"Empty extract or trailing jump: {number}")
         extracts.append({"number": int(number), "title": title.strip(),
-                         "source": source.group(1).strip(), "passages": passages})
+                         "source": Path((quoted.group(1) if quoted else source.group(1)).strip()).name,
+                         "passages": passages})
     if not extracts:
         raise ValueError("No approved extracts found.")
     return extracts

@@ -183,6 +183,22 @@ class ExtractTests(unittest.TestCase):
         self.assertEqual([item["title"] for item in result], [f"Title {i}" for i in range(1, 7)])
         self.assertTrue(all(item["passages"][1]["jump_before"] for item in result))
 
+    def test_parser_accepts_source_version_blockquotes_and_bold_jumps(self):
+        text = (
+            "## 1. Approved\n\n- **Review status:** Approved. Reviewed in chat.\n"
+            "- **Source/version:** `Approved/A.docx`, current approved master.\n\n"
+            "### Provisional spoken script\n\n"
+            "> First.\n>\n> Second.\n\n"
+            "**[PROPOSED JUMP — omit source L02. Nonspoken edit note.]**\n\n"
+            "> Last.\n"
+            "\n## 2. Pending\n\n- **Review status:** Pending Review\n"
+            "- **Source/version:** `Approved/A.docx`\n\n### Provisional spoken script\n\n> Nope.\n")
+        result = extracts.parse_shortlist(text)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["source"], "A.docx")
+        self.assertEqual([(p["text"], p["jump_before"]) for p in result[0]["passages"]],
+                         [("First.", False), ("Second.", False), ("Last.", True)])
+
     def test_matching_is_verbatim_and_resolves_repeats_by_order(self):
         script = {"words": [{"text": t} for t in "A. Then another. Then another. End.".split()]}
         extract = {"number": 1, "passages": [{"text": "A. Then another. Then another.", "jump_before": False},
