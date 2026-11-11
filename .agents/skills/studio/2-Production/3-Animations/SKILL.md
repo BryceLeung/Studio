@@ -54,6 +54,7 @@ After successful preflight, create missing working directories for every current
     settings.json
     package.json
     tsconfig.json
+    scripts/
     sketches/
       piggy-bank/
         v001/preview.png
@@ -72,6 +73,12 @@ After successful preflight, create missing working directories for every current
 ```
 
 `init` snapshots the approved request and creates a Studio-ready scaffold with a registered entry point, named interactive SVG layer and portable project configuration. Run it serially for each eligible asset on setup, including existing assets: it creates a missing `sketches/` directory without rewriting existing files or replacing sketch content. Create missing library and candidate directories through permitted filesystem operations, not invented helper flags. Every new graphic/animation should retain the Studio-ready format. A scaffold is setup only, not artwork, a visual proposal or a finished animation. Sketch versions, candidate versions, snapshots and rendered files in the example appear only when requested work produces them; do not populate placeholder versions. Preserve historical sketches stored as candidates; do not migrate or rename earlier work automatically.
+
+### Asset-specific scripts
+
+Always create project-specific preparation, assembly, revision, verification and save helpers in the owning asset's `scripts/` directory in the resolved OneDrive project, such as `2-Production/3-Animations/A04/scripts/`. Helpers specific to a shared-library character, background or object belong in that object's `scripts/` directory, such as `2-Production/3-Animations/ASSETS/CHARACTERS/trump_girl/scripts/`. Create the directory only when a helper is needed. This rule applies to all script languages and subordinate sketch, render and save workflows; do not create new executable helpers in candidate versions or the workflow repository for asset-specific work. Preserve existing versioned script copies as provenance rather than moving or rewriting historical artifacts.
+
+Only maintained, reusable workflow tooling belongs in this skill's repository `scripts/` directory. Project-local helpers must accept explicit paths for shared tooling they need, such as `--renderer-root`, rather than deriving the repository or renderer location from their own `__file__`. Pass `--project-root` explicitly and keep recorded project paths portable. Script placement does not bypass normal mutation, logging, rendering or approval gates.
 
 ## Interactive workflow
 
