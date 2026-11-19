@@ -109,10 +109,22 @@ Set the [single review server](#opening-remotion-studio) to the exact compositio
 
 If an MP4 is available, also link to that exact playable file, including an inspection render or a reused current render. Keep it available and label inspection-only or isolated videos as such. A link is not registration or approval. If only a historical MP4 is available and the matching composition cannot be served, link the MP4 and explain why Studio was not switched.
 
-In the final chat reply, use normal Markdown links, not code spans or bare filesystem paths. For an MP4 in Kilo/VS Code, use an absolute `file://` URI for the existing local file and percent-encode path characters such as spaces (`%20`), `#` (`%23`) and parentheses (`%28`, `%29`); use forward slashes (`file:///C:/...` on Windows). Prefer the connected workspace path when it points to that exact file. For Studio, link the verified HTTP URL printed by the launcher. Replace these illustrative targets with the actual ones:
+Whenever showing an existing MP4 in Kilo/VS Code, including a read-only request for the latest render, default to a clickable loopback HTTP link. Do not use a `file://` URI as the primary link; Kilo may not make it clickable. This does not authorize a new render or require switching Remotion Studio.
+
+1. Locate the exact MP4 and confirm its current path, including `APPROVED/` if approval moved it. Serve from the narrowest media-only directory containing the file. Python's static server exposes all contents of that directory, so do not point it at a project root or a directory containing source, other non-media files, or links outside it. If the directory is unsuitable, use a single-file serving method or report that playback could not be served safely.
+2. Reuse a tracked session-scoped MP4 server only if it serves that exact directory and file. Otherwise, stop the previous MP4 server owned by this session and start a tracked session-scoped background process, bound to `127.0.0.1` only. Use port `8765` if free, or another free port; do not stop unrelated listeners or use the Remotion review port `3000`.
+
+   ```text
+   python -m http.server 8765 --bind 127.0.0.1 --directory "<exact-media-directory>"
+   ```
+
+   Use `python3` if that is the local Python command. No dependency installation is needed.
+3. Verify that the listener belongs to the tracked server and that the exact URL returns HTTP 200 with `Content-Type: video/mp4` and a `Content-Length` matching the selected file (for example, with `curl -I`, or `curl.exe -I` on Windows). A response from another listener or for another `v001.mp4` is not verification. Percent-encode special characters in the filename. If playback cannot be served, report the blocker and provide the local path as a fallback rather than posting an unverified link.
+
+In the final chat reply, use normal Markdown links. Note that the MP4 URL is available while the serving session is running. For Studio, link the separately verified HTTP URL printed by the launcher. Replace these illustrative targets with the actual ones:
 
 ```markdown
-[Watch A13 v001 (MP4)](file:///path/to/Connected%20Projects/02-Trump%20Accounts/2-Production/3-Animations/A13/renders/v001.mp4)
+[Watch A13 v001 (MP4)](http://127.0.0.1:8765/v001.mp4)
 [Open the current Remotion review](http://localhost:3000)
 ```
 
