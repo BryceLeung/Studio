@@ -99,7 +99,21 @@ These are subordinate workflows, not additional numbered stages, and do not repl
 5. Stop after presenting each requested sketch or candidate for feedback. Apply requested revisions as new versions in the appropriate folder; do not silently overwrite earlier work or assume positive feedback means render or save. Record decisions and sketch/candidate paths in the append-only stage log so another session can resume the same discussion.
 6. Only when the user explicitly asks to save an object, copy the selected version into `ASSETS/CHARACTERS/<name>/vNNN/`, `ASSETS/BACKGROUND/<name>/vNNN/` or `ASSETS/OBJECTS/<name>/vNNN/` as appropriate. Preserve the original candidate and existing library versions. If the selected version is ambiguous, resolve that before copying. Retain source, required resources, provenance and any attribution/licensing information with the saved version. Saving an object is not animation approval.
 7. Assemble or revise the animation only when requested, using the agreed objects and treatment. Freeze selected library resources into this animation's `references/`, and copy reusable code into its own `src/`; record the source library version. Never import live code or reference mutable files from the shared library or another animation. Later library updates must not silently change an existing animation.
-8. Render an animation preview only when requested, using the maintained render workflow below. Inspect it and present it for feedback, then stop. Continue revisions interactively. Move to the next animation only on the user's explicit instruction, not because a render succeeded or an object was saved. An instruction to move on is not final video approval; preserve pending approval status and the existing completion gate.
+8. Render an animation preview only when requested, using the maintained render workflow below. Inspect the work, follow the review handoff below, then stop for feedback. Continue revisions interactively. Move to the next animation only on the user's explicit instruction, not because a render succeeded or an object was saved. An instruction to move on is not final video approval; preserve pending approval status and the existing completion gate.
+
+## Review handoff
+
+Use this rule when handing back authored or revised Remotion work, including isolated object candidates. It does not apply to text proposals, scaffold setup, static sketches, save-only actions or status checks.
+
+- **MP4 available for this version:** Link directly to the actual playable MP4, including one rendered to extract inspection frames or an unchanged current render reused for this work. Keep the MP4 available after the handoff. Do not substitute a frame sheet, directory, older version or log path for the video link. Do not start Studio as a second preview unless explicitly requested. Label inspection-only or isolated videos as such; linking them does not register or approve them.
+- **No MP4 for this version:** Start or reuse Remotion Studio for the exact composition being handed back, without rendering a video. Use the canonical launcher below for a full animation and the [isolated candidate launcher](object-authoring/SKILL.md#isolated-studio) for an object candidate. In Kilo, use a tracked background process with its normal session lifetime, wait for the actual live URL and leave the process running at handoff. If Studio cannot start, report the specific blocker instead of linking a guessed URL or opening a different version.
+
+In the final chat reply, use normal Markdown links, not code spans or bare filesystem paths. For an MP4 in Kilo/VS Code, use an absolute `file://` URI for the existing local file and percent-encode path characters such as spaces (`%20`), `#` (`%23`) and parentheses (`%28`, `%29`); use forward slashes (`file:///C:/...` on Windows). Prefer the connected workspace path when it points to that exact file. For Studio, link the verified HTTP URL printed by the launcher. Replace these illustrative targets with the actual ones:
+
+```markdown
+[Watch A13 v001 (MP4)](file:///path/to/Connected%20Projects/02-Trump%20Accounts/2-Production/3-Animations/A13/renders/v001.mp4)
+[Open A13 in Remotion Studio](http://127.0.0.1:3213)
+```
 
 ## Requested composition and rendering
 
@@ -123,15 +137,15 @@ Inspect each requested preview for legibility, composition, timing, motion, clip
 
 ## Opening Remotion Studio
 
-Open the selected asset with the maintained helper when the user wants visual editing:
+Open the selected asset with the maintained helper when the user wants visual editing or the review handoff calls for Studio:
 
 ```text
-python "<helper>" studio --project-root "<real-project-root>" --asset-id A10
+python "<helper>" studio --project-root "<real-project-root>" --asset-id A10 --no-open
 ```
 
-This starts a foreground local server, opens the browser, and chooses a free port. Optional `--port 3000` selects a port; `--no-open` leaves the browser closed. Return the actual URL printed by the server. The launcher uses the asset as its editable project root and the shared renderer installation for dependencies. It does not install packages. Missing entry/configuration files are an error; no migration or automatic retrofit is supported.
+This starts a foreground local server or reuses a verified live server for the same resolved asset folder. Different assets can run in parallel on different ports. Optional `--port 3210` selects a port for a new server; an existing asset server takes precedence. By default the helper opens the browser; `--no-open` only prints the URL. For a new server in Kilo, use a tracked background process and keep its owning process alive; a reuse call prints the existing URL and exits without taking ownership. Always return the actual `Studio ready:` or `Studio reused:` URL. The launcher uses the asset as its editable project root and the shared renderer installation for dependencies. It does not install packages. Missing entry/configuration files are an error; no migration or automatic retrofit is supported.
 
-Studio edits save directly to source and make older renders differ from the working version, without revoking their approvals. Test the generated controls by changing and resetting one value, and check timeline timing after restructuring. Keep previous candidates and snapshots. A Studio export is an exploratory video until rendered and registered through `animations.py render`; it does not bypass the human approval gate. Include Studio readiness when handing off a requested animation preview; do not open a separate browser/server for every asset automatically.
+Studio edits save directly to source and make older renders differ from the working version, without revoking their approvals. Test the generated controls by changing and resetting one value, and check timeline timing after restructuring. Keep previous candidates and snapshots. A Studio export is an exploratory video until rendered and registered through `animations.py render`; it does not bypass the human approval gate.
 
 For graphs and charts, use supplied facts or explicitly agreed assumptions. Identify illustrative data and return assumptions. Do not invent financial outcomes, imply guaranteed growth or disguise a conceptual curve as measured data.
 

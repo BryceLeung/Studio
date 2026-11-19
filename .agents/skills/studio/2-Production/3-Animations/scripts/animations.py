@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 from datetime import date, datetime, timezone
 import hashlib
+from http.client import HTTPConnection, HTTPException
 import importlib.util
 import json
 import math
@@ -11,9 +12,12 @@ import os
 from pathlib import Path
 import re
 import shutil
+import socket
 import subprocess
 import sys
 import tempfile
+import time
+import webbrowser
 
 ROOT = Path(__file__).resolve().parents[6]
 sys.path.insert(0, str(ROOT))
@@ -294,6 +298,79 @@ def init(project, asset):
         return {'asset': asset, 'status': 'initialized'}
 
 
+def studio_url(directory, port):
+    """Check the live Remotion identity rather than trusting a cached port."""
+    for host in ('127.0.0.1', '::1'):
+        connection = HTTPConnection(host, port, timeout=0.25)
+        try:
+            connection.request('GET', '/__remotion_config')
+            response = connection.getresponse()
+            if response.status == 200:
+                data = json.loads(response.read(8192))
+                if (isinstance(data, dict) and data.get('isRemotion') is True
+                        and isinstance(data.get('cwd'), str)
+                        and Path(data['cwd']).resolve() == directory):
+                    address = f'[{host}]' if ':' in host else host
+                    return f'http://{address}:{port}'
+        except (OSError, HTTPException, ValueError, RuntimeError):
+            pass
+        finally:
+            connection.close()
+    return None
+
+
+def serve_studio(directory, port, no_open):
+    directory = directory.resolve(strict=True)
+    cache = Path.home() / '.cache/studio-remotion' / digest(os.path.normcase(str(directory)))
+    cache.mkdir(parents=True, exist_ok=True)
+    saved = cache / 'port'
+    child = None
+    try:
+        # Lock only discovery and startup, never the life of the editable server.
+        with completion.mutation_guard(cache):
+            try:
+                previous = int(saved.read_text(encoding='ascii'))
+            except (FileNotFoundError, ValueError):
+                previous = None
+            # Include the pinned Remotion default range for existing manual launches.
+            probes = dict.fromkeys((previous, port, *range(3000, 3101)))
+            for candidate in probes:
+                if candidate is not None and 1 <= candidate <= 65535:
+                    url = studio_url(directory, candidate)
+                    if url:
+                        saved.write_text(str(candidate), encoding='ascii')
+                        break
+            else:
+                if port is None:
+                    with socket.socket() as probe:
+                        probe.bind(('127.0.0.1', 0))
+                        port = probe.getsockname()[1]
+                command = ['node', str(RENDERER / 'studio.mjs'), '--source-dir', str(directory / 'src'),
+                           '--public-dir', str(directory / 'references'), '--port', str(port), '--no-open']
+                child = subprocess.Popen(command, cwd=RENDERER)
+                deadline = time.monotonic() + 30
+                while not (url := studio_url(directory, port)):
+                    code = child.poll()
+                    if code is not None:
+                        raise ValueError(f'Remotion Studio exited ({code}) before serving {directory} on port {port}')
+                    if time.monotonic() >= deadline:
+                        raise ValueError(f'Remotion Studio did not serve {directory} on port {port} within 30 seconds')
+                    time.sleep(0.1)
+                saved.write_text(str(port), encoding='ascii')
+        print(f'Studio {"ready" if child is not None else "reused"}: {url} ({directory})', flush=True)
+        if not no_open:
+            webbrowser.open(url)
+        if child is not None:
+            code = child.wait()
+            if code:
+                raise subprocess.CalledProcessError(code, command)
+        return url, child is None
+    finally:
+        if child is not None and child.poll() is None:
+            child.terminate()
+            child.wait()
+
+
 def studio(project, asset, port=None, no_open=False):
     require_prerequisites(project, ROOT, STEP)
     require(port is None or type(port) is int and 1 <= port <= 65535, 'Invalid Studio port')
@@ -305,15 +382,8 @@ def studio(project, asset, port=None, no_open=False):
         require(ledger['requests'][-1]['registry'] == rows[asset], 'Registry context changed; record a revision first')
         directory = folder(project, asset)
         current_input(project, asset, ledger, rows[asset])
-    command = ['node', str(RENDERER / 'studio.mjs'), '--source-dir', str(directory / 'src'),
-               '--public-dir', str(directory / 'references')]
-    if port is not None:
-        command.extend(['--port', str(port)])
-    if no_open:
-        command.append('--no-open')
-    # The server needs to remain editable; do not hold the project mutation lock.
-    subprocess.run(command, cwd=RENDERER, check=True)
-    return {'asset': asset, 'status': 'studio closed'}
+    url, reused = serve_studio(directory, port, no_open)
+    return {'asset': asset, 'status': 'studio reused' if reused else 'studio closed', 'url': url}
 
 
 def revise(project, asset, text):
@@ -656,8 +726,8 @@ def main():
     parser.add_argument('--project-root', required=True, type=Path)
     parser.add_argument('--asset-id')
     parser.add_argument('--version', type=int, help='Exact registered render version to approve')
-    parser.add_argument('--port', type=int, help='Optional Studio port; otherwise choose a free port')
-    parser.add_argument('--no-open', action='store_true', help='Start Studio without opening a browser')
+    parser.add_argument('--port', type=int, help='Port for a new Studio; an existing asset server takes precedence')
+    parser.add_argument('--no-open', action='store_true', help='Print the Studio URL without opening a browser')
     request = parser.add_mutually_exclusive_group()
     request.add_argument('--request', help='Verbatim chat revision or approval text')
     request.add_argument('--request-file', type=Path, help='UTF-8 file containing verbatim chat revision')

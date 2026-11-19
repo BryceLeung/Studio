@@ -33,7 +33,8 @@ await writeFile(config, [
   '}));',
 ].join('\n'));
 console.log(`Opening source-backed Studio for ${source}`);
-const args = ['studio', entry, '--config', config, '--public-dir', references];
+// Match the Python launcher's IPv4 port allocation and keep the browser URL stable.
+const args = ['studio', entry, '--config', config, '--public-dir', references, '--ipv4'];
 if (values.port !== undefined) args.push('--port', values.port);
 if (values['no-open']) args.push('--no-open');
 const child = spawn(process.execPath, [path.join(renderer, 'node_modules/@remotion/cli/remotion-cli.js'),

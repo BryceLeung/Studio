@@ -6,7 +6,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 
 def load_module(name, path):
@@ -236,16 +236,49 @@ class AnimationTests(unittest.TestCase):
     def test_studio_launch_preserves_existing_work_and_releases_mutation_lock(self):
         (self.directory / 'src/Composition.tsx').write_text('Human authored artwork')
         before = self.state()
-        def launch(command, **kwargs):
-            self.assertEqual(command, ['node', str(a.RENDERER / 'studio.mjs'), '--source-dir',
-                str(self.directory / 'src'), '--public-dir', str(self.directory / 'references'),
-                '--port', '3033', '--no-open'])
+        def launch(directory, port, no_open):
+            self.assertEqual((directory, port, no_open), (self.directory, 3033, True))
             with completion.mutation_guard(self.project):
                 pass
-            return subprocess.CompletedProcess(command, 0)
-        with patch.object(subprocess, 'run', side_effect=launch):
+            return 'http://127.0.0.1:3033', False
+        with patch.object(a, 'serve_studio', side_effect=launch):
             a.studio(self.project, self.asset, 3033, True)
         self.assertEqual(before, self.state())
+
+    def test_studio_reuses_remembered_port_before_launching_or_opening_browser(self):
+        directory = self.directory.resolve()
+        url = 'http://127.0.0.1:3213'
+        child = Mock()
+        child.wait.return_value = child.poll.return_value = 0
+        with (patch.object(Path, 'home', return_value=self.workflow),
+              patch.object(a, 'studio_url', return_value=None) as probe,
+              patch.object(subprocess, 'Popen') as spawn,
+              patch.object(a.webbrowser, 'open') as browser):
+            def launch(*args, **kwargs):
+                probe.return_value = url
+                return child
+            spawn.side_effect = launch
+            self.assertEqual(a.serve_studio(directory, 3213, True), (url, False))
+            spawn.assert_called_once_with(
+                ['node', str(a.RENDERER / 'studio.mjs'), '--source-dir', str(directory / 'src'),
+                 '--public-dir', str(directory / 'references'), '--port', '3213', '--no-open'], cwd=a.RENDERER)
+            probe.reset_mock()
+            self.assertEqual(a.serve_studio(directory, 3214, True), (url, True))
+            probe.assert_called_once_with(directory, 3213)
+            self.assertEqual(spawn.call_count, 1)
+            browser.assert_not_called()
+
+    def test_studio_probe_requires_matching_remotion_root(self):
+        directory = self.directory.resolve()
+        with patch.object(a, 'HTTPConnection') as connection:
+            response = connection.return_value.getresponse.return_value
+            response.status = 200
+            for data in ({'isRemotion': True, 'cwd': str(directory.parent / 'A99')},
+                         {'isRemotion': False, 'cwd': str(directory)}):
+                response.read.return_value = json.dumps(data).encode()
+                self.assertIsNone(a.studio_url(directory, 3213))
+            response.read.return_value = json.dumps({'isRemotion': True, 'cwd': str(directory)}).encode()
+            self.assertEqual(a.studio_url(directory, 3213), 'http://127.0.0.1:3213')
 
     def test_current_studio_contract_requires_its_entry_and_configuration(self):
         (self.directory / 'src/Studio.tsx').unlink()
