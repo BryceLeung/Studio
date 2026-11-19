@@ -22,6 +22,9 @@ The child runs the same defined steps with its own candidates, `Approved/`, logs
 
 ## Commands
 
+- `draw keyframes`: use the [Draw Keyframes](../draw-keyframes/SKILL.md) skill to turn the current pose discussion into a labelled keyframe-sheet prompt for the ChatGPT app. This is prompt-only and does not run a stage or write project artifacts.
+- `import keyframes`: use the [Import Keyframes](../import-keyframes/SKILL.md) skill to split and validate a labelled keyframe contact sheet with the local Python importer. This does not render or approve animation.
+
 ### Studio runner routing
 
 In Kilo, `studio run ...` uses the named `studio-runner` agent defined in the project `kilo.json`. This is an instruction-driven chat route, not a new terminal command. The normal coding agent retains its existing permissions.
