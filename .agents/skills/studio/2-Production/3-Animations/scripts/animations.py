@@ -637,6 +637,7 @@ def inventory(project):
 
 
 def check(project):
+    """Optional diagnostic for registered render provenance, not completion."""
     rows = eligible(project)
     inventory(project)
     stage = confined(project, STAGE.as_posix())
@@ -694,18 +695,36 @@ def check(project):
     return result
 
 
+def approval_inventory(project):
+    """Read the human-selected MP4s for the current registry selection only."""
+    result = {}
+    for asset in eligible(project):
+        videos = approved_videos(project, asset)
+        require(videos, f'{asset}: at least one MP4 in APPROVED is required')
+        for video in videos:
+            require(video.stat().st_size > 0, f'{asset}: empty approved MP4: {video.name}')
+        result[asset] = videos
+    return result
+
+
+def check_approvals(project):
+    return {asset: [p.relative_to(project).as_posix() for p in videos]
+            for asset, videos in approval_inventory(project).items()}
+
+
 def evidence(project):
-    check(project)
+    approved = approval_inventory(project)
     definition = completion.load_definition(ROOT / LOCAL / 'dependencies.json')
     dependencies = {LOCAL / 'SKILL.md', LOCAL / 'dependencies.json', LOCAL / 'scripts/validation.py',
                     Path('scripts/validation.py'), Path('scripts/stage_completion.py'),
                     Path('scripts/stage_invalidation.py'), Path('studio/fingerprints.py')}
     dependencies.update(Path(p) for p in definition['workflow_dependencies'])
-    dependencies.update(LOCAL / 'renderer' / p for p in renderer_identity())
     return {'schema': 'studio.done', 'schema_version': 1, 'step': STEP,
             'completed_at': datetime.now(timezone.utc).isoformat(),
             'inputs': [completion.fingerprint(p, project, 'project') for p in registry_paths(project)],
-            'outputs': [completion.fingerprint(p, project, 'project') for p in inventory(project)],
+            'outputs': [{'scope': 'project', 'path': p.relative_to(project).as_posix(),
+                         'method': 'sha256', 'sha256': sha(p)}
+                        for videos in approved.values() for p in videos],
             'dependencies': [completion.fingerprint(ROOT / p, ROOT, 'workflow') for p in sorted(dependencies)]}
 
 
@@ -716,13 +735,14 @@ def complete(project):
         confined(project, STAGE.as_posix()).mkdir(parents=True, exist_ok=True)
         manifest = evidence(project)
         completion.record_done(project, ROOT, STEP, manifest)
-        log(project, 'Animations completed', 'All selected Graphic/Animation assets have at least one registered human-approved video matching current registry context; multiple versions and empty selections are valid.')
-        return {'status': 'complete', 'assets': check(project)}
+        log(project, 'Animations completed', 'Each selected Graphic/Animation asset has a non-empty MP4 in its human-managed APPROVED folder. Registration was not required.')
+        return {'status': 'complete', 'assets': check_approvals(project)}
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=('context', 'init', 'revise', 'render', 'approve', 'studio', 'check', 'complete'))
+    parser.add_argument('action', choices=('context', 'init', 'revise', 'render', 'approve', 'studio',
+                                          'check', 'check-provenance', 'complete'))
     parser.add_argument('--project-root', required=True, type=Path)
     parser.add_argument('--asset-id')
     parser.add_argument('--version', type=int, help='Exact registered render version to approve')
@@ -737,6 +757,8 @@ def main():
     if args.action == 'context':
         result = {'stage': STAGE.as_posix(), 'assets': eligible(project)}
     elif args.action == 'check':
+        result = check_approvals(project)
+    elif args.action == 'check-provenance':
         result = check(project)
     elif args.action == 'complete':
         result = complete(project)

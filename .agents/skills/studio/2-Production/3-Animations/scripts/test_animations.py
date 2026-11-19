@@ -488,7 +488,8 @@ class AnimationTests(unittest.TestCase):
             with self.assertRaisesRegex(OSError, 'Log unavailable'):
                 a.approve(self.project, self.asset, 1, 'Original feedback')
         with self.assertRaisesRegex(ValueError, 'approval publication unfinished'):
-            a.evidence(self.project)
+            a.check(self.project)
+        a.evidence(self.project)  # The published MP4 still satisfies folder-based completion.
         with patch.object(a, 'log') as logger:
             a.approve(self.project, self.asset, 1, 'Repeated feedback')
             self.assertIn('Original feedback', logger.call_args.args[2])
@@ -659,16 +660,26 @@ class AnimationTests(unittest.TestCase):
                 action()
         self.assertEqual(before, self.state())
 
-    def test_exact_nested_inventory_and_readonly_validation(self):
-        self.approve()
+    def test_manual_export_and_exact_approved_inventory(self):
+        approved = self.directory / 'APPROVED/manual.mp4'
+        approved.write_bytes(b'manual export')
+        (self.directory / 'Animation.json').unlink()
+        self.assertEqual(a.check_approvals(self.project),
+                         {self.asset: [approved.relative_to(self.project).as_posix()]})
         manifest = a.evidence(self.project)
         before = self.state()
         self.assertEqual(self.validate(manifest)[0], 'current')
         self.assertEqual(before, self.state())
         unexpected = self.directory / 'references/new.txt'
         unexpected.write_text('New resource')
+        self.assertEqual(self.validate(manifest)[0], 'current')
+        added = approved.with_name('added.mp4')
+        added.write_bytes(b'added export')
         self.assertEqual(self.validate(manifest)[0], 'stale')
-        unexpected.unlink()
+        added.unlink()
+        approved.write_bytes(b'manual eXport')
+        self.assertEqual(self.validate(manifest)[0], 'stale')
+        approved.write_bytes(b'manual export')
         manifest['outputs'] = manifest['outputs'][:-1]
         self.assertEqual(self.validate(manifest)[0], 'stale')
 
@@ -688,7 +699,7 @@ class AnimationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'stage-owned'):
             completion.build_manifest(self.project, self.workflow, a.STEP)
 
-    def test_empty_selection_succeeds_and_new_renderer_inventory_is_watched(self):
+    def test_empty_selection_succeeds_without_watching_renderer_inventory(self):
         self.fixture.edit('Review', 'Reject')
         self.assertEqual(a.check(self.project), {})
         a.complete(self.project)
@@ -696,7 +707,7 @@ class AnimationTests(unittest.TestCase):
         manifest = a.read_json(marker)
         self.assertEqual(self.validate(manifest)[0], 'current')
         (a.RENDERER / 'new-file.mjs').write_text('New implementation')
-        self.assertEqual(self.validate(manifest)[0], 'stale')
+        self.assertEqual(self.validate(manifest)[0], 'current')
 
     def test_metadata_cannot_redirect_snapshot_or_approval_paths(self):
         self.approve()

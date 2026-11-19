@@ -165,7 +165,7 @@ node "<stage-root>/renderer/studio.mjs" --source-dir "<review-directory>/src" --
 
 Run from the workflow root, using `.agents/skills/studio/2-Production/3-Animations` as `<stage-root>`. The launcher uses the shared renderer installation and does not install packages. Do not bypass the review procedure with the lower-level `animations.py studio` command, which may reuse or select other ports.
 
-Studio edits save directly to source and make older renders differ from the working version, without revoking their approvals. Test the generated controls by changing and resetting one value, and check timeline timing after restructuring. Keep previous candidates and snapshots. A Studio export is an exploratory video until rendered and registered through `animations.py render`; it does not bypass the human approval gate.
+Studio edits save directly to source and make older renders differ from the working version, without revoking their approvals. Test the generated controls by changing and resetting one value, and check timeline timing after restructuring. Keep previous candidates and snapshots. A manual Studio export counts for completion when the human places the chosen full-animation MP4 in `APPROVED/`; it does not gain render provenance.
 
 For graphs and charts, use supplied facts or explicitly agreed assumptions. Identify illustrative data and return assumptions. Do not invent financial outcomes, imply guaranteed growth or disguise a conceptual curve as measured data.
 
@@ -179,7 +179,7 @@ python "<helper>" revise --project-root "<real-project-root>" --asset-id A10 --r
 
 Use `--request-file` for longer exact requests. The helper preserves numbered `request.NN.md` history. Update only the source, resources or settings requested by the user; render the next version only when requested. Sketch-only changes use the sketch skill's lightweight image versioning and log record, not canonical composition revisions or render snapshots. Object-only changes follow the candidate versioning and explicit save gates above. Preserve sketches, prior render snapshots and candidate videos; do not overwrite a version to conceal iteration. Keep production refinements local to 2.3; reconcile a changed fundamental purpose, type or source applicability through 1.4 instead of silently changing its approved request.
 
-A creative revision to requests, source, settings, resources or the renderer does not revoke earlier approvals. Validate each approved render against its immutable snapshot, not the latest working composition. Changed relevant registry context (including brief, purpose and linked passage) requires human compatibility review: retain old files, but exclude them from the current eligible set until the user explicitly reapproves the exact version for the new context, or approves a replacement. Record a registry-context revision before completing the stage. Never move or delete earlier approvals automatically.
+A creative revision to requests, source, settings, resources or the renderer does not revoke earlier approvals. For registered provenance checks, compare each render with its immutable snapshot, not the latest working composition. If the registry brief or linked passage changes, flag it for human review. The folder-based completion check cannot establish whether an existing approved video matches a changed brief. Never move or delete earlier approvals automatically.
 
 ## Human approval and completion
 
@@ -193,14 +193,14 @@ python "<helper>" approve --project-root "<real-project-root>" --asset-id A10 --
 
 The helper moves `renders/v003.mp4` to `APPROVED/v003.mp4`, preserves snapshots and other approved versions, and records the decision, timestamp, render identity and registry context in `Animation.json` and the stage log. It never overwrites a destination. Repeated approval of the same version and context is a no-op. Explicitly reapproving an older version after compatibility review records acceptance of the current registry context without altering its original render provenance. Files can be renamed; exact-byte matching identifies their render. Existing manually moved approvals remain supported, using their original render registry context when no chat approval record exists.
 
-Every currently eligible asset must have at least one valid approved video matching current registry context; multiple distinct approved versions are allowed. A file must match a ready registered render, retain its intact snapshot/provenance and probe as usable video with that snapshot's technical settings. Empty, corrupt, unregistered, altered and duplicate approved files fail validation. Byte-identical render versions share one approved file and one editorial option, while retaining separate render and approval histories; merely rendering identical bytes does not reapprove them for changed context. For legacy manual approvals matching multiple identical renders, use the earliest render's registry context until explicitly approved through the helper. Context-obsolete files stay in place but do not count toward completion or appear in `check`'s eligible path lists; report exclusions when reviewing an asset. Historical asset directories never expand the current eligible set. `check` returns an asset-to-list-of-approved-paths mapping, not one chosen default. Downstream FCPX intake and audition assembly are outside this stage.
+Every currently eligible asset must have at least one non-empty, regular MP4 directly in its `APPROVED/` folder. The human's placement of the chosen MP4 is the approval signal. Registration, snapshots and playback probing are not completion requirements. Multiple approved files and a valid empty registry selection are allowed. `check` returns the approved paths for each eligible asset. `check-provenance` is an optional, stricter diagnostic for registered renders and does not affect `DONE`. Downstream FCPX intake and audition assembly are outside this stage.
 
 ```text
 python "<helper>" check --project-root "<real-project-root>"
 python "<helper>" complete --project-root "<real-project-root>"
 ```
 
-`complete` supplies stage-owned evidence to the shared recorder. Generic inventory-only completion is refused. Never author `DONE` directly or bypass human approval. Status watches the current registry pair and complete nested asset inventories, including additions/removals, and exact video identity. It can detect a modified approved movie even if its size and modification time are preserved.
+`complete` supplies stage-owned evidence to the shared recorder. Never author `DONE` directly or bypass human approval. Status watches the current registry pair and the approved MP4 paths and byte hashes, including additions, removals and replacements. It does not scan working compositions, renderer caches, candidate files or render snapshots for completion.
 
 ## Reruns, preservation and safety
 
