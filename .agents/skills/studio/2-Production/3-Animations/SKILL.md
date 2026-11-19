@@ -105,14 +105,15 @@ These are subordinate workflows, not additional numbered stages, and do not repl
 
 Use this rule when handing back authored or revised Remotion work, including isolated object candidates. It does not apply to text proposals, scaffold setup, static sketches, save-only actions or status checks.
 
-- **MP4 available for this version:** Link directly to the actual playable MP4, including one rendered to extract inspection frames or an unchanged current render reused for this work. Keep the MP4 available after the handoff. Do not substitute a frame sheet, directory, older version or log path for the video link. Do not start Studio as a second preview unless explicitly requested. Label inspection-only or isolated videos as such; linking them does not register or approve them.
-- **No MP4 for this version:** Start or reuse Remotion Studio for the exact composition being handed back, without rendering a video. Use the canonical launcher below for a full animation and the [isolated candidate launcher](object-authoring/SKILL.md#isolated-studio) for an object candidate. In Kilo, use a tracked background process with its normal session lifetime, wait for the actual live URL and leave the process running at handoff. If Studio cannot start, report the specific blocker instead of linking a guessed URL or opening a different version.
+Set the [single review server](#opening-remotion-studio) to the exact composition being handed back after a render, assembly or revision, even if no MP4 was requested. The fixed address shows the latest successful handoff. Do not render a video just for handoff. If Studio cannot start, report the blocker rather than linking a guessed URL or a different version.
+
+If an MP4 is available, also link to that exact playable file, including an inspection render or a reused current render. Keep it available and label inspection-only or isolated videos as such. A link is not registration or approval. If only a historical MP4 is available and the matching composition cannot be served, link the MP4 and explain why Studio was not switched.
 
 In the final chat reply, use normal Markdown links, not code spans or bare filesystem paths. For an MP4 in Kilo/VS Code, use an absolute `file://` URI for the existing local file and percent-encode path characters such as spaces (`%20`), `#` (`%23`) and parentheses (`%28`, `%29`); use forward slashes (`file:///C:/...` on Windows). Prefer the connected workspace path when it points to that exact file. For Studio, link the verified HTTP URL printed by the launcher. Replace these illustrative targets with the actual ones:
 
 ```markdown
 [Watch A13 v001 (MP4)](file:///path/to/Connected%20Projects/02-Trump%20Accounts/2-Production/3-Animations/A13/renders/v001.mp4)
-[Open A13 in Remotion Studio](http://127.0.0.1:3213)
+[Open the current Remotion review](http://localhost:3000)
 ```
 
 ## Requested composition and rendering
@@ -137,13 +138,18 @@ Inspect each requested preview for legibility, composition, timing, motion, clip
 
 ## Opening Remotion Studio
 
-Open the selected asset with the maintained helper when the user wants visual editing or the review handoff calls for Studio:
+Use one workflow-managed review server per machine on port `3000`, shared across projects, full animations and isolated candidates. Use this procedure for explicit Studio opens and review handoffs. Serialize these operations under the coordinator; do not delegate competing launches.
+
+1. Resolve the exact review directory and confirm `src/Studio.tsx` and `references/` exist before switching processes. Use the full animation's working directory for its current composition or the specific candidate version's directory. Never substitute the canonical asset for an isolated candidate. Keep the usual prerequisite and execution approval rules.
+2. List the tracked background processes. Identify this workflow's launch by its `Studio 2.3 review` label and command, or by the verified project source for legacy 2.3 launches. To reuse port `3000`, verify `/__remotion_config` reports `isRemotion: true` and confirm the listener belongs to a tracked launch using the exact target's `src/Studio.tsx` and `references/`. Remotion can report the enclosing asset as `cwd` for older candidates without a local package, so an asset-level `cwd` does not identify a candidate version. Use the listener's process command line and tracked process tree if needed. A generic HTTP 200 is not enough.
+3. If the exact preview is already live on `3000`, leave it running. Otherwise stop the previous workflow-managed review process and child tree by tracked process ID before starting the new one. Close verified legacy 2.3 review processes on other ports as part of consolidation. Do not stop unrelated or unverified listeners. If port `3000` is occupied by one, report the conflict instead of falling back to another port.
+4. Start the shared launcher below in a tracked **persistent** background process labeled `Studio 2.3 review` (or the equivalent in other hosts). Persistence keeps the link alive across Kilo sessions; stopping the old process prevents accumulation. Wait for readiness, verify port `3000`, the exact target identity and a responding root URL. If startup fails or selects another port, stop that new process and report the blocker. Link the verified root URL so the same browser tab can be refreshed after a switch.
 
 ```text
-python "<helper>" studio --project-root "<real-project-root>" --asset-id A10 --no-open
+node "<stage-root>/renderer/studio.mjs" --source-dir "<review-directory>/src" --public-dir "<review-directory>/references" --port 3000 --no-open
 ```
 
-This starts a foreground local server or reuses a verified live server for the same resolved asset folder. Different assets can run in parallel on different ports. Optional `--port 3210` selects a port for a new server; an existing asset server takes precedence. By default the helper opens the browser; `--no-open` only prints the URL. For a new server in Kilo, use a tracked background process and keep its owning process alive; a reuse call prints the existing URL and exits without taking ownership. Always return the actual `Studio ready:` or `Studio reused:` URL. The launcher uses the asset as its editable project root and the shared renderer installation for dependencies. It does not install packages. Missing entry/configuration files are an error; no migration or automatic retrofit is supported.
+Run from the workflow root, using `.agents/skills/studio/2-Production/3-Animations` as `<stage-root>`. The launcher uses the shared renderer installation and does not install packages. Do not bypass the review procedure with the lower-level `animations.py studio` command, which may reuse or select other ports.
 
 Studio edits save directly to source and make older renders differ from the working version, without revoking their approvals. Test the generated controls by changing and resetting one value, and check timeline timing after restructuring. Keep previous candidates and snapshots. A Studio export is an exploratory video until rendered and registered through `animations.py render`; it does not bypass the human approval gate.
 

@@ -18,7 +18,7 @@ Identify the current registry asset, exact request and selected sketch, earlier 
 3. Record in `provenance.json` the registry ID, object name, exact user request, project-relative candidate path, selected sketch and parent candidate/library version if any, resources and attribution. Preserve the sketch in place; copy any needed design references into the candidate. Use project-relative paths without `..`; do not embed machine-specific paths. Explain what was authored versus reused. This is working provenance, not a completion manifest.
 4. Author the requested visual, not a title scaffold. Default-export its React component and register exactly one composition in `src/Studio.tsx`. Keep parts independently editable and named. Use the existing renderer templates as structural references, not as completed artwork. Set matching width, height, fps and durationInFrames in Studio metadata and `settings.json`; use agreed delivery settings, otherwise parent-stage defaults. MP4 previews are opaque; retain editable source for later reuse rather than treating the preview as a transparent sprite.
 5. An explicit object render request authorizes creating the Remotion candidate and rendering it with the isolated commands below, not `animations.py render`, which registers canonical animation videos. A source-only revision does not authorize another render unless requested. Do not replace the animation's composition temporarily to render an object. Preserve previous versions and preview files. If the user requests another revision after delivery, allocate a new candidate version.
-6. Inspect any preview for appearance, clipping, motion and correspondence to the request. Follow the parent [review handoff](../SKILL.md#review-handoff): link the candidate's actual MP4 (including inspection renders) or start Studio for that version and link its live URL if there is no MP4. Report what changed, reused resources and any limitations. Append the request, version, actions, render/check outcome and next handoff to the stage `LOG.md` using the shared helper. Stop for feedback. Do not automatically save, assemble, render the full animation, advance to another animation or record completion.
+6. Inspect any preview for appearance, clipping, motion and correspondence to the request. Follow the parent [review handoff](../SKILL.md#review-handoff): set the shared Studio review server to this exact candidate and link its live URL, plus the actual MP4 if available (including inspection renders). Report what changed, reused resources and any limitations. Append the request, version, actions, render/check outcome and next handoff to the stage `LOG.md` using the shared helper. Stop for feedback. Do not automatically save, assemble, render the full animation, advance to another animation or record completion.
 
 ## Isolated preview commands
 
@@ -36,11 +36,7 @@ The renderer is not an OS sandbox. Review executable code and confine inputs and
 
 ## Isolated Studio
 
-For a source-only candidate handoff, start the shared Studio launcher with the exact version's source and references, using the same execution approvals as above. In Kilo, run it as a tracked background process, wait for the live URL and leave it running for review. Use the actual local URL that Remotion prints, not an assumed port. If an older version lacks a candidate-local Studio configuration, report that blocker without modifying the historical version or launching the canonical asset instead.
-
-```text
-node "<stage-root>/renderer/studio.mjs" --source-dir "<candidate>/src" --public-dir "<candidate>/references" --no-open
-```
+Follow the parent [single review server procedure](../SKILL.md#opening-remotion-studio) with `<candidate>` as the exact review directory. Candidates and full animations share port `3000`; do not launch an additional server or choose a fallback port. If an older version lacks a Studio entry or references, report the blocker without modifying it or launching the canonical asset instead.
 
 ## Success and reruns
 
