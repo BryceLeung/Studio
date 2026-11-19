@@ -105,23 +105,25 @@ These are subordinate workflows, not additional numbered stages, and do not repl
 
 Use this rule when handing back authored or revised Remotion work, including isolated object candidates. It does not apply to text proposals, scaffold setup, static sketches, save-only actions or status checks.
 
-Set the [single review server](#opening-remotion-studio) to the exact composition being handed back after a render, assembly or revision, even if no MP4 was requested. The fixed address shows the latest successful handoff. Do not render a video just for handoff. If Studio cannot start, report the blocker rather than linking a guessed URL or a different version.
+**Every animation change without a new render requires a live Remotion Studio handoff.** Before replying, start the [single review server](#opening-remotion-studio), or reuse it if it already serves the exact updated composition. If it serves another workflow-managed composition, switch it to the updated one. Verify that the updated composition has built and that the server still serves it immediately before sending the final reply. Include a clickable Markdown link to the verified Studio URL, labeled with the asset ID. Do this without waiting for a separate preview request and without rendering an MP4.
+
+Use the same Studio handoff after a render. If Studio cannot be verified for the exact composition, report the blocker. A successful build alone, an earlier MP4, or a link to another composition does not satisfy the handoff.
 
 If an MP4 is available, also link to that exact playable file, including an inspection render or a reused current render. Keep it available and label inspection-only or isolated videos as such. A link is not registration or approval. If only a historical MP4 is available and the matching composition cannot be served, link the MP4 and explain why Studio was not switched.
 
-Whenever showing an existing MP4 in Kilo/VS Code, including a read-only request for the latest render, default to a clickable loopback HTTP link. Do not use a `file://` URI as the primary link; Kilo may not make it clickable. This does not authorize a new render or require switching Remotion Studio.
+**Every MP4 presented in chat MUST have a clickable Markdown playback link to that exact file.** This applies to new renders, existing or approved videos, inspection previews, isolated candidates, and read-only requests such as showing the latest version. In Kilo/VS Code, use a verified loopback HTTP URL. A `file://` URI, bare path, or code span does not satisfy this requirement. Presenting an existing MP4 does not authorize a new render or require switching Remotion Studio.
 
 1. Locate the exact MP4 and confirm its current path, including `APPROVED/` if approval moved it. Serve from the narrowest media-only directory containing the file. Python's static server exposes all contents of that directory, so do not point it at a project root or a directory containing source, other non-media files, or links outside it. If the directory is unsuitable, use a single-file serving method or report that playback could not be served safely.
-2. Reuse a tracked session-scoped MP4 server only if it serves that exact directory and file. Otherwise, stop the previous MP4 server owned by this session and start a tracked session-scoped background process, bound to `127.0.0.1` only. Use port `8765` if free, or another free port; do not stop unrelated listeners or use the Remotion review port `3000`.
+2. Start a dedicated tracked **session-scoped** background process for each distinct MP4, even if another video in the same directory already has a server. Label it with the asset and version and bind it to `127.0.0.1` only. Use port `0` to let the OS allocate a free port and read the actual port from the startup output. Within the same session, reuse a server only for the exact MP4 it was launched for. Never stop, repurpose, or reuse another video's or another session's server to present a new video. Keep each process running after the reply; use the background process tool's default lifetime (no `persistent` or `inherit`) so it is automatically closed when its owning session ends. This is separate from the Remotion Studio server on port `3000`.
 
    ```text
-   python -m http.server 8765 --bind 127.0.0.1 --directory "<exact-media-directory>"
+   python -u -m http.server 0 --bind 127.0.0.1 --directory "<exact-media-directory>"
    ```
 
    Use `python3` if that is the local Python command. No dependency installation is needed.
-3. Verify that the listener belongs to the tracked server and that the exact URL returns HTTP 200 with `Content-Type: video/mp4` and a `Content-Length` matching the selected file (for example, with `curl -I`, or `curl.exe -I` on Windows). A response from another listener or for another `v001.mp4` is not verification. Percent-encode special characters in the filename. If playback cannot be served, report the blocker and provide the local path as a fallback rather than posting an unverified link.
+3. Verify that the listener belongs to the tracked server and that the exact URL returns HTTP 200 with `Content-Type: video/mp4` and a `Content-Length` matching the selected file (for example, with `curl -I`, or `curl.exe -I` on Windows). A response from another listener or for another `v001.mp4` is not verification. Percent-encode special characters in the filename. If a verified clickable link cannot be provided, report the blocker instead of presenting a path or unverified URL as playback.
 
-In the final chat reply, use normal Markdown links. Note that the MP4 URL is available while the serving session is running. For Studio, link the separately verified HTTP URL printed by the launcher. Replace these illustrative targets with the actual ones:
+In the final chat reply, use normal Markdown links. MP4 playback links expire when their owning session ends; if a user asks to see the same video in a new session, start a new server and verify its URL. For Studio, link the separately verified HTTP URL printed by the launcher. Replace these illustrative targets with the actual ones:
 
 ```markdown
 [Watch A13 v001 (MP4)](http://127.0.0.1:8765/v001.mp4)

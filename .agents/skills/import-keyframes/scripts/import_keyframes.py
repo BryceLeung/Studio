@@ -1,4 +1,4 @@
-"""Split a labelled two-column by three-row image into checked PNG crops."""
+"""Split a labelled contact sheet into checked PNG crops (default: 3 columns, 2 rows)."""
 
 import argparse
 import csv
@@ -131,14 +131,16 @@ def alpha_check(image):
     return None
 
 
-def inspect_sheet(image, executable, allow_opaque=False):
+def inspect_sheet(image, executable, allow_opaque=False, *, grid='3x2'):
     w, h = image.size
-    if w < 160 or h < 240:
-        raise ImportErrorDetail('Sheet is too small for a 2-column, 3-row grid')
+    columns, rows = {'3x2': (3, 2), '2x3': (2, 3)}[grid]
+    if w < 80 * columns or h < 80 * rows:
+        raise ImportErrorDetail(f'Sheet is too small for a {columns}-column, {rows}-row grid')
     crops, skipped, errors, names = [], [], [], set()
-    for slot in range(1, 7):
-        row, col = divmod(slot - 1, 2)
-        cell = image.crop((col * w // 2, row * h // 3, (col + 1) * w // 2, (row + 1) * h // 3))
+    for slot in range(1, columns * rows + 1):
+        row, col = divmod(slot - 1, columns)
+        cell = image.crop((col * w // columns, row * h // rows,
+                           (col + 1) * w // columns, (row + 1) * h // rows))
         name, cutoff, suspicious = read_label(cell, executable)
         crop = cell.crop((0, 0, cell.width, cutoff)) if cutoff is not None else cell
         if not visible(crop) and not name and not suspicious:
@@ -190,6 +192,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('sheet', type=Path)
     parser.add_argument('--output-dir', type=Path, required=True)
+    parser.add_argument('--grid', choices=('3x2', '2x3'), default='3x2', help='columns x rows (default: 3x2)')
     parser.add_argument('--dry-run', action='store_true', help='validate and report without writing')
     parser.add_argument('--allow-opaque', action='store_true', help='keep the original background for reference only')
     args = parser.parse_args()
@@ -201,7 +204,7 @@ def main():
             if getattr(source, 'n_frames', 1) != 1:
                 raise ImportErrorDetail('Provide a single-frame contact sheet image')
             image = ImageOps.exif_transpose(source).convert('RGBA')
-        crops, skipped = inspect_sheet(image, executable, args.allow_opaque)
+        crops, skipped = inspect_sheet(image, executable, args.allow_opaque, grid=args.grid)
         existing = {path.name.casefold() for path in args.output_dir.iterdir()} if args.output_dir.exists() else set()
         collisions = [crop.name for crop in crops if crop.name.casefold() in existing]
         if collisions:

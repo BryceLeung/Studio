@@ -1,6 +1,6 @@
 ---
 name: draw-keyframes
-description: When the user says "draw keyframes", turn the recent discussion into a paste-ready ChatGPT app image prompt for 2x3 keyframe sheets, with each pose labelled below using the current project's filenames. Prompt only; does not generate images.
+description: When the user says "draw keyframes", turn the recent discussion into a paste-ready ChatGPT app image prompt for 3-column, 2-row keyframe sheets, with each pose labelled below using the current project's filenames. Prompt only; does not generate images.
 ---
 
 # Draw Keyframes
@@ -15,7 +15,7 @@ Use this skill when "draw keyframes" is a request to act, not when the phrase is
 
 ## Build the ChatGPT prompt
 
-- Return a single copy-ready text block addressed to ChatGPT's image generator. Instruct it to draw **one separate sheet image per batch**, each with **2 columns and 3 rows** of equal-size panels, read left to right and top to bottom. If there are more than six drawings, enumerate additional sheets. For unused slots in the final sheet, leave the panel blank with no filename; never invent filler drawings or repeat poses.
+- Return a single copy-ready text block addressed to ChatGPT's image generator. Instruct it to draw **one separate sheet image per batch**, each with **3 columns and 2 rows** of equal-size panels, read left to right and top to bottom (slots 1-3 on the top row, 4-6 on the bottom row). If there are more than six drawings, enumerate additional sheets. For unused slots in the final sheet, leave the panel blank with no filename; never invent filler drawings or repeat poses.
 - List each sheet's slots in reading order with the exact filename and a visual description. Direct ChatGPT to print the filename verbatim, including its extension, in a readable label strip **directly underneath** that drawing. Keep labels outside the artwork, leave gutters for splitting panels, and forbid extra text, title banners, or watermarks.
 - Include this instruction verbatim in every image prompt: "Export every sheet as a PNG with a real alpha channel. In every panel, pixels outside the intended artwork must be fully transparent (alpha 0), including the corners, gutters, and unused panels. Do not fill the background with a color, gradient, texture, or drawn checkerboard. Filename labels may sit on their own strip below the artwork, outside the crop."
 - State the shared visual rules once, before listing the poses. When drawing isolated character sprites, preserve the same design, outfit, viewpoint, scale, and registration anchor across cells unless a pose intentionally changes them. Use the agreed crop and leave room for hair, arms, and motion within each cell. If the character is to be composited separately, omit other characters, scenery, and separate props from the drawing.

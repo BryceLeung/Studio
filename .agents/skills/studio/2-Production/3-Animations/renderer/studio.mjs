@@ -18,11 +18,17 @@ if (!values['source-dir'] || !values['public-dir'] || (values.port !== undefined
 const source = await realpath(values['source-dir']);
 const entry = await realpath(path.join(source, 'Studio.tsx'));
 const references = await realpath(values['public-dir']);
+const directory = path.dirname(source);
+const assetId = path.basename(directory);
+const isFullAnimation = path.basename(path.dirname(directory)) === '3-Animations' &&
+  /^(?:A(?:0[1-9]|[1-9][0-9])|ASSET-\d{6,})$/.test(assetId);
 const temporary = await mkdtemp(path.join(renderer, 'node_modules/.cache/studio-animations-studio-'));
 const config = path.join(temporary, 'remotion.config.ts');
 const modules = path.join(renderer, 'node_modules');
 await writeFile(config, [
-  `import {Config} from ${JSON.stringify(require.resolve('@remotion/cli/config'))};`,
+  // Keep this import external to config bundling so it shares the CLI's state.
+  'import {Config} from "@remotion/cli/config";',
+  ...(isFullAnimation ? [`Config.setOutputLocation(${JSON.stringify(`out/${assetId}.mp4`)});`] : []),
   'Config.overrideWebpackConfig((config) => ({',
   '  ...config, resolve: {...config.resolve,',
   `    modules: [${JSON.stringify(modules)}, ...(config.resolve?.modules ?? ['node_modules'])],`,
@@ -39,7 +45,7 @@ if (values.port !== undefined) args.push('--port', values.port);
 if (values['no-open']) args.push('--no-open');
 const child = spawn(process.execPath, [path.join(renderer, 'node_modules/@remotion/cli/remotion-cli.js'),
   ...args],
-  {cwd: path.dirname(source), env: {...process.env, NODE_PATH: modules}, stdio: 'inherit'});
+  {cwd: directory, env: {...process.env, NODE_PATH: modules}, stdio: 'inherit'});
 for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => child.kill(signal));
 try {
   const code = await new Promise((resolve, reject) => {child.once('error', reject); child.once('exit', resolve);});

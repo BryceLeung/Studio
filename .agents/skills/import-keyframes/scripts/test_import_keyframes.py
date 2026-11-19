@@ -11,11 +11,11 @@ from PIL import Image, ImageDraw, ImageFont
 from import_keyframes import ImportErrorDetail, alpha_check, inspect_sheet, safe_name
 
 
-def sheet_with_poses():
-    sheet = Image.new('RGBA', (800, 1050))
+def sheet_with_poses(columns=3, rows=2):
+    sheet = Image.new('RGBA', (400 * columns, 350 * rows))
     draw = ImageDraw.Draw(sheet)
     font = ImageFont.load_default(size=21)
-    for x, y, name in [(0, 0, 'girl_shock.png'), (400, 350, 'girl_yell_open.png')]:
+    for x, y, name in [(0, 0, 'girl_shock.png'), (400 * (columns - 1), 350, 'girl_yell_open.png')]:
         draw.ellipse((x + 80, y + 35, x + 320, y + 285), fill='#a24c66')
         draw.rectangle((x + 25, y + 305, x + 375, y + 339), fill='white')
         draw.text((x + 200, y + 321), name, fill='black', font=font, anchor='mm')
@@ -23,6 +23,18 @@ def sheet_with_poses():
 
 
 class ValidationTests(unittest.TestCase):
+    def test_grid_order_without_ocr(self):
+        for grid, columns, rows, last_slot in [('3x2', 3, 2, 6), ('2x3', 2, 3, 4)]:
+            with self.subTest(grid=grid):
+                labels = [(None, None, False)] * 6
+                labels[0] = ('girl_shock.png', 303, False)
+                labels[last_slot - 1] = ('girl_yell_open.png', 303, False)
+                options = {} if grid == '3x2' else {'grid': grid}
+                with patch('import_keyframes.read_label', side_effect=labels):
+                    crops, skipped = inspect_sheet(sheet_with_poses(columns, rows), 'not used', **options)
+                self.assertEqual([crop.slot for crop in crops], [1, last_slot])
+                self.assertEqual(skipped, [slot for slot in range(2, 7) if slot != last_slot])
+
     def test_portable_names(self):
         self.assertTrue(safe_name('girl_yell_open.png'))
         for invalid in ('../girl.png', 'dir/girl.png', 'dir\\girl.png', 'LPT1.test.png', 'art .png', 'art.jpg'):
@@ -40,8 +52,8 @@ class ValidationTests(unittest.TestCase):
     @patch('import_keyframes.read_label')
     def test_duplicate_names_are_rejected_case_insensitively(self, read_label):
         blank = (None, None, False)
-        read_label.side_effect = [('test.png', 303, False), blank, blank, ('TEST.PNG', 303, False), blank, blank]
-        with self.assertRaisesRegex(ImportErrorDetail, 'Slot 4 .*duplicate'):
+        read_label.side_effect = [('test.png', 303, False)] + [blank] * 4 + [('TEST.PNG', 303, False)]
+        with self.assertRaisesRegex(ImportErrorDetail, 'Slot 6 .*duplicate'):
             inspect_sheet(sheet_with_poses(), 'not used')
 
     @patch('import_keyframes.read_label')
@@ -53,6 +65,12 @@ class ValidationTests(unittest.TestCase):
 
 @unittest.skipUnless(shutil.which('tesseract'), 'requires local Tesseract')
 class CliTests(unittest.TestCase):
+    def test_legacy_grid_is_opt_in(self):
+        crops, skipped = inspect_sheet(sheet_with_poses(2, 3), shutil.which('tesseract'), grid='2x3')
+        self.assertEqual([(crop.slot, crop.name) for crop in crops],
+                         [(1, 'girl_shock.png'), (4, 'girl_yell_open.png')])
+        self.assertEqual(skipped, [2, 3, 5, 6])
+
     def test_ocr_dry_run_publish_and_refuse_overwrite(self):
         with tempfile.TemporaryDirectory() as temporary:
             sheet = Path(temporary) / 'sheet.png'
@@ -62,7 +80,8 @@ class CliTests(unittest.TestCase):
                        str(sheet), '--output-dir', str(output)]
             dry_run = subprocess.run(command + ['--dry-run'], capture_output=True, text=True)
             self.assertEqual(dry_run.returncode, 0, dry_run.stderr)
-            self.assertIn('Empty slots skipped: 2, 3, 5, 6', dry_run.stdout)
+            self.assertIn('Slot 6: girl_yell_open.png', dry_run.stdout)
+            self.assertIn('Empty slots skipped: 2, 3, 4, 5', dry_run.stdout)
             self.assertFalse(output.exists())
             run = subprocess.run(command, capture_output=True, text=True)
             self.assertEqual(run.returncode, 0, run.stderr)
