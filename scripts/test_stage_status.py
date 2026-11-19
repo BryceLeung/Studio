@@ -17,8 +17,11 @@ class StageStatusTests(unittest.TestCase):
         self.assertNotIn("3.1", [item["step"] for item in stages["3.2"]["prerequisites"]])
         self.assertNotIn("3.4", [item["step"] for item in stages["3.5"]["prerequisites"]])
         order = stage_status.order_stages(stages, "3.6")
-        self.assertEqual(set(order), set(stages) - {"1.4", "2.2", "2.3"})
+        self.assertEqual(set(order), set(stages) - {"2.2"})
         self.assertEqual({item["step"] for item in stages["1.4"]["prerequisites"]}, {"1.1"})
+        self.assertIn("2.3", {item["step"] for item in stages["3.6"]["prerequisites"]})
+        self.assertLess(order.index("1.4"), order.index("2.3"))
+        self.assertLess(order.index("2.3"), order.index("3.6"))
         self.assertLess(order.index("3.3"), order.index("3.5"))
         self.assertLess(order.index("3.4"), order.index("3.6"))
 

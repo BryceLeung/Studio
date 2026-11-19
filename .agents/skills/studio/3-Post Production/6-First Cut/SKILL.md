@@ -101,6 +101,27 @@ transcript timestamps and text remain unchanged.
 Import into Final Cut to
 check title rendering, frame timing, legibility, and audition switching.
 
+New First Cut exports reference the readable MP4s directly in each eligible
+asset's 2.3 `APPROVED/` folder in an `Animations` event. First Cut reads video
+metadata with FFprobe without requiring registration or render snapshots.
+Stage 2.3 must still be current before generation, including for projects with
+no eligible assets. Files without placements appear in the browser. Later
+approvals can be imported and added manually without replacing the edit.
+
+The asset's registry word range identifies the starting sentence/group. Each
+approved file is connected as its own disabled, video-only clip above the
+sentence audition on the main timeline. Its initial timing uses the selected
+take's frame-aligned start of speech and ends within that take's trim. Alternate
+takes remain available; check cutaway timing after switching takes. Extract
+placement still requires an explicit registry assignment. Review reports list
+the files, project-timeline offsets, and any issues. Missing or modified
+referenced MP4s fail First Cut validation.
+
+Enable the desired cutaway on the main timeline. Multiple approved versions
+appear on separate connected lanes; leave the other versions disabled. On the
+Mac, verify that browser-only clips appear, cutaways stay off on import, take
+auditions switch correctly, and dialogue and subtitles remain intact.
+
 For an isolated preview before 3.5 has completed, use
 `scripts/preview_subtitles.py` with `--project-root`, `--shortlist`, all
 `--scores` files, `--extract 1`, and a new `--output` path in the project's

@@ -2,10 +2,12 @@
 import json
 from pathlib import Path
 import re
+import xml.etree.ElementTree as ET
 
 from scripts import stage_completion as completion
 from scripts.validation import StageValidation, recorded_fingerprints
 from studio.fingerprints import matches_identity
+from studio.first_cut_animations import verify_sources
 
 
 class Validation(StageValidation):
@@ -26,8 +28,17 @@ class Validation(StageValidation):
                 continue
             projects = self.confined(inventory["folder"])
             if projects.is_dir():
-                expected.update(path.stem for path in projects.iterdir()
-                                if path.is_file() and re.fullmatch(inventory["filename_regex"], path.name, re.I))
+                for path in projects.iterdir():
+                    if path.is_file() and re.fullmatch(inventory["filename_regex"], path.name, re.I):
+                        expected.add(path.stem)
+                        path = self.confined(path)
+                        # Preserve legacy completion behavior for projects without animation evidence.
+                        content = path.read_bytes()
+                        if b"studio.animation.sha256" in content:
+                            try:
+                                verify_sources(ET.fromstring(content), self.project, path)
+                            except ET.ParseError as error:
+                                raise ValueError(f"Invalid animation-bearing FCPXML: {path.name}") from error
         missing = [name for name in expected if name.casefold() not in approved]
         if missing:
             raise ValueError(f"Missing approved rendered movies for projects: {sorted(missing)}")

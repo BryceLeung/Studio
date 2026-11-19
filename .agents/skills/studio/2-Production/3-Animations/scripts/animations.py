@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 from datetime import date, datetime, timezone
+from fractions import Fraction
 import hashlib
 from http.client import HTTPConnection, HTTPException
 import importlib.util
@@ -18,6 +19,8 @@ import sys
 import tempfile
 import time
 import webbrowser
+from xml.etree.ElementTree import ParseError
+from zipfile import BadZipFile
 
 ROOT = Path(__file__).resolve().parents[6]
 sys.path.insert(0, str(ROOT))
@@ -116,15 +119,26 @@ def registry_paths(project):
     return result
 
 
+def registry_helper():
+    return module(ROOT / '.agents/skills/studio/1-Pre Production/4-Asset Breakdown/scripts/assets.py',
+                  'studio_animation_registry')
+
+
+def eligible_rows(entries):
+    return {row['ID']: row for _, row in entries if row['Active'] == 'Yes'
+            and row['Review'] == 'Keep' and row['Type'] in ('Graphic', 'Animation')}
+
+
+def registry_context(row):
+    return {key: row[key] for key in
+            ('ID', 'Script', 'Passage', 'Start', 'End', 'Extracts', 'Brief', 'Notes', 'Type')}
+
+
 def eligible(project):
     registry_paths(project)
-    helper = module(ROOT / '.agents/skills/studio/1-Pre Production/4-Asset Breakdown/scripts/assets.py',
-                    'studio_animation_registry')
-    return {row['ID']: {key: row[key] for key in
-                       ('ID', 'Script', 'Passage', 'Start', 'End', 'Extracts', 'Brief', 'Notes', 'Type')}
-            for _, row in helper.rows(helper.load(project))[1]
-            if row['Active'] == 'Yes' and row['Review'] == 'Keep'
-            and row['Type'] in ('Graphic', 'Animation')}
+    helper = registry_helper()
+    return {asset: registry_context(row) for asset, row in
+            eligible_rows(helper.rows(helper.load(project))[1]).items()}
 
 
 def folder(project, asset):
@@ -415,16 +429,41 @@ def probe(path):
     return json.loads(result.stdout)
 
 
-def valid_video(path, value):
+def probe_editorial(path, ffprobe):
+    try:
+        result = subprocess.run([ffprobe, '-v', 'error', '-select_streams', 'v:0',
+                                 '-show_streams', '-show_format', '-of', 'json', str(path)],
+                                check=True, capture_output=True, text=True, encoding='utf-8', timeout=120)
+    except subprocess.CalledProcessError as error:
+        raise ValueError(f'Video probe failed: {(error.stderr or str(error)).strip()}') from error
+    data = json.loads(result.stdout)
+    video = next((s for s in data['streams'] if s['codec_type'] == 'video'), None)
+    require(video is not None, 'File does not contain a usable video stream')
+    if 'duration_ts' in video:
+        duration = Fraction(video['duration_ts']) * Fraction(video['time_base'])
+    else:
+        if 'duration' not in video:
+            video['duration'] = data['format']['duration']
+        duration = Fraction(video['duration'])
+    rate = video.get('avg_frame_rate')
+    fps = (Fraction(rate) if rate and rate != '0/0' else 0) or Fraction(video['r_frame_rate'])
+    return video, float(fps), float(duration)
+
+
+def valid_video(path, value, *, ffprobe=None):
     require(path.is_file() and path.stat().st_size > 0, f'Missing/empty video: {path}')
-    metadata = probe(path)
+    if ffprobe is None:
+        metadata = probe(path)
+        fps, duration = float(metadata['fps']), float(metadata['durationInSeconds'])
+    else:
+        metadata, fps, duration = probe_editorial(path, ffprobe)
     require(metadata['width'] == value['width'] and metadata['height'] == value['height'],
             'Video dimensions differ from render settings')
-    require(abs(float(metadata['fps']) - value['fps']) < 0.01, 'Video fps differs from render settings')
-    duration = float(metadata['durationInSeconds'])
+    require(abs(fps - value['fps']) < 0.01, 'Video fps differs from render settings')
     require(math.isfinite(duration) and duration > 0
             and abs(duration - value['durationInFrames'] / value['fps']) <= 1.1 / value['fps'],
             'Video duration differs from render settings')
+    return metadata
 
 
 def run_renderer(snapshot, output):
@@ -456,11 +495,39 @@ def approved_videos(project, asset):
     require(directory.is_dir(), f'{asset}: missing APPROVED folder')
     result = []
     for child in sorted(directory.iterdir()):
-        confined(project, child.relative_to(project).as_posix())
-        require(child.is_file() and child.suffix.lower() == '.mp4',
-                f'{asset}: APPROVED permits only MP4 files directly inside the folder')
+        require_approved_file(project, asset, child)
         result.append(child)
     return result
+
+
+def require_approved_file(project, asset, path):
+    confined(project, path.relative_to(project).as_posix())
+    require(path.is_file() and path.suffix.lower() == '.mp4',
+            f'{asset}: APPROVED permits only MP4 files directly inside the folder')
+
+
+def matching_renders(ledger, identity, size):
+    matches = [record for record in ledger['renders'] if record['status'] == 'ready'
+               and record['sha256'] == identity and record['size'] == size]
+    require(matches, f'{ledger["asset"]}: approved video is unregistered')
+    return matches
+
+
+def accepted_renders(matches):
+    # Explicit approvals supersede manual moves; without one, only the earliest
+    # render can establish the context of these exact bytes.
+    return [record for record in matches if record.get('approvals')] or matches[:1]
+
+
+def approval_context(asset, record):
+    approvals = record.get('approvals', [])
+    require(not approvals or approvals[-1].get('logged', False),
+            f'{asset}: approval publication unfinished; retry approve for version {record["version"]}')
+    return approvals[-1]['registry'] if approvals else record['input']['registry']
+
+
+def snapshot_settings(directory, record):
+    return settings(read_json(directory / 'snapshots' / f'v{record["version"]:03d}' / 'settings.json'))
 
 
 def validate_render(project, asset, record):
@@ -507,7 +574,7 @@ def approve(project, asset, version, text):
         video = target if matches else source
         require(video.is_file() and sha(video) == record['sha256']
                 and video.stat().st_size == record['size'], 'Missing or changed registered render')
-        valid_video(video, settings(read_json(folder(project, asset) / 'snapshots' / f'v{version:03d}' / 'settings.json')))
+        valid_video(video, snapshot_settings(folder(project, asset), record))
         approvals = record.setdefault('approvals', [])
         continuing = bool(matches and approvals and approvals[-1]['registry'] == rows[asset])
         if continuing and approvals[-1].get('logged', False):
@@ -676,17 +743,12 @@ def check(project):
             identity = sha(video)
             require(identity not in identities, f'{asset}: duplicate approved render identity')
             identities.add(identity)
-            matches = [r for r in ledger['renders'] if r['status'] == 'ready'
-                       and r['sha256'] == identity and r['size'] == video.stat().st_size]
-            require(matches, f'{asset}: approved video is unregistered')
+            matches = matching_renders(ledger, identity, video.stat().st_size)
             compatible = False
-            accepted = [r for r in matches if r.get('approvals')] or matches[:1]
+            accepted = accepted_renders(matches)
             for record in matches:
-                valid_video(video, settings(read_json(directory / 'snapshots' / f'v{record["version"]:03d}' / 'settings.json')))
-                approvals = record.get('approvals', [])
-                require(not approvals or approvals[-1].get('logged', False),
-                        f'{asset}: approval publication unfinished; retry approve for version {record["version"]}')
-                context = approvals[-1]['registry'] if approvals else record['input']['registry']
+                valid_video(video, snapshot_settings(directory, record))
+                context = approval_context(asset, record)
                 compatible = compatible or (record in accepted and context == row)
             if compatible:
                 selected.append(video.relative_to(project).as_posix())
@@ -710,6 +772,94 @@ def approval_inventory(project):
 def check_approvals(project):
     return {asset: [p.relative_to(project).as_posix() for p in videos]
             for asset, videos in approval_inventory(project).items()}
+
+
+def editorial_inventory(project, *, ffprobe='ffprobe'):
+    """Resolve optional First Cut approvals without validating stage completion or writing files."""
+    entries, diagnostics = [], []
+    data_errors = (ValueError, TypeError, KeyError, AttributeError, IndexError, OSError, RuntimeError,
+                   OverflowError, ZeroDivisionError, subprocess.SubprocessError, BadZipFile, ParseError)
+    try:
+        project = Path(project).resolve(strict=True)
+        paths = [confined(project, (REGISTRY / name).as_posix())
+                 for name in ('Asset Registry.md', 'Asset Registry.json')]
+        if not any(path.exists() for path in paths):
+            return entries, diagnostics
+        require(all(path.is_file() for path in paths), 'Both canonical registry files are required')
+        helper = registry_helper()
+        issues = []
+        registry = helper.load(project, errors=issues)
+        control = helper.controls(registry)
+        require(control.get('schema') == 'studio.asset-registry.v1' and 'identities' in control,
+                'Invalid registry schema or missing registry identity ledger')
+        rows = eligible_rows(enumerate(registry['assets']))
+        invalid = {}
+        for issue in issues:
+            if issue['asset'] is None:
+                diagnostics.append(f'Asset Registry: {issue["message"]}')
+            else:
+                invalid.setdefault(issue['asset'], []).append(issue['message'])
+        if diagnostics or not rows:
+            return entries, diagnostics
+    except data_errors as error:
+        return entries, [f'Asset Registry: {error}']
+
+    context = None
+    for asset, row in rows.items():
+        try:
+            approved = confined(project, (STAGE / asset / 'APPROVED').as_posix())
+            if not approved.exists():
+                continue
+            require(approved.is_dir(), 'Expected an APPROVED directory')
+            videos = sorted(approved.iterdir(), key=lambda path: path.name)
+            if not videos:
+                continue
+            require(asset not in invalid, '; '.join(invalid.get(asset, [])))
+            if context is None:
+                try:
+                    context = helper.context(project)
+                    stale_comments = helper.input_status(registry, context)['comments']['stale_proposals']
+                except data_errors as error:
+                    return entries, diagnostics + [f'Asset Registry: {error}']
+            helper.validate_current_row(row, context, stale_comments)
+            row = registry_context(row)
+            ledger = load(project, asset)
+        except data_errors as error:
+            diagnostics.append(f'{asset}: {error}')
+            continue
+
+        identities = set()
+        for video in videos:
+            relative = video.relative_to(project).as_posix()
+            try:
+                require_approved_file(project, asset, video)
+                size = video.stat().st_size
+                require(size > 0, 'Empty approved video')
+                identity = sha(video)
+                require(identity not in identities, 'Duplicate approved render identity')
+                matches = matching_renders(ledger, identity, size)
+                contexts = [approval_context(asset, record) for record in matches]
+                accepted = accepted_renders(matches)
+                compatible = [record for record, saved in zip(matches, contexts)
+                              if record in accepted and saved == row]
+                require(compatible, 'Approval does not match current registry context')
+                for record in compatible:
+                    version = record['version']
+                    try:
+                        require(type(version) is int, 'Invalid render version')
+                        validate_render(project, asset, record)
+                        value = snapshot_settings(approved.parent, record)
+                        metadata = valid_video(video, value, ffprobe=ffprobe)
+                    except data_errors as error:
+                        diagnostics.append(f'{relative} (version {version}): {error}')
+                        continue
+                    entries.append({'asset_id': asset, 'version': version, 'path': relative,
+                                    'sha256': identity, 'registry': row, 'settings': value, 'video': metadata})
+                    identities.add(identity)
+                    break
+            except data_errors as error:
+                diagnostics.append(f'{relative}: {error}')
+    return entries, diagnostics
 
 
 def evidence(project):

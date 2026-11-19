@@ -16,9 +16,9 @@ from unittest.mock import patch
 from scripts import override_snapshot, stage_completion as completion, stage_override as override, validation
 
 
-def tree(root):
+def tree(root, *, exclude=()):
     return {path.relative_to(root).as_posix(): (path.read_bytes(), path.stat().st_mtime_ns)
-            for path in root.rglob("*") if path.is_file()}
+            for path in root.rglob("*") if path.is_file() and path.relative_to(root).as_posix() not in exclude}
 
 
 class OverrideTests(unittest.TestCase):
@@ -47,12 +47,21 @@ class OverrideTests(unittest.TestCase):
             target = self.workflow / path
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(validation.ROOT / path, target)
+        # Give the test-only animation stage a declared output so generic override
+        # tests can attest it without running its real, stage-owned movie inventory.
+        animation = dict(self.stages["2.3"], outputs=[{
+            "folder": f"{self.stages['2.3']['folder']}/A01/APPROVED",
+            "filename_regex": r"^v001\.mp4$", "minimum": 1,
+        }])
+        definition_path = self.workflow / ".agents/skills/studio" / animation["folder"] / "dependencies.json"
+        definition_path.write_text(json.dumps(animation), encoding="utf-8")
         self.artifacts = []
         names = {
             "1.1": ["Approved/A.docx"], "1.2": ["A.pptx"],
             "1.3": ["APPROVED/Short-Form Excerpt Shortlist.md"],
             "1.4": ["Asset Registry.md", "Asset Registry.json"],
             "2.1": ["A__C01__camA.mov", "A__C01__camB.mp4", "A__C01__lav.wav"],
+            "2.3": ["A01/APPROVED/v001.mp4"],
             "3.1": ["A__C01.json"], "3.2": ["A__C01__lav.json"],
             "3.3": ["A__Takes.v1.json"], "3.4": ["A__Scores.v1.json"],
             "3.5": ["Face Paths.json"], "3.6": ["APPROVED/A.mov"],
@@ -105,9 +114,10 @@ class OverrideTests(unittest.TestCase):
         before = tree(self.project)
         plan = self.plan()
         self.assertTrue(plan["can_apply"], plan["blocked"])
-        self.assertEqual(plan["stages"], validation.order_stages(self.stages))
+        self.assertEqual(plan["stages"], [step for step in validation.order_stages(self.stages) if step != "2.2"])
+        self.assertEqual(set(plan["skipped"]), {"2.2"})
         self.assertIn("without rerunning", plan["warning"])
-        self.assertEqual(len(plan["impacts"]), len(self.stages))
+        self.assertEqual(len(plan["impacts"]), len(plan["stages"]))
         self.assertEqual(tree(self.project), before)
         self.assertEqual(plan["plan_id"], self.plan()["plan_id"])
 
@@ -123,9 +133,9 @@ class OverrideTests(unittest.TestCase):
         with patch.object(importlib.util, "spec_from_file_location", side_effect=no_stage_plugins):
             result = self.apply(self.plan())
             report = validation.audit(self.project, self.workflow)
-        self.assertEqual(len(result["applied"]), len(self.stages))
-        self.assertTrue(all(item["status"] == "current" for item in report.values()), report)
-        for step in self.stages:
+        self.assertEqual(result["applied"], [step for step in validation.order_stages(self.stages) if step != "2.2"])
+        for step in result["applied"]:
+            self.assertEqual(report[step]["status"], "current", report[step])
             manifest = json.loads(self.marker(step).read_text())
             self.assertEqual(manifest["completion_mode"], "manual-override")
             self.assertTrue(manifest["override"]["confirmed"])
@@ -133,6 +143,15 @@ class OverrideTests(unittest.TestCase):
             self.assertTrue((self.folder(step) / "STALE/1/DONE").exists())
             self.assertIn("Manual override accepted", (self.folder(step) / "LOG.md").read_text())
         self.assertEqual({path: (path.read_bytes(), path.stat().st_mtime_ns) for path in self.artifacts}, before)
+
+    def test_first_cut_override_blocks_when_animations_have_no_completion(self):
+        self.marker("2.3").unlink()
+        before = tree(self.project)
+        plan = self.plan()
+        self.assertFalse(plan["can_apply"])
+        self.assertIn("2.3", plan["skipped"])
+        self.assertIn("Prerequisites not current or eligible: 2.3", plan["blocked"]["3.6"])
+        self.assertEqual(tree(self.project), before)
 
     def test_override_of_current_stage_still_archives_active_marker(self):
         first = self.plan("1.1")
@@ -308,6 +327,8 @@ class OverrideTests(unittest.TestCase):
         plan = self.plan("1.1")
         attempted = Event()
         original_guard = completion.mutation_guard
+        # Windows locks the first byte, so the snapshot cannot read this file while the guard is held.
+        excluded = (".studio-mutations.lock",)
 
         def guarded(project):
             attempted.set()
@@ -321,11 +342,11 @@ class OverrideTests(unittest.TestCase):
                     self.assertTrue(attempted.wait(timeout=5), "Apply did not attempt to acquire the guard")
                     preview.assert_not_called()
                     self.pending("3.6", "competing-job")
-                    before = tree(self.project)
+                    before = tree(self.project, exclude=excluded)
                 with self.assertRaisesRegex(ValueError, "Confirmation"):
                     future.result(timeout=10)
                 preview.assert_called_once()
-        self.assertEqual(tree(self.project), before)
+        self.assertEqual(tree(self.project, exclude=excluded), before)
 
     def test_apply_holds_guard_through_publication(self):
         plan = self.plan("1.1")

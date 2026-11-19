@@ -15,7 +15,7 @@ Create animation candidates through authored animation techniques such as React,
 
 Quick sketches are static images, not animation renders. A connected image-generation/editing tool may be used for concepts and reference-guided revisions; direct programmatic drawing such as Pillow remains available for suitable tasks. Tool setup and credentials are not implied by this permission. Keep the exact prompt, tool/model when known and input references with each sketch version. An accepted AI sketch still needs explicit preparation into usable animation assets; do not promise that a flat image is automatically a layered rig.
 
-This is an independent branch from 1.4, not a prerequisite of B-roll, footage intake or presenter postproduction. A missing or stale prerequisite blocks execution. A valid approved registry with no eligible assets is a successful empty selection, not a reason to invent graphics.
+This branch depends on 1.4 and is a prerequisite of First Cut (3.6), not of B-roll, footage intake, or earlier presenter postproduction stages. A missing or stale prerequisite blocks execution. A valid approved registry with no eligible assets is a successful empty selection, not a reason to invent graphics.
 
 ## Entry and preflight
 

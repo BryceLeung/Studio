@@ -20,6 +20,12 @@ a = load_module('studio_animation_tests', Path(__file__).with_name('animations.p
 fixtures = load_module('studio_animation_registry_fixture', a.ROOT /
                        '.agents/skills/studio/1-Pre Production/4-Asset Breakdown/scripts/test_assets.py')
 from scripts import validation, stage_completion as completion
+from studio import first_cut_animations
+
+
+EDITORIAL_STREAM = {'codec_type': 'video', 'codec_name': 'h264', 'width': 1920, 'height': 1080,
+                    'avg_frame_rate': '30/1', 'duration_ts': 76800, 'time_base': '1/15360',
+                    'start_time': '0.000000', 'color_space': 'bt709'}
 
 
 class AnimationTests(unittest.TestCase):
@@ -86,6 +92,10 @@ class AnimationTests(unittest.TestCase):
         return value
 
     def external(self, command, **kwargs):
+        if command[0] in ('ffprobe', 'custom-ffprobe'):
+            self.assertEqual(command[1:-1], ['-v', 'error', '-select_streams', 'v:0', '-show_streams',
+                                             '-show_format', '-of', 'json'])
+            return subprocess.CompletedProcess(command, 0, json.dumps({'streams': [EDITORIAL_STREAM]}), '')
         self.assertEqual(Path(command[1]).name, 'probe.mjs')
         return subprocess.CompletedProcess(command, 0, json.dumps(
             {'width': 1920, 'height': 1080, 'fps': 30, 'durationInSeconds': 5}), '')
@@ -323,6 +333,109 @@ class AnimationTests(unittest.TestCase):
         renamed = approved.with_name('Another name.MP4')
         approved.rename(renamed)
         self.assertEqual(a.check(self.project)[self.asset], [renamed.relative_to(self.project).as_posix()])
+
+    def test_editorial_inventory_is_optional_and_uses_actual_stream_metadata(self):
+        self.assertEqual(a.editorial_inventory(self.project), ([], []))
+        movie = self.approve()
+        another = self.fixture.suggestion(key='second', type='Animation', start=3, end=4, passage='four five')
+        self.fixture.reconcile([self.fixture.suggestion(type='Graphic'), another])
+        registry = fixtures.assets.load(self.project)
+        other = next(row for row in registry['assets'] if row['ID'] != self.asset)
+        self.assertEqual(other['Review'], 'Pending Review')
+        other['Review'] = 'Keep'
+        fixtures.assets.save(registry, self.project)
+        self.assertFalse(a.folder(self.project, other['ID']).exists())
+        (self.project / a.STAGE / 'ASSETS').mkdir()  # Unrelated stage working files are not part of editorial intake.
+        with self.assertRaises(ValueError):
+            a.check(self.project)
+        before = self.state()
+        self.prerequisites.reset_mock()
+        entries, diagnostics = a.editorial_inventory(self.project, ffprobe='custom-ffprobe')
+        self.assertEqual(diagnostics, [])
+        self.assertEqual(entries, [{'asset_id': self.asset, 'version': 1,
+                                    'path': movie.relative_to(self.project).as_posix(), 'sha256': a.sha(movie),
+                                    'registry': a.eligible(self.project)[self.asset],
+                                    'settings': a.DEFAULT_SETTINGS, 'video': EDITORIAL_STREAM}])
+        self.prerequisites.assert_not_called()
+        self.assertEqual(before, self.state())
+
+    def test_first_cut_uses_approved_files_without_a_render_ledger(self):
+        self.approve('renamed.MP4')
+        (self.directory / 'Animation.json').unlink()
+        approved = self.directory / 'APPROVED'
+        (approved / 'unregistered.mp4').write_bytes(b'manual export')
+        (approved / 'empty.mp4').touch()
+        (approved / 'bad.mp4').write_bytes(b'unreadable export')
+        before = self.state()
+
+        def probe_run(command, **kwargs):
+            if Path(command[-1]).name == 'bad.mp4':
+                raise subprocess.CalledProcessError(1, command, stderr='Invalid data')
+            return self.external(command, **kwargs)
+
+        with patch.object(subprocess, 'run', side_effect=probe_run):
+            entries, diagnostics = first_cut_animations.load(self.project, self.workflow)
+        self.assertEqual([Path(entry['path']).name for entry in entries], ['renamed.MP4', 'unregistered.mp4'])
+        self.assertTrue(all(entry['width'] == 1920 and entry['duration'] == 5 for entry in entries))
+        self.assertTrue(any('empty.mp4' in issue and 'Empty approved video' in issue for issue in diagnostics))
+        self.assertTrue(any('bad.mp4' in issue and 'Invalid data' in issue for issue in diagnostics))
+        self.assertEqual(before, self.state())
+
+    def test_editorial_inventory_ignores_legacy_project_without_canonical_registry(self):
+        self.approve()
+        for path in a.registry_paths(self.project):
+            path.unlink()
+        before = self.state()
+        self.assertEqual(a.editorial_inventory(self.project), ([], []))
+        self.assertEqual(before, self.state())
+
+    def test_editorial_inventory_skips_bad_files_and_deduplicates_valid_bytes(self):
+        first = self.approve('01 renamed.mp4')
+        shutil.copyfile(first, first.with_name('02 duplicate.mp4'))
+        first.with_name('unregistered.mp4').write_bytes(b'not a registered movie')
+        first.with_name('nested').mkdir()
+        a.revise(self.project, self.asset, 'Create a second version')
+        self.approve('v002.mp4')
+        (self.directory / 'snapshots/v002/src/Composition.tsx').write_text('Changed')
+        before = self.state()
+        entries, diagnostics = a.editorial_inventory(self.project)
+        self.assertEqual([entry['path'] for entry in entries], [first.relative_to(self.project).as_posix()])
+        self.assertEqual(len(diagnostics), 4, diagnostics)
+        for message in ('Duplicate approved render identity', 'APPROVED permits only MP4 files',
+                        'approved video is unregistered', 'changed render snapshot v002'):
+            self.assertTrue(any(message in diagnostic for diagnostic in diagnostics), diagnostics)
+        self.assertEqual(before, self.state())
+
+    def test_editorial_inventory_applies_legacy_and_explicit_approval_history(self):
+        movie = self.approve()
+        self.fixture.edit('Brief', 'Changed purpose')
+        a.revise(self.project, self.asset, 'Same bytes for the changed purpose')
+        with patch.object(a, 'run_renderer', side_effect=lambda _, output: (shutil.copyfile(movie, output), {})[1]):
+            a.render(self.project, self.asset)
+        entries, diagnostics = a.editorial_inventory(self.project)
+        self.assertEqual(entries, [])
+        self.assertIn('does not match current registry context', diagnostics[0])
+        a.approve(self.project, self.asset, 2, 'The earlier visual also works for this purpose')
+        entries, diagnostics = a.editorial_inventory(self.project)
+        self.assertEqual(diagnostics, [])
+        self.assertEqual([(record['version'], record['sha256']) for record in entries], [(2, a.sha(movie))])
+        ledger = a.load(self.project, self.asset)
+        ledger['renders'][1]['approvals'][0]['logged'] = False
+        self.save(ledger)
+        entries, diagnostics = a.editorial_inventory(self.project)
+        self.assertEqual(entries, [])
+        self.assertIn('approval publication unfinished', diagnostics[0])
+
+    def test_editorial_inventory_checks_passage_and_video_metadata(self):
+        self.approve()
+        with patch.dict(EDITORIAL_STREAM, width=1280):
+            entries, diagnostics = a.editorial_inventory(self.project)
+        self.assertEqual(entries, [])
+        self.assertIn('Video dimensions differ', diagnostics[0])
+        fixtures.docx(self.fixture.script, text='Different words start here with more.', comment=False)
+        entries, diagnostics = a.editorial_inventory(self.project)
+        self.assertEqual(entries, [])
+        self.assertIn('Passage no longer matches script', diagnostics[0])
 
     def test_duplicate_or_unregistered_approvals_rejected(self):
         approved = self.approve()

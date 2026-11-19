@@ -26,6 +26,7 @@ spec.loader.exec_module(scoring)
 find = scoring.find
 from scripts.validation import require_prerequisites
 from studio.fingerprints import matches_identity, mtime_seconds
+from studio import first_cut_animations as animations
 STAGE = Path("3-Post Production/6-First Cut")
 INTAKE = Path("2-Production/1-Footage Intake")
 SYNC = Path("3-Post Production/1-Sync")
@@ -210,14 +211,17 @@ def element(parent, tag, **attributes):
 
 
 def build_xml(project, output, name, document, scores, syncs, probes, padding_ms, included_groups=None,
-              with_subtitles=True, face_paths=None):
+              with_subtitles=True, face_paths=None, *, animation_inventory=((), ()), extract_number=None):
     first_video = probes[min(probes)]["camA"]["video"]
     frame = 1 / Fraction(first_video["r_frame_rate"])
     if frame <= 0:
         raise ValueError("Invalid project frame rate.")
     takes, auditions = plan_takes(document, scores, syncs, probes, frame, padding_ms, included_groups)
     used_recordings = {take["recording_number"] for take in takes}
+    entries, diagnostics = animation_inventory
     root = ET.Element("fcpxml", version="1.10")
+    if entries:
+        element(element(root, "import-options"), "option", key="copy assets", value="0")
     resources = element(root, "resources")
     ids = iter(range(1, 100000))
     def resource_id():
@@ -294,6 +298,9 @@ def build_xml(project, output, name, document, scores, syncs, probes, padding_ms
                     reference_takes=[a["candidates"][0] for a in auditions
                                      if a["candidates"][0]["recording_number"] == number]))
         multicams[number] = (identifier, angles)
+    intake = animations.AnimationIntake(entries, project, output, resources, resource_id, frame, time)
+    anchors, notes = intake.anchors(document, auditions, extract_number)
+    placements = []
     compounds = {}
     for index, take in enumerate(takes, 1):
         identifier = resource_id()
@@ -310,11 +317,12 @@ def build_xml(project, output, name, document, scores, syncs, probes, padding_ms
         element(clip, "mc-source", angleID=angles[take["angle"]], srcEnable="video")
         if with_subtitles:
             subtitle_count += subtitles.add_titles(clip, take, transcript_words[take["transcript_source"]["path"]],
-                                                   frame, title_effect, subtitle_count, portrait=face_paths is not None)
+                                                    frame, title_effect, subtitle_count, portrait=face_paths is not None)
         element(clip, "marker", start=time(take["cut_in"]), duration=time(frame), value=f"{label} IN")
         # OUT labels the final included frame, so the marker stays inside the trim.
         element(clip, "marker", start=time(take["cut_out"] - frame), duration=time(frame), value=f"{label} OUT")
     library = element(root, "library")
+    intake.browser(library)
     event = element(library, "event", name=f"{name} — First Cut")
     project_node = element(event, "project", name=name)
     total = sum((a["candidates"][0]["cut_out"] - a["candidates"][0]["cut_in"] for a in auditions), Fraction(0))
@@ -323,12 +331,24 @@ def build_xml(project, output, name, document, scores, syncs, probes, padding_ms
     spine = element(sequence, "spine")
     cursor = Fraction(0)
     for audition in auditions:
-        node = element(spine, "audition", offset=time(cursor))
-        for take in audition["candidates"]:
-            element(node, "ref-clip", ref=compounds[take["take_key"]], name=f"S{audition['sentence']:03d} {audition['text']}",
-                    start="0s", duration=time(take["cut_out"] - take["cut_in"]), useAudioSubroles="1")
         winner = audition["candidates"][0]
-        cursor += winner["cut_out"] - winner["cut_in"]
+        duration = winner["cut_out"] - winner["cut_in"]
+        label = f"S{audition['sentence']:03d} {audition['text']}"
+        # Audition children are picks, so a storyline clip hosts any connected cutaways.
+        container = ET.Element("clip", name=label, offset=time(cursor), start="0s", duration=time(duration))
+        node = element(container, "audition", offset="0s")
+        for take in audition["candidates"]:
+            element(node, "ref-clip", ref=compounds[take["take_key"]], name=label,
+                    start="0s", duration=time(take["cut_out"] - take["cut_in"]), useAudioSubroles="1")
+        staged, warnings = intake.place(container, winner, anchors.get(audition["sentence"], ()), snap, cursor)
+        placements.extend(staged)
+        notes.extend(warnings)
+        if staged:
+            spine.append(container)
+        else:
+            node.set("offset", time(cursor))
+            spine.append(node)
+        cursor += duration
     ET.indent(root, space="    ")
     # ElementTree's indentation inserts whitespace into mixed-content title text.
     for text_node in root.iter("text"):
@@ -351,6 +371,11 @@ def build_xml(project, output, name, document, scores, syncs, probes, padding_ms
                               "motion": "locked",
                               "framing": "locked per camera and recording; full-height fill",
                               "warnings": framing_warnings}
+    if entries or diagnostics:
+        report["animations"] = {
+            "browser": [{key: item[key] for key in ("asset_id", "path", "sha256")} for item in entries],
+            "placements": placements, "notes": notes, "diagnostics": diagnostics,
+        }
     validate_xml(xml, output, report)
     return xml, report
 
@@ -367,13 +392,15 @@ def validate_xml(xml, output, report):
                 raise ValueError("Unresolved XML resource reference.")
     for media in root.findall("resources/asset/media-rep"):
         if not (output.parent / unquote(media.attrib["src"])).resolve().is_file():
-            raise ValueError("Media URL does not resolve to an existing intake file.")
-    auditions = root.findall("library/event/project/sequence/spine/audition")
-    if len(auditions) != report["auditions"] or len(root.findall("resources/media/sequence")) != report["takes"]:
+            raise ValueError("Media URL does not resolve to an existing source file.")
+    storyline = root.find("library/event/project/sequence/spine")
+    take_clips = root.findall("resources/media/sequence/spine/mc-clip")
+    if len(storyline) != report["auditions"] or len(take_clips) != report["takes"]:
         raise ValueError("Incomplete audition/compound inventory.")
     cursor = Fraction(0)
-    for audition in auditions:
-        if parse_time(audition.attrib["offset"]) != cursor or not len(audition):
+    for item in storyline:
+        audition = item if item.tag == "audition" else item.find("audition")
+        if audition is None or parse_time(item.attrib["offset"]) != cursor or not len(audition):
             raise ValueError("Invalid audition timeline offset.")
         for candidate in audition:
             clip = resources[candidate.attrib["ref"]].find("sequence/spine/mc-clip")
@@ -383,7 +410,20 @@ def validate_xml(xml, output, report):
             angles = {a.attrib["angleID"] for a in resources[clip.attrib["ref"]].findall("multicam/mc-angle")}
             if any(s.attrib["angleID"] not in angles for s in clip.findall("mc-source")):
                 raise ValueError("Unknown multicam angle.")
-        cursor += parse_time(audition[0].attrib["duration"])
+        duration = parse_time(audition[0].attrib["duration"])
+        if item is not audition:
+            if (item.tag != "clip" or item[0] is not audition or audition.get("offset") != "0s"
+                    or parse_time(item.attrib["duration"]) != duration):
+                raise ValueError("Invalid connected cutaway container.")
+            for lane, clip in enumerate(list(item)[1:], 1):
+                start = parse_time(clip.attrib["offset"])
+                length = parse_time(clip.attrib["duration"])
+                asset = resources[clip.attrib["ref"]]
+                if (clip.tag != "asset-clip" or clip.get("lane") != str(lane) or clip.get("enabled") != "0"
+                        or clip.get("srcEnable") != "video" or start < 0 or length <= 0 or start + length > duration
+                        or asset.find(f"metadata/md[@key='{animations.HASH_KEY}']") is None):
+                    raise ValueError("Invalid connected animation cutaway.")
+        cursor += duration
     if cursor != parse_time(root.find("library/event/project/sequence").attrib["duration"]):
         raise ValueError("Project duration differs from active audition choices.")
 
@@ -402,6 +442,7 @@ def run(project, score_paths, padding_ms=50, ffprobe="ffprobe", regenerate=False
     find.append_log(directory, "First Cut started", [f"padding_ms={padding_ms}; start camA; flip at nonadjacent selections."])
     try:
         planned, inputs = [], []
+        animation_inventory = animations.load(project, ROOT, ffprobe=ffprobe)
         for (script, transcript_paths), score_path in zip(inventory, expected):
             scores = read_json(score_path)
             source_path = project / scores["source_mapping"]["path"]
@@ -442,7 +483,8 @@ def run(project, score_paths, padding_ms=50, ffprobe="ffprobe", regenerate=False
                 syncs[number] = sync
                 inputs.append(scoring.fingerprint(sync_path, project, "project"))
             output = directory / (script.stem + ".FCPXML")
-            xml, report = build_xml(project, output, script.stem, document, scores, syncs, probes, padding_ms)
+            xml, report = build_xml(project, output, script.stem, document, scores, syncs, probes, padding_ms,
+                                    animation_inventory=animation_inventory)
             planned.append((output, xml, report))
         for output, xml, _ in planned:
             if not regenerate and output.exists() and output.read_bytes() != xml:

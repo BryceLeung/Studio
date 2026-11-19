@@ -154,6 +154,7 @@ def generate(project, shortlist, score_paths, padding_ms, omit_discarded, regene
     try:
         mappings = map_all(project, shortlist, score_paths)
         planned, reports, inputs, contexts = [], [], [], {}
+        animation_inventory = cut.animations.load(project, cut.ROOT)
         face_paths = None
         if portrait:
             face_paths, face_inputs = cut.portrait.load_paths(cut, project)
@@ -208,7 +209,8 @@ def generate(project, shortlist, score_paths, padding_ms, omit_discarded, regene
             safe_name = re.sub(r'[<>:"/\\|?*]', "-", name)
             output = directory / f"{safe_name}.FCPXML"
             xml, report = cut.build_xml(project, output, name, *contexts[mapped["source"]], padding_ms, included,
-                                        face_paths=face_paths)
+                                        face_paths=face_paths, animation_inventory=animation_inventory,
+                                        extract_number=mapped["number"])
             report["extract_number"] = mapped["number"]
             report["source_script"] = mapped["source"]
             report["omitted_discarded_sentences"] = mapped["omitted_discarded_sentences"]

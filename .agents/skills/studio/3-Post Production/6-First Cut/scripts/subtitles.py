@@ -19,7 +19,7 @@ def time(value):
     return f"{value.numerator}/{value.denominator}s" if value.denominator != 1 else f"{value.numerator}s"
 
 
-def add_titles(clip, take, words, frame, effect_id, id_start=0, portrait=False):
+def add_titles(clip, take, words, frame, effect_id, id_start=0, portrait=False, lane=1):
     """Anchor source-time titles to the multicam clip, matching FCP's exported XML."""
     start_index, end_index = take["transcript"]["word_start"], take["transcript"]["word_end"]
     selected = words[start_index:end_index + 1]
@@ -90,7 +90,7 @@ def add_titles(clip, take, words, frame, effect_id, id_start=0, portrait=False):
             finish = group[index + 1][1] if index + 1 < len(group) else group_end
             if finish <= start:
                 raise ValueError(f"Subtitle words collide on one frame: {take['take_key']}")
-            title = ET.SubElement(clip, "title", {"ref": effect_id, "lane": "1", "offset": time(start),
+            title = ET.SubElement(clip, "title", {"ref": effect_id, "lane": str(lane), "offset": time(start),
                                                   "name": " ".join(word for word, _ in display),
                                                   "start": "3600s", "duration": time(finish - start)})
             # Basic Title is point text by default. Request paragraph layout and

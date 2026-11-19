@@ -43,6 +43,75 @@ def fixture(root):
 
 
 class FirstCutTests(unittest.TestCase):
+    def test_animation_browser_and_disabled_project_timeline_cutaways(self):
+        with TemporaryDirectory() as directory:
+            project = Path(directory).resolve()
+            doc, scores, syncs, probes = fixture(project)
+            script = "1-Pre Production/1-Script Review/Approved/A.docx"
+            doc["script"]["source"] = {"path": script}
+            entries = []
+            for asset, version, frames, source, anchor, extracts in (
+                ("A01", 1, 5, script, 0, '["EXTRACT-01"]'),
+                ("A01", 2, 60, script, 0, '["EXTRACT-01"]'),
+                ("A02", 1, 60, script, 1, '[]'),
+                ("A03", 1, 60, "Other.docx", 0, '[]'),
+            ):
+                path = cut.animations.APPROVALS / asset / "APPROVED" / f"v{version:03d} final.mp4"
+                (project / path).parent.mkdir(parents=True, exist_ok=True)
+                (project / path).write_bytes(f"{asset}-{version}".encode())
+                entries.append({"asset_id": asset, "path": path.as_posix(),
+                                "sha256": cut.find.fingerprints.raw_sha256(project / path),
+                                "registry": {"ID": asset, "Script": source, "Start": str(anchor),
+                                             "End": str(anchor), "Passage": str(anchor), "Extracts": extracts,
+                                             "Brief": "Draw an animation"},
+                                "width": 1920, "height": 1080, "frame": Fraction(1, 24),
+                                "duration": Fraction(frames, 24)})
+            output = project / cut.STAGE / "A.FCPXML"
+            xml, report = cut.build_xml(project, output, "A", doc, scores, syncs, probes, 50,
+                                        animation_inventory=(entries, ["A04 is not approved"]))
+            root = ET.fromstring(xml)
+            self.assertEqual(root.find("import-options/option[@key='copy assets']").attrib["value"], "0")
+            browser = root.findall("library/event[@name='Animations']/asset-clip")
+            self.assertEqual(len(browser), 4)
+            self.assertTrue(all("v00" in clip.attrib["name"] for clip in browser))
+            staged = report["animations"]["placements"]
+            self.assertEqual([p["take_key"] for p in staged], ["take0", "take0", "take1"])
+            self.assertEqual(report["animations"]["diagnostics"], ["A04 is not approved"])
+            storyline = root.find("library/event/project/sequence/spine")
+            self.assertEqual([item.tag for item in storyline], ["clip", "clip", "audition"])
+            self.assertEqual(len(storyline[0].findall("audition/ref-clip")), 2)
+            self.assertEqual(len(storyline[1].findall("audition/ref-clip")), 1)
+            disabled = storyline.findall("clip/asset-clip[@enabled='0']")
+            self.assertEqual([clip.get("lane") for clip in disabled], ["1", "2", "1"])
+            self.assertEqual(cut.parse_time(disabled[0].get("duration")), Fraction(1, 5))
+            for container in storyline.findall("clip"):
+                for clip in container.findall("asset-clip"):
+                    self.assertEqual(clip.get("srcEnable"), "video")
+                    self.assertIn(clip.get("ref"), [entry.get("ref") for entry in browser])
+            self.assertEqual([cut.parse_time(p["offset"]) for p in staged], [
+                cut.parse_time(parent.get("offset")) + cut.parse_time(clip.get("offset"))
+                for parent in storyline.findall("clip") for clip in parent.findall("asset-clip")])
+            self.assertGreater(cut.parse_time(disabled[0].get("offset")), 0)
+            self.assertFalse(root.findall("resources/media/sequence/spine/mc-clip/asset-clip"))
+            self.assertIsNotNone(root.find("resources/media/sequence/spine/mc-clip/title[@lane='1']"))
+            disabled[0].set("enabled", "1")
+            with self.assertRaisesRegex(ValueError, "Invalid connected animation cutaway"):
+                cut.validate_xml(ET.tostring(root), output, report)
+            cut.animations.verify_sources(root, project, output)
+
+            extract, selected = cut.build_xml(project, output.parent / "Extracts" / output.name, "A",
+                                              doc, scores, syncs, probes, 50, {(0, 0), (1, 1)},
+                                              animation_inventory=(entries, []), extract_number=1)
+            self.assertEqual(len(ET.fromstring(extract).findall("library/event[@name='Animations']/asset-clip")), 4)
+            self.assertEqual({p["asset_id"] for p in selected["animations"]["placements"]}, {"A01"})
+
+            altered = project / entries[0]["path"]
+            stamp = altered.stat().st_mtime_ns
+            altered.write_bytes(b"ABCDEF")
+            os.utime(altered, ns=(stamp, stamp))
+            with self.assertRaisesRegex(ValueError, "Approved animation source changed"):
+                cut.animations.verify_sources(root, project, output)
+
     def test_media_writer_and_legacy_done_validate_seconds_for_both_size_keys(self):
         with TemporaryDirectory() as directory:
             project = Path(directory).resolve()
