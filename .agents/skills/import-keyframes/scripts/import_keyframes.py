@@ -71,7 +71,10 @@ def read_lines(image, executable, psm):
     except subprocess.TimeoutExpired as exc:
         raise ImportErrorDetail('Tesseract timed out') from exc
     groups = {}
-    for word in csv.DictReader(StringIO(result.stdout.decode()), delimiter='\t'):
+    words = csv.DictReader(StringIO(result.stdout.decode('utf-8-sig').lstrip('\r\n')), delimiter='\t')
+    if not {'level', 'text', 'block_num', 'par_num', 'line_num', 'top'}.issubset(words.fieldnames or ()):
+        raise ImportErrorDetail('Tesseract returned an invalid TSV header')
+    for word in words:
         if word['level'] != '5' or not word['text'].strip():
             continue
         key = tuple(word[field] for field in ('block_num', 'par_num', 'line_num'))
@@ -188,6 +191,14 @@ def publish(crops, directory):
         raise
 
 
+def find_tesseract():
+    if sys.platform == 'win32':
+        local = Path(__file__).resolve().parents[1] / '.venv-tools' / 'Tesseract-OCR' / 'tesseract.exe'
+        if local.is_file():
+            return str(local)
+    return shutil.which('tesseract')
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('sheet', type=Path)
@@ -196,9 +207,9 @@ def main():
     parser.add_argument('--dry-run', action='store_true', help='validate and report without writing')
     parser.add_argument('--allow-opaque', action='store_true', help='keep the original background for reference only')
     args = parser.parse_args()
-    executable = shutil.which('tesseract')
+    executable = find_tesseract()
     if not executable:
-        parser.exit(1, 'Import failed: Tesseract with English OCR data is required on PATH.\n')
+        parser.exit(1, 'Import failed: Tesseract with English OCR data is required in the skill environment or on PATH.\n')
     try:
         with Image.open(args.sheet) as source:
             if getattr(source, 'n_frames', 1) != 1:

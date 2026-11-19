@@ -1,4 +1,3 @@
-import shutil
 from pathlib import Path
 import subprocess
 import sys
@@ -8,7 +7,7 @@ from unittest.mock import patch
 
 from PIL import Image, ImageDraw, ImageFont
 
-from import_keyframes import ImportErrorDetail, alpha_check, inspect_sheet, safe_name
+from import_keyframes import ImportErrorDetail, alpha_check, find_tesseract, inspect_sheet, safe_name
 
 
 def sheet_with_poses(columns=3, rows=2):
@@ -63,10 +62,10 @@ class ValidationTests(unittest.TestCase):
             inspect_sheet(Image.new('RGBA', (800, 1050)), 'not used')
 
 
-@unittest.skipUnless(shutil.which('tesseract'), 'requires local Tesseract')
+@unittest.skipUnless(find_tesseract(), 'requires local Tesseract')
 class CliTests(unittest.TestCase):
     def test_legacy_grid_is_opt_in(self):
-        crops, skipped = inspect_sheet(sheet_with_poses(2, 3), shutil.which('tesseract'), grid='2x3')
+        crops, skipped = inspect_sheet(sheet_with_poses(2, 3), find_tesseract(), grid='2x3')
         self.assertEqual([(crop.slot, crop.name) for crop in crops],
                          [(1, 'girl_shock.png'), (4, 'girl_yell_open.png')])
         self.assertEqual(skipped, [2, 3, 5, 6])

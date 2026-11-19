@@ -5,14 +5,20 @@ description: Import a labelled contact sheet (3 columns by 2 rows by default) in
 
 # Import Keyframes
 
-Use this skill for an explicit `import keyframes` request. Resolve the supplied sheet and the intended output location from the current context. Use [Studio](../studio/SKILL.md) project resolution rules for connected project assets. Ask only if the exact source or destination is ambiguous. Import to a new working folder, not into approvals or over existing character art. This is a local image import, not a numbered stage run, render, library promotion, or approval.
+Use this skill for an explicit `import keyframes` request. Resolve the supplied sheet and its owning character from the current context. Use [Studio](../studio/SKILL.md) project resolution rules for connected project assets. Ask only if the exact source or owning character is ambiguous. This is a local image import, not a numbered stage run, render, library promotion, or approval.
+
+## Standard Location
+
+Use the owning character's `contact sheets/` folder under the project's shared animation library. Keep source sheets directly in `2-Production/3-Animations/ASSETS/CHARACTERS/<character>/contact sheets/` and write cropped PNGs to a new `<batch_slug>_import/` subfolder there. Use a short, descriptive lowercase snake_case batch slug, such as `happy_flap_import` for the happy-flap poses. If that folder already exists, use the next unused numbered suffix (for example, `happy_flap_import_02`) rather than mixing batches or overwriting files. If a sheet is supplied elsewhere, read it in place and use the same standard output location; do not move or rename existing sheets or imports.
+
+Do not import directly into an animation's `references/`, an approval folder, or the character's main art folder. If an animation later uses selected poses, copy those poses into its `references/` as part of assembly so the composition does not depend on live shared files.
 
 ## Command
 
-Requires Python 3.10+, Pillow (included in the shared `.venv-tools`), and Tesseract with English language data on PATH. Do not install missing dependencies on an import request. On macOS, run this from the workflow root (on Windows use the shared `.venv-tools/Scripts/python.exe`):
+Requires Python 3.10+, Pillow, and Tesseract with English language data. On Windows, prefer the skill-local `.agents/skills/import-keyframes/.venv-tools/Scripts/python.exe` when present; the importer checks the skill's `.venv-tools/Tesseract-OCR/tesseract.exe` before searching PATH. Otherwise use the shared `.venv-tools/Scripts/python.exe` with Tesseract on PATH. On macOS, use the command below with Tesseract on PATH. Run from the workflow root. Do not install missing dependencies on an import request.
 
 ```sh
-"./.venv-tools/bin/python" "./.agents/skills/import-keyframes/scripts/import_keyframes.py" "<sheet image>" --output-dir "<working folder>" --dry-run
+"./.venv-tools/bin/python" "./.agents/skills/import-keyframes/scripts/import_keyframes.py" "<sheet image>" --output-dir "<project-root>/2-Production/3-Animations/ASSETS/CHARACTERS/<character>/contact sheets/<batch_slug>_import" --dry-run
 ```
 
 1. Dry-run first. The importer expects a single image with an equal 3-column, 2-row grid by default (slots 1-3 on top and 4-6 below), with a single `.png` filename label beneath each populated drawing. For older 2-column, 3-row sheets, pass `--grid 2x3` on both the dry run and the actual import. It reads the labels locally, removes the label areas, and skips unlabeled blank slots; visible art without a readable, unambiguous label is an error. Compare the OCR names with the sheet (and, when available, the filenames in the `draw keyframes` prompt). Do not silently guess spelling or import an incorrect name.
