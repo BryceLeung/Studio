@@ -154,7 +154,6 @@ def generate(project, shortlist, score_paths, padding_ms, omit_discarded, regene
     try:
         mappings = map_all(project, shortlist, score_paths)
         planned, reports, inputs, contexts = [], [], [], {}
-        animation_inventory = cut.animations.load(project, cut.ROOT)
         face_paths = None
         if portrait:
             face_paths, face_inputs = cut.portrait.load_paths(cut, project)
@@ -209,8 +208,7 @@ def generate(project, shortlist, score_paths, padding_ms, omit_discarded, regene
             safe_name = re.sub(r'[<>:"/\\|?*]', "-", name)
             output = directory / f"{safe_name}.FCPXML"
             xml, report = cut.build_xml(project, output, name, *contexts[mapped["source"]], padding_ms, included,
-                                        face_paths=face_paths, animation_inventory=animation_inventory,
-                                        extract_number=mapped["number"])
+                                        face_paths=face_paths)
             report["extract_number"] = mapped["number"]
             report["source_script"] = mapped["source"]
             report["omitted_discarded_sentences"] = mapped["omitted_discarded_sentences"]
@@ -223,7 +221,7 @@ def generate(project, shortlist, score_paths, padding_ms, omit_discarded, regene
                                      Path(cut.portrait.__file__), Path(__file__).parents[1] / "SKILL.md",
                                      cut.ROOT / "studio/fingerprints.py", cut.ROOT / "studio/script_docx.py")]
         mappings["review_required"] = ("Import and review every extract project in Final Cut, including framing and subtitles; "
-                                       "edit and render, then move same-stem movies into this stage's APPROVED folder.")
+                                       "export same-stem edited FCPXML to 3-Post Production/6-First Cut/APPROVED/.")
         mapping_path = directory / "Extract Mappings.json"
         mapping_bytes = (json.dumps(mappings, ensure_ascii=False, indent=2, allow_nan=False) + "\n").encode("utf-8")
         planned.append((mapping_path, mapping_bytes))
@@ -242,13 +240,15 @@ def generate(project, shortlist, score_paths, padding_ms, omit_discarded, regene
                     stream.write(content)
             if path.read_bytes() != content:
                 raise ValueError(f"Persisted output mismatch: {path}")
+        (project / cut.STAGE / "APPROVED").mkdir(exist_ok=True)
         if changed:
-            cut.find.invalidate(project, (3, 6), "Extract projects changed; edited renders require review.")
+            cut.find.invalidate(project, (3, 6), "Extract projects changed; edited FCPXML in APPROVED required.")
         cut.find.append_log(project / cut.STAGE, "Extract projects ready for review", [
             "Outputs: " + json.dumps([cut.scoring.fingerprint(p, project, "project") for p, _ in planned]),
             "Omitted discarded sentences: " + json.dumps({p["extract_number"]: p["omitted_discarded_sentences"] for p in reports}),
             "All extract sentences matched verbatim, in unique source order, to reviewed script group ranges and scored takes.",
-            "No DONE written; edit and render extract projects, then move the rendered movies into APPROVED."])
+            "No DONE written; edit the extract projects in Final Cut, then export same-stem edited FCPXML to "
+            "3-Post Production/6-First Cut/APPROVED/."])
         return reports
     except (OSError, ValueError, TypeError, KeyError, cut.subprocess.SubprocessError) as error:
         cut.find.invalidate(project, (3, 6), f"Extract projects failed: {error}")

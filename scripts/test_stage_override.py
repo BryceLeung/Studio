@@ -14,6 +14,7 @@ import unittest
 from unittest.mock import patch
 
 from scripts import override_snapshot, stage_completion as completion, stage_override as override, validation
+from studio.fingerprints import sha256
 
 
 def tree(root, *, exclude=()):
@@ -64,7 +65,8 @@ class OverrideTests(unittest.TestCase):
             "2.3": ["A01/APPROVED/v001.mp4"],
             "3.1": ["A__C01.json"], "3.2": ["A__C01__lav.json"],
             "3.3": ["A__Takes.v1.json"], "3.4": ["A__Scores.v1.json"],
-            "3.5": ["Face Paths.json"], "3.6": ["APPROVED/A.mov"],
+            "3.5": ["Face Paths.json"], "3.6": ["A.FCPXML", "APPROVED/A.FCPXML"],
+            "3.7": ["A.FCPXML", "REVIEW.json", "APPROVED/A.mov"],
         }
         for step, files in names.items():
             folder = self.folder(step)
@@ -73,7 +75,16 @@ class OverrideTests(unittest.TestCase):
             for name in files:
                 path = folder / name
                 path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_bytes(b"Existing content accepted by user, not semantically verified")
+                if path.suffix == ".FCPXML":
+                    path.write_text("<fcpxml><project><sequence><spine/></sequence></project></fcpxml>")
+                elif step == "3.7" and name == "REVIEW.json":
+                    source = self.folder("3.6") / "APPROVED/A.FCPXML"
+                    path.write_text(json.dumps({"browser": [], "projects": [{
+                        "input": source.relative_to(self.project).as_posix(), "output": "A.FCPXML",
+                        "input_sha256": sha256(source), "output_sha256": sha256(folder / "A.FCPXML"),
+                    }]}))
+                else:
+                    path.write_bytes(b"Existing content accepted by user, not semantically verified")
                 self.artifacts.append(path)
                 outputs.append(completion.fingerprint(path, self.project, "project"))
             self.marker(step).write_text(json.dumps({"step": step, "inputs": [], "outputs": outputs,
@@ -144,13 +155,14 @@ class OverrideTests(unittest.TestCase):
             self.assertIn("Manual override accepted", (self.folder(step) / "LOG.md").read_text())
         self.assertEqual({path: (path.read_bytes(), path.stat().st_mtime_ns) for path in self.artifacts}, before)
 
-    def test_first_cut_override_blocks_when_animations_have_no_completion(self):
+    def test_only_final_cut_override_blocks_when_animations_have_no_completion(self):
         self.marker("2.3").unlink()
         before = tree(self.project)
         plan = self.plan()
         self.assertFalse(plan["can_apply"])
         self.assertIn("2.3", plan["skipped"])
-        self.assertIn("Prerequisites not current or eligible: 2.3", plan["blocked"]["3.6"])
+        self.assertIn("3.6", plan["stages"])
+        self.assertIn("Prerequisites not current or eligible: 2.3", plan["blocked"]["3.7"])
         self.assertEqual(tree(self.project), before)
 
     def test_override_of_current_stage_still_archives_active_marker(self):
@@ -180,13 +192,13 @@ class OverrideTests(unittest.TestCase):
         self.assertEqual(tree(self.project), before)
 
     def test_never_completed_stages_are_skipped_for_all_and_block_explicit_selection(self):
-        self.marker("3.6").unlink()
+        self.marker("3.7").unlink()
         plan = self.plan()
         self.assertTrue(plan["can_apply"], plan["blocked"])
-        self.assertIn("3.6", plan["skipped"])
+        self.assertIn("3.7", plan["skipped"])
         self.apply(plan)
-        self.assertFalse(self.marker("3.6").exists())
-        explicit = self.plan("3.6")
+        self.assertFalse(self.marker("3.7").exists())
+        explicit = self.plan("3.7")
         self.assertFalse(explicit["can_apply"])
 
     def test_archived_completion_is_eligible_without_empty_extra_archive(self):
@@ -221,11 +233,11 @@ class OverrideTests(unittest.TestCase):
                 self.assertEqual(tree(self.project), before)
 
     def test_missing_last_stage_outputs_block_the_whole_batch(self):
-        (self.folder("3.6") / "APPROVED/A.mov").unlink()
+        (self.folder("3.7") / "APPROVED/A.mov").unlink()
         before = tree(self.project)
         plan = self.plan()
         self.assertFalse(plan["can_apply"])
-        self.assertIn("3.6", plan["blocked"])
+        self.assertIn("3.7", plan["blocked"])
         with self.assertRaises(ValueError):
             self.apply(plan)
         self.assertEqual(tree(self.project), before)
@@ -388,15 +400,17 @@ class OverrideTests(unittest.TestCase):
             completion.record_done(self.project, self.workflow, "1.1", manual)
         self.assertEqual(tree(self.project), before)
 
-    def test_normal_render_validation_can_replace_override_without_false_input_changes(self):
+    def test_normal_cut_validation_can_replace_overrides_without_false_input_changes(self):
         self.apply(self.plan())
-        movie = self.folder("3.6") / "APPROVED/A.mov"
-        before = movie.read_bytes(), movie.stat().st_mtime_ns
-        ordinary = completion.build_manifest(self.project, self.workflow, "3.6")
-        completion.record_done(self.project, self.workflow, "3.6", ordinary)
-        self.assertNotIn("completion_mode", json.loads(self.marker("3.6").read_text()))
-        self.assertEqual(validation.audit(self.project, self.workflow, "3.6")["3.6"]["status"], "current")
-        self.assertEqual((movie.read_bytes(), movie.stat().st_mtime_ns), before)
+        for step, name in (("3.6", "A.FCPXML"), ("3.7", "A.mov")):
+            with self.subTest(step=step):
+                approval = self.folder(step) / "APPROVED" / name
+                before = approval.read_bytes(), approval.stat().st_mtime_ns
+                ordinary = completion.build_manifest(self.project, self.workflow, step)
+                completion.record_done(self.project, self.workflow, step, ordinary)
+                self.assertNotIn("completion_mode", json.loads(self.marker(step).read_text()))
+                self.assertEqual(validation.audit(self.project, self.workflow, step)[step]["status"], "current")
+                self.assertEqual((approval.read_bytes(), approval.stat().st_mtime_ns), before)
 
     def test_later_io_failure_returns_durable_partial_progress(self):
         plan = self.plan()

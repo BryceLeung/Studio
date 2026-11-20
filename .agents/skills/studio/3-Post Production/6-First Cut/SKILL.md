@@ -5,11 +5,11 @@ description: Run or resume Studio substage 3.6, creating Final Cut Pro projects 
 
 # 3.6 — First Cut
 
-Normal generation uses the root skill's shared prerequisite walk. After editing,
-rendering, and moving all expected movies into `APPROVED/`, invoke the shared
-completion recorder with `--stage 3.6`. It validates project/movie inventories
-and current input fingerprints before writing `DONE`; generation alone never
-records completion. Do not hand-author the marker.
+Normal generation uses the root skill's shared prerequisite walk. After editing
+and exporting the expected project FCPXML files into `APPROVED/`, invoke the
+shared completion recorder with `--stage 3.6`. It validates the draft and edited
+project inventories and current input fingerprints before writing `DONE`.
+Generation alone never records completion. Do not hand-author the marker.
 
 Read the Studio root skill for project resolution and logging rules. Resolve the
 real OneDrive project root and pass each script's stage 3.4 `__Scores.v1.json`
@@ -101,26 +101,8 @@ transcript timestamps and text remain unchanged.
 Import into Final Cut to
 check title rendering, frame timing, legibility, and audition switching.
 
-New First Cut exports reference the readable MP4s directly in each eligible
-asset's 2.3 `APPROVED/` folder in an `Animations` event. First Cut reads video
-metadata with FFprobe without requiring registration or render snapshots.
-Stage 2.3 must still be current before generation, including for projects with
-no eligible assets. Files without placements appear in the browser. Later
-approvals can be imported and added manually without replacing the edit.
-
-The asset's registry word range identifies the starting sentence/group. Each
-approved file is connected as its own disabled, video-only clip above the
-sentence audition on the main timeline. Its initial timing uses the selected
-take's frame-aligned start of speech and ends within that take's trim. Alternate
-takes remain available; check cutaway timing after switching takes. Extract
-placement still requires an explicit registry assignment. Review reports list
-the files, project-timeline offsets, and any issues. Missing or modified
-referenced MP4s fail First Cut validation.
-
-Enable the desired cutaway on the main timeline. Multiple approved versions
-appear on separate connected lanes; leave the other versions disabled. On the
-Mac, verify that browser-only clips appear, cutaways stay off on import, take
-auditions switch correctly, and dialogue and subtitles remain intact.
+First Cut is the presenter edit only and does not depend on animation production.
+Animation intake and placement run in [3.7 Final Cut](../7-Final%20Cut/SKILL.md).
 
 For an isolated preview before 3.5 has completed, use
 `scripts/preview_subtitles.py` with `--project-root`, `--shortlist`, all
@@ -128,22 +110,17 @@ For an isolated preview before 3.5 has completed, use
 existing `3-Post Production/0-Tmp/` folder. This writes one new XML and logs
 the trial in 0-Tmp, without replacing First Cut exports or satisfying 3.6.
 
-Deliver the generated projects for editing and rendering. Human approval is
-accomplished by moving new, non-empty rendered movie files into
-`3-Post Production/6-First Cut/APPROVED/`. Keep each project's filename stem:
-`A.FCPXML` is satisfied by `APPROVED/A.mov`, `APPROVED/A.mp4`, or another supported
-movie extension. Match stems and extensions case-insensitively. Supported movie
-extensions are MOV, MP4, M4V, MKV, AVI, WEBM, and MXF. Require a render for every
-full-script score input and every generated full-script or extract FCPXML project.
-Leave the XML files in their generation folders; XML in `APPROVED/` does not
-satisfy completion. Moving a rendered movie into `APPROVED/` is the user's
-assertion that it has been edited and rendered; validation does not compare
-file creation times or attempt to judge the edit.
+Edit the generated projects in Final Cut Pro. Finalize the take choices, trims,
+camera switches, and dialogue edit. You can leave an audition open with the
+desired take active; Final Cut Pro exports that pick first. Export each edited
+project as a plain, single-project `.fcpxml` (not an `.fcpxmld` bundle) into
+`3-Post Production/6-First Cut/APPROVED/` with the same filename stem as the
+generated project. Keep the generated drafts in their generation folders. No
+movie render is required here. The edited export is the input to 3.7.
 
 Record current input fingerprints (including the generated project inventories)
-and the complete approved movie inventory in `DONE`. Movies use the shared
-media fingerprint (size and whole integer `mtime_s` modification seconds). Source
-media, sync checks, and previews use the same seconds-based identity; saved legacy
+and the complete edited-export inventory in `DONE`. Source media, sync checks,
+and previews use the shared seconds-based identity; saved legacy
 `mtime_ns` values remain readable after integer division by 1,000,000,000. `REVIEW.json` and
 `Extract Mappings.json` remain generation provenance, not required approval
 outputs. The generators still do not write `DONE` themselves. Validation is
@@ -153,19 +130,15 @@ Default reruns reuse identical generated files and refuse differing files.
 After a deliberate regeneration decision, add `--regenerate` to full-script or
 extract generation: it prepares replacement XML/reports first, archives only the
 selected old generated files into the pending `STALE/N/` slot, and publishes the
-replacements. Approved edited movies are protected and remain in place; they are
+replacements. Approved edited XML exports are protected and remain in place; they are
 never moved by XML generation. New/changed generation and execution failures use
 the common graph invalidator. Reusing identical XML/reports does not invalidate
 an otherwise current completion marker. Mapping-only and subtitle previews
 remain outside canonical invalidation.
 
-Preserved movies are not automatically renewed approval after generation inputs
-change. The validator checks the previous active or archived render completion;
-previously approved projects need a fresh movie identity when the recorded input
-set or fingerprints change. Replacing the movie with a newly edited/rendered
-export satisfies that gate. Pure workflow-code changes with identical generation
-inputs do not by themselves require a different movie. No file creation-time
-comparison or edit-quality judgment is performed.
+Preserved edited exports do not automatically renew approval when generation
+inputs change. Re-export the reviewed edit from the current inputs. Legacy
+approved movies are left in place but are not the 3.7 handoff.
 
 Tests:
 

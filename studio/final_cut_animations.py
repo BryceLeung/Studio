@@ -7,7 +7,7 @@ import math
 import os
 from pathlib import Path
 import subprocess
-from urllib.parse import quote, unquote
+from urllib.parse import quote, unquote, urlsplit
 import xml.etree.ElementTree as ET
 
 from studio.fingerprints import matches_identity, raw_sha256
@@ -20,7 +20,7 @@ HASH_KEY = "studio.animation.sha256"
 
 
 def load(project, workflow, *, ffprobe="ffprobe"):
-    spec = importlib.util.spec_from_file_location("studio_animations_for_first_cut", workflow / RESOLVER)
+    spec = importlib.util.spec_from_file_location("studio_animations_for_final_cut", workflow / RESOLVER)
     helper = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(helper)
     project = Path(project).resolve(strict=True)
@@ -70,14 +70,20 @@ def load(project, workflow, *, ffprobe="ffprobe"):
 
 def verify_sources(root, project, output):
     """An imported snapshot stays valid when versions are added, not when its media changes."""
+    project = project.resolve()
     for asset in root.findall("resources/asset"):
         fingerprint = asset.find(f"metadata/md[@key='{HASH_KEY}']")
         if fingerprint is None:
             continue
-        media = asset.find("media-rep")
-        if media is None:
+        media = asset.find("media-rep[@kind='original-media']")
+        if media is None or not media.get("src"):
             raise ValueError(f"Missing animation media reference in {output.name}")
-        source = (output.parent / unquote(media.attrib["src"])).resolve()
+        url = urlsplit(media.attrib["src"])
+        if (url.scheme not in ("", "file") or url.query or url.fragment
+                or url.netloc and (url.scheme != "file" or url.netloc != "localhost")):
+            raise ValueError(f"Invalid animation media URL in {output.name}")
+        # Resolve against the final XML location even if its bytes are still staged in memory.
+        source = (output.parent / unquote(url.path)).resolve()
         if (not source.is_relative_to(project) or not source.is_relative_to(project / APPROVALS)
                 or len(source.relative_to(project / APPROVALS).parts) != 3 or source.parent.name != "APPROVED"
                 or not source.is_file() or not matches_identity(
@@ -151,30 +157,49 @@ class AnimationIntake:
                 skipped.append({"asset_id": asset, "reason": "anchor_spans_groups_placed_at_first"})
         return result, skipped
 
-    def clip(self, parent, version, duration, **attrs):
+    def clip(self, parent, version, duration, index, **attrs):
         _, ref, name, _, source_frame = version
-        node = add(parent, "asset-clip", ref=ref, name=name, start="0s", duration=self.time(duration),
-                   srcEnable="video", **attrs)
+        node = ET.Element("asset-clip", ref=ref, name=name, start="0s", duration=self.time(duration),
+                          srcEnable="video", **attrs)
         if self.frame != source_frame:
             add(node, "conform-rate", scaleEnabled="0")
+        parent.insert(index, node)
 
     def place(self, clip, take, assets, snap, cursor):
+        """Stage cutaways inside a trimmed mc-clip; report their offsets on the timeline."""
         placed, skipped = [], []
         if not assets:
             return placed, skipped
-        start = max(take["cut_in"], snap(take["word_in"], self.frame))
-        coverage = take["cut_out"] - start
-        offset = start - take["cut_in"]
+        if clip.tag != "mc-clip":
+            raise ValueError("Animation cutaways require a direct mc-clip")
+        clip_start = Fraction(clip.get("start", "0s").removesuffix("s"))
+        clip_duration = Fraction(clip.attrib["duration"].removesuffix("s"))
+        offset = max(0, snap(take["word_in"], self.frame) - take["cut_in"])
+        coverage = min(clip_duration, take["cut_out"] - take["cut_in"]) - offset
+        versions_to_place = []
         for asset in assets:
             for version in self.assets[asset]:
                 path = version[0]["path"]
-                duration = min(coverage, math.floor(version[3] / self.frame) * self.frame)
+                duration = math.floor(min(coverage, version[3]) / self.frame) * self.frame
                 if duration <= 0:
                     skipped.append({"asset_id": asset, "path": path, "take_key": take["take_key"],
                                     "reason": "no_usable_frame"})
                     continue
-                self.clip(clip, version, duration, lane=len(placed) + 1, offset=self.time(offset), enabled="0")
-                placed.append({"asset_id": asset, "path": path, "sentence": take["sentence"],
-                               "take_key": take["take_key"], "offset": self.time(cursor + offset),
-                               "duration": self.time(duration)})
+                versions_to_place.append((asset, version, duration))
+        if not versions_to_place:
+            return placed, skipped
+        # Keep existing connected video and titles above the new cutaways.
+        for child in clip:
+            lane = int(child.get("lane", "0"))
+            if lane > 0:
+                child.set("lane", str(lane + len(versions_to_place)))
+        index = next((i for i, child in enumerate(clip)
+                      if child.tag in {"marker", "chapter-marker", "rating", "keyword", "analysis-marker", "metadata"}
+                      or isinstance(child.tag, str) and child.tag.startswith("filter-")), len(clip))
+        for lane, (asset, version, duration) in enumerate(versions_to_place, 1):
+            self.clip(clip, version, duration, index + lane - 1, lane=str(lane),
+                      offset=self.time(clip_start + offset), enabled="0")
+            placed.append({"asset_id": asset, "path": version[0]["path"], "sentence": take["sentence"],
+                           "take_key": take["take_key"], "offset": self.time(cursor + offset),
+                           "duration": self.time(duration)})
         return placed, skipped
