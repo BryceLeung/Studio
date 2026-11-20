@@ -20,7 +20,7 @@ a = load_module('studio_animation_tests', Path(__file__).with_name('animations.p
 fixtures = load_module('studio_animation_registry_fixture', a.ROOT /
                        '.agents/skills/studio/1-Pre Production/4-Asset Breakdown/scripts/test_assets.py')
 from scripts import validation, stage_completion as completion
-from studio import first_cut_animations
+from studio import final_cut_animations
 
 
 EDITORIAL_STREAM = {'codec_type': 'video', 'codec_name': 'h264', 'width': 1920, 'height': 1080,
@@ -359,7 +359,7 @@ class AnimationTests(unittest.TestCase):
         self.prerequisites.assert_not_called()
         self.assertEqual(before, self.state())
 
-    def test_first_cut_uses_approved_files_without_a_render_ledger(self):
+    def test_final_cut_uses_approved_files_without_a_render_ledger(self):
         self.approve('renamed.MP4')
         (self.directory / 'Animation.json').unlink()
         approved = self.directory / 'APPROVED'
@@ -374,7 +374,7 @@ class AnimationTests(unittest.TestCase):
             return self.external(command, **kwargs)
 
         with patch.object(subprocess, 'run', side_effect=probe_run):
-            entries, diagnostics = first_cut_animations.load(self.project, self.workflow)
+            entries, diagnostics = final_cut_animations.load(self.project, self.workflow)
         self.assertEqual([Path(entry['path']).name for entry in entries], ['renamed.MP4', 'unregistered.mp4'])
         self.assertTrue(all(entry['width'] == 1920 and entry['duration'] == 5 for entry in entries))
         self.assertTrue(any('empty.mp4' in issue and 'Empty approved video' in issue for issue in diagnostics))

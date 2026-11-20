@@ -1,0 +1,33 @@
+{
+  "schema": "studio.stage",
+  "schema_version": 1,
+  "step": "3.7",
+  "workflow_dependencies": [
+    ".agents/skills/studio/3-Post Production/7-Final Cut/scripts/final_cut.py",
+    "studio/final_cut_animations.py",
+    ".agents/skills/studio/2-Production/3-Animations/scripts/animations.py",
+    ".agents/skills/studio/1-Pre Production/4-Asset Breakdown/scripts/assets.py",
+    "scripts/append-log.py"
+  ],
+  "validation": {"script": "scripts/validation.py"},
+  "folder": "3-Post Production/7-Final Cut",
+  "generated": [
+    {"folder": "3-Post Production/7-Final Cut", "filename_regex": "^.+\\.FCPXML$"},
+    {"folder": "3-Post Production/7-Final Cut", "filename_regex": "^REVIEW\\.json$"}
+  ],
+  "prerequisites": [
+    {"step": "3.6", "folder": "3-Post Production/6-First Cut"},
+    {"step": "2.3", "folder": "2-Production/3-Animations"}
+  ],
+  "inputs": [
+    {"folder": "3-Post Production/6-First Cut/APPROVED", "filename_regex": "^.+\\.FCPXML$", "minimum": 1, "complete_set": true},
+    {"folder": "3-Post Production/6-First Cut/Extracts", "filename_regex": "^Extract Mappings\\.json$", "minimum": 0, "maximum": 1, "complete_set": true},
+    {"folder": "3-Post Production/6-First Cut/Extracts/Portrait", "filename_regex": "^Extract Mappings\\.json$", "minimum": 0, "maximum": 1, "complete_set": true},
+    {"folder": "3-Post Production/4-Take Selection", "filename_regex": "^.+__Scores\\.v1\\.json$", "minimum": 1, "complete_set": true}
+  ],
+  "outputs": [
+    {"folder": "3-Post Production/7-Final Cut", "filename_regex": "^.+\\.FCPXML$", "minimum": 1, "complete_set": true},
+    {"folder": "3-Post Production/7-Final Cut", "filename_regex": "^REVIEW\\.json$", "minimum": 1, "maximum": 1, "complete_set": true},
+    {"folder": "3-Post Production/7-Final Cut/APPROVED", "filename_regex": "^.+\\.(?:mov|mp4|m4v|mkv|avi|webm|mxf)$", "minimum": 1, "complete_set": true}
+  ]
+}

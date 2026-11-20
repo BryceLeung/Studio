@@ -67,17 +67,18 @@ class InvalidationTests(unittest.TestCase):
 
     def test_all_graph_branches_preserve_independent_siblings(self):
         expected = {
-            "1.1": {"1.1", "1.2", "1.3", "1.4", "2.1", "2.2", "2.3", "3.1", "3.2", "3.3", "3.4", "3.5", "3.6"},
-            "1.2": {"1.2", "1.3", "2.1", "3.1", "3.2", "3.3", "3.4", "3.5", "3.6"},
-            "1.3": {"1.3", "2.1", "3.1", "3.2", "3.3", "3.4", "3.5", "3.6"},
-            "1.4": {"1.4", "2.2", "2.3", "3.6"},
-            "2.1": {"2.1", "3.1", "3.2", "3.3", "3.4", "3.5", "3.6"},
+            "1.1": {"1.1", "1.2", "1.3", "1.4", "2.1", "2.2", "2.3", "3.1", "3.2", "3.3", "3.4", "3.5", "3.6", "3.7"},
+            "1.2": {"1.2", "1.3", "2.1", "3.1", "3.2", "3.3", "3.4", "3.5", "3.6", "3.7"},
+            "1.3": {"1.3", "2.1", "3.1", "3.2", "3.3", "3.4", "3.5", "3.6", "3.7"},
+            "1.4": {"1.4", "2.2", "2.3", "3.7"},
+            "2.1": {"2.1", "3.1", "3.2", "3.3", "3.4", "3.5", "3.6", "3.7"},
             "2.2": {"2.2"},
-            "2.3": {"2.3", "3.6"},
-            "3.1": {"3.1", "3.5", "3.6"},
-            "3.2": {"3.2", "3.3", "3.4", "3.5", "3.6"},
-            "3.3": {"3.3", "3.4", "3.5", "3.6"},
-            "3.4": {"3.4", "3.6"}, "3.5": {"3.5", "3.6"}, "3.6": {"3.6"},
+            "2.3": {"2.3", "3.7"},
+            "3.1": {"3.1", "3.5", "3.6", "3.7"},
+            "3.2": {"3.2", "3.3", "3.4", "3.5", "3.6", "3.7"},
+            "3.3": {"3.3", "3.4", "3.5", "3.6", "3.7"},
+            "3.4": {"3.4", "3.6", "3.7"}, "3.5": {"3.5", "3.6", "3.7"},
+            "3.6": {"3.6", "3.7"}, "3.7": {"3.7"},
         }
         self.assertEqual(set(expected), set(self.stages))
         for failed, affected in expected.items():
@@ -358,16 +359,24 @@ class InvalidationTests(unittest.TestCase):
         for path in paths:
             self.assertEqual((slot / "working" / path.name).read_text(), path.name)
 
-    def test_generated_project_render_input_is_still_owned_not_approved_media(self):
-        own = self.folder("3.6")
-        definition = self.stages["3.6"]
-        definition["generated"] = [{"folder": definition["folder"], "filename_regex": r".*\.FCPXML"}]
-        output = own / "Cut.FCPXML"
-        output.write_text("generated project")
-        # Real First Cut inventories declare XML as role=project render inputs.
-        self.assertTrue(invalidation._matches(output, self.project, definition["inputs"]))
-        slot = self.prepare([output], step="3.6")
-        self.assertEqual((slot / "Cut.FCPXML").read_text(), "generated project")
+    def test_generated_cut_projects_can_regenerate_without_moving_approvals(self):
+        definitions = load_stages(WORKFLOW)
+        for step, name in (("3.6", "Cut.FCPXML"), ("3.7", "Cut.mov")):
+            with self.subTest(step=step):
+                definition = self.stages[step] = definitions[step]
+                own = self.folder(step)
+                output = own / "Cut.FCPXML"
+                output.write_text("generated project")
+                approved = own / "APPROVED" / name
+                approved.parent.mkdir()
+                approved.write_text("human approval")
+                with self.assertRaises(ValueError):
+                    self.prepare([approved], step=step)
+                if step == "3.6":
+                    self.assertTrue(invalidation._matches(output, self.project, definition["inputs"]))
+                slot = self.prepare([output], step=step)
+                self.assertEqual((slot / "Cut.FCPXML").read_text(), "generated project")
+                self.assertEqual(approved.read_text(), "human approval")
 
     def test_multiple_file_preflight_rejects_all_before_any_mutation(self):
         own = self.folder("3.2")

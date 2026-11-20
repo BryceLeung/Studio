@@ -11,17 +11,20 @@ from scripts import stage_status
 class StageStatusTests(unittest.TestCase):
     def test_all_definitions_resolve_and_preserve_independent_branches(self):
         stages = stage_status.load_stages()
-        self.assertEqual(len(stages), 13)
+        self.assertEqual(len(stages), 14)
         self.assertEqual(set(stages["3.2"]["prerequisites"][0].values()),
                          {"2.1", "2-Production/1-Footage Intake"})
         self.assertNotIn("3.1", [item["step"] for item in stages["3.2"]["prerequisites"]])
         self.assertNotIn("3.4", [item["step"] for item in stages["3.5"]["prerequisites"]])
-        order = stage_status.order_stages(stages, "3.6")
+        first_cut = stage_status.order_stages(stages, "3.6")
+        self.assertEqual(set(first_cut), set(stages) - {"1.4", "2.2", "2.3", "3.7"})
+        order = stage_status.order_stages(stages, "3.7")
         self.assertEqual(set(order), set(stages) - {"2.2"})
         self.assertEqual({item["step"] for item in stages["1.4"]["prerequisites"]}, {"1.1"})
-        self.assertIn("2.3", {item["step"] for item in stages["3.6"]["prerequisites"]})
+        self.assertEqual({item["step"] for item in stages["3.7"]["prerequisites"]}, {"3.6", "2.3"})
         self.assertLess(order.index("1.4"), order.index("2.3"))
-        self.assertLess(order.index("2.3"), order.index("3.6"))
+        self.assertLess(order.index("2.3"), order.index("3.7"))
+        self.assertLess(order.index("3.6"), order.index("3.7"))
         self.assertLess(order.index("3.3"), order.index("3.5"))
         self.assertLess(order.index("3.4"), order.index("3.6"))
 

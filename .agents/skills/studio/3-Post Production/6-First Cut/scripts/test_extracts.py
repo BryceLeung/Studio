@@ -135,7 +135,7 @@ class ExtractTests(unittest.TestCase):
             stage = project / cut.STAGE
             preserved = {}
             for relative in ("A.FCPXML", "Extracts/01-Example.FCPXML", "Extracts/Extract Mappings.json",
-                             "APPROVED/01-Example.mp4", "APPROVED/01-Example Portrait.mp4"):
+                             "APPROVED/01-Example.FCPXML", "APPROVED/01-Example Portrait.FCPXML"):
                 path = stage / relative
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_bytes(b"existing landscape or approved artifact")

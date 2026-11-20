@@ -1,6 +1,8 @@
 """Shared read-only validation, approval gates, and fail-closed evidence checks."""
 import json
+import os
 from pathlib import Path
+import re
 from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import patch
@@ -8,6 +10,10 @@ from zipfile import ZipFile
 
 from scripts import stage_completion, validation
 from scripts.script_docx_fixture import write_script_docx
+from studio.fingerprints import raw_sha256, sha256
+
+
+FCPXML = b'<fcpxml version="1.10"><library><event><project name="A"><sequence><spine/></sequence></project></event></library></fcpxml>'
 
 
 class CommonValidationTests(unittest.TestCase):
@@ -15,18 +21,21 @@ class CommonValidationTests(unittest.TestCase):
         definitions = validation.load_stages()
         with TemporaryDirectory() as directory:
             project = Path(directory)
-            for step in ("1.2", "1.3", "3.6"):
+            for step in ("1.2", "1.3", "3.6", "3.7"):
                 result = validation.check_marker(project, validation.ROOT, definitions[step])
                 self.assertEqual(result[0], "missing")
             self.assertEqual(list(project.iterdir()), [])
 
     def gate_fixture(self, project, step):
         definition = validation.load_stages()[step]
-        source = project / definition["inputs"][0]["folder"] / ("A__Scores.v1.json" if step == "3.6" else "A.docx")
+        source = project / definition["inputs"][0]["folder"] / {
+            "3.6": "A__Scores.v1.json", "3.7": "A.FCPXML",
+        }.get(step, "A.docx")
         source.parent.mkdir(parents=True)
-        source.write_bytes(b"source")
+        source.write_bytes(FCPXML if step == "3.7" else b"source")
         if step == "3.6":
             for relative in (
+                "3-Post Production/6-First Cut/A.FCPXML",
                 "1-Pre Production/1-Script Review/Approved/A.docx",
                 "1-Pre Production/3-Extracts/APPROVED/Short-Form Excerpt Shortlist.md",
                 "2-Production/1-Footage Intake/A__C01__camA.mov",
@@ -40,17 +49,33 @@ class CommonValidationTests(unittest.TestCase):
                 dependency = project / relative
                 dependency.parent.mkdir(parents=True, exist_ok=True)
                 dependency.write_bytes(b"generation source")
-        name = {"1.2": "A.pptx", "1.3": "Short-Form Excerpt Shortlist.md", "3.6": "A.mov"}[step]
-        output = project / definition["outputs"][0]["folder"] / name
+        name = {"1.2": "A.pptx", "1.3": "Short-Form Excerpt Shortlist.md", "3.6": "A.FCPXML", "3.7": "A.mov"}[step]
+        output = project / definition["outputs"][-1]["folder"] / name
         output.parent.mkdir(parents=True)
-        output.write_bytes(b"approved output")
+        output.write_bytes(FCPXML if step == "3.6" else b"approved output")
         marker = project / definition["folder"] / "DONE"
+        if step == "3.7":
+            (marker.parent / "A.FCPXML").write_bytes(FCPXML)
+            scores = project / definition["inputs"][-1]["folder"] / "A__Scores.v1.json"
+            scores.parent.mkdir(parents=True)
+            scores.write_text("{}")
+            animation_done = project / "2-Production/3-Animations/DONE"
+            animation_done.parent.mkdir(parents=True)
+            animation_done.write_text(json.dumps({"outputs": []}))
+            self.write_final_cut_review(project, source.parent, marker.parent)
         self.record_gate(project, definition, [source], [output])
         return definition, source, output, marker
 
+    def write_final_cut_review(self, project, approvals, final_cut, browser=()):
+        rows = []
+        for output in final_cut.glob("*.FCPXML"):
+            source = approvals / output.name
+            rows.append({"input": source.relative_to(project).as_posix(), "output": output.name,
+                         "input_sha256": sha256(source), "output_sha256": sha256(output)})
+        (final_cut / "REVIEW.json").write_text(json.dumps({"projects": rows, "browser": list(browser)}))
+
     def record_gate(self, project, definition, sources, outputs):
-        if definition["step"] == "3.6":
-            import re
+        if definition["step"] in ("3.6", "3.7"):
             sources = set(sources)
             for inventory in definition["inputs"]:
                 folder = project / inventory["folder"]
@@ -59,12 +84,14 @@ class CommonValidationTests(unittest.TestCase):
                                    if path.is_file() and re.fullmatch(inventory["filename_regex"], path.name, re.I))
             sources = sorted(sources)
         marker = project / definition["folder"] / "DONE"
+        if definition["step"] == "3.7":
+            outputs = [*outputs, *marker.parent.glob("*.FCPXML"), marker.parent / "REVIEW.json"]
         marker.write_text(json.dumps({"step": definition["step"], "dependencies": [],
                                       "inputs": [stage_completion.fingerprint(path, project, "project") for path in sources],
                                       "outputs": [stage_completion.fingerprint(path, project, "project") for path in outputs]}))
 
     def test_gate_presence_and_input_fingerprints_validate_without_review_tools(self):
-        for step in ("1.2", "1.3", "3.6"):
+        for step in ("1.2", "1.3", "3.6", "3.7"):
             with self.subTest(step=step), TemporaryDirectory() as directory:
                 project = Path(directory).resolve()
                 definition, source, output, marker = self.gate_fixture(project, step)
@@ -85,13 +112,16 @@ class CommonValidationTests(unittest.TestCase):
                 project = Path(directory).resolve()
                 definition, source, output, marker = self.gate_fixture(project, step)
                 draft = project / definition["folder"] / output.name
-                output.rename(draft)
+                if draft.exists():
+                    output.unlink()
+                else:
+                    output.rename(draft)
                 self.record_gate(project, definition, [source], [draft])
                 self.assertEqual(validation.check_marker(project, validation.ROOT, definition)[0], "stale")
                 self.assertTrue(marker.is_file())
                 self.assertFalse((marker.parent / "STALE").exists())
 
-    def test_all_source_scripts_need_corresponding_decks_or_approved_movies(self):
+    def test_all_source_scripts_need_corresponding_decks_or_first_cut_projects(self):
         for step in ("1.2", "3.6"):
             with self.subTest(step=step), TemporaryDirectory() as directory:
                 project = Path(directory).resolve()
@@ -103,21 +133,21 @@ class CommonValidationTests(unittest.TestCase):
                 self.assertEqual(status, "stale")
                 self.assertIn("Missing", reason)
 
-    def test_first_cut_accepts_supported_render_formats_case_insensitively(self):
+    def test_final_cut_accepts_supported_render_formats_case_insensitively(self):
         for suffix in ("MOV", "mp4", "m4v", "mkv", "avi", "webm", "mxf"):
             with self.subTest(suffix=suffix), TemporaryDirectory() as directory:
                 project = Path(directory).resolve()
-                definition, source, output, _ = self.gate_fixture(project, "3.6")
+                definition, source, output, _ = self.gate_fixture(project, "3.7")
                 movie = output.with_name(f"a.{suffix}")
                 output.rename(movie)
                 self.record_gate(project, definition, [source], [movie])
                 self.assertEqual(validation.check_marker(project, validation.ROOT, definition)[0], "current")
 
-    def test_first_cut_xml_or_empty_movies_cannot_prove_rendered_completion(self):
+    def test_final_cut_xml_or_empty_movies_cannot_prove_rendered_completion(self):
         for invalid in ("xml", "empty"):
             with self.subTest(invalid=invalid), TemporaryDirectory() as directory:
                 project = Path(directory).resolve()
-                definition, source, output, _ = self.gate_fixture(project, "3.6")
+                definition, source, output, _ = self.gate_fixture(project, "3.7")
                 if invalid == "xml":
                     movie = output.with_suffix(".FCPXML")
                     output.rename(movie)
@@ -127,7 +157,28 @@ class CommonValidationTests(unittest.TestCase):
                 self.record_gate(project, definition, [source], [movie])
                 self.assertEqual(validation.check_marker(project, validation.ROOT, definition)[0], "stale")
 
-    def test_generated_extract_projects_require_their_own_render(self):
+    def test_first_cut_approval_requires_plain_single_project_xml(self):
+        for invalid in (b"", b"<fcpxml", b"<other/>", b"<fcpxml/>",
+                        b"<fcpxml><project/><project/></fcpxml>", b"<fcpxml><project/></fcpxml>"):
+            with self.subTest(invalid=invalid), TemporaryDirectory() as directory:
+                project = Path(directory).resolve()
+                definition, source, approved, _ = self.gate_fixture(project, "3.6")
+                approved.write_bytes(invalid)
+                self.record_gate(project, definition, [source], [approved])
+                self.assertEqual(validation.check_marker(project, validation.ROOT, definition)[0], "stale")
+
+    def test_first_cut_rejects_unmatched_approved_xml(self):
+        with TemporaryDirectory() as directory:
+            project = Path(directory).resolve()
+            definition, source, approved, _ = self.gate_fixture(project, "3.6")
+            unrelated = approved.with_name("Unmatched.fcpxml")
+            unrelated.write_bytes(FCPXML)
+            self.record_gate(project, definition, [source], [approved, unrelated])
+            status, reason = validation.check_marker(project, validation.ROOT, definition)
+            self.assertEqual(status, "stale")
+            self.assertIn("Unexpected approved", reason)
+
+    def test_generated_extract_projects_require_their_own_edited_xml(self):
         for relative in ("Extracts/01-Example.FCPXML", "Extracts/Portrait/01-Example Portrait.FCPXML"):
             with self.subTest(project=relative), TemporaryDirectory() as directory:
                 project = Path(directory).resolve()
@@ -138,10 +189,10 @@ class CommonValidationTests(unittest.TestCase):
                 self.record_gate(project, definition, [source, xml], [output])
                 status, reason = validation.check_marker(project, validation.ROOT, definition)
                 self.assertEqual(status, "stale")
-                self.assertIn(xml.stem, reason)
-                rendered = output.with_name(xml.stem + ".mp4")
-                rendered.write_bytes(b"rendered extract")
-                self.record_gate(project, definition, [source, xml], [output, rendered])
+                self.assertIn(xml.stem.casefold(), reason)
+                edited = output.with_name(xml.stem.upper() + ".fcpxml")
+                edited.write_bytes(FCPXML)
+                self.record_gate(project, definition, [source, xml], [output, edited])
                 self.assertEqual(validation.check_marker(project, validation.ROOT, definition)[0], "current")
                 xml.write_text("<fcpxml version='changed' />")
                 self.assertEqual(validation.check_marker(project, validation.ROOT, definition)[0], "stale")
@@ -153,10 +204,10 @@ class CommonValidationTests(unittest.TestCase):
             xml = marker.parent / "Extracts/Portrait/01-Example Portrait.FCPXML"
             xml.parent.mkdir(parents=True)
             xml.write_text("<fcpxml />")
-            rendered = output.with_name(xml.stem + ".mp4")
-            rendered.write_bytes(b"rendered portrait extract")
+            edited = output.with_name(xml.stem + ".FCPXML")
+            edited.write_bytes(FCPXML)
             evidence = json.loads(marker.read_text())
-            evidence["outputs"].append(stage_completion.fingerprint(rendered, project, "project"))
+            evidence["outputs"].append(stage_completion.fingerprint(edited, project, "project"))
             marker.write_text(json.dumps(evidence))
             self.assertEqual(validation.check_marker(project, validation.ROOT, definition)[0], "stale")
 
@@ -171,11 +222,11 @@ class CommonValidationTests(unittest.TestCase):
                 (project / relative).write_bytes(b"changed generation source")
                 self.assertEqual(validation.check_marker(project, validation.ROOT, definition)[0], "stale")
 
-    def test_fresh_first_cut_evidence_cannot_reapprove_old_movies_after_input_changes(self):
+    def test_fresh_first_cut_evidence_cannot_reapprove_old_xml_after_input_changes(self):
         for archived in (False, True):
             with self.subTest(archived=archived), TemporaryDirectory() as directory:
                 project = Path(directory).resolve()
-                definition, _, movie, marker = self.gate_fixture(project, "3.6")
+                definition, _, edited, marker = self.gate_fixture(project, "3.6")
                 previous = json.loads(marker.read_text())
                 if archived:
                     stage_completion.archive_done(marker.parent)
@@ -187,12 +238,102 @@ class CommonValidationTests(unittest.TestCase):
                           for path in project.rglob("*") if path.is_file()}
                 status, reason = validation.validate_evidence(project, validation.ROOT, definition, candidate)
                 self.assertEqual(status, "stale")
-                self.assertIn("new approved rendered movie", reason)
+                self.assertIn("new approved First Cut edit", reason)
                 self.assertEqual({path.relative_to(project): (path.read_bytes(), path.stat().st_mtime_ns)
                                   for path in project.rglob("*") if path.is_file()}, before)
-                movie.write_bytes(b"newly edited and rendered movie with different identity")
-                candidate["outputs"] = [stage_completion.fingerprint(movie, project, "project")]
+                edited.write_bytes(FCPXML.replace(b'name="A"', b'name="edited A"'))
+                candidate["outputs"] = [stage_completion.fingerprint(edited, project, "project")]
                 self.assertEqual(validation.validate_evidence(project, validation.ROOT, definition, candidate)[0], "current")
+
+    def test_final_cut_checks_matching_projects_movies_and_context_inventory(self):
+        with TemporaryDirectory() as directory:
+            project = Path(directory).resolve()
+            definition, source, movie, marker = self.gate_fixture(project, "3.7")
+            extra = source.with_name("Extract 1.FCPXML")
+            extra.write_bytes(FCPXML)
+            self.record_gate(project, definition, [source, extra], [movie])
+            status, reason = validation.check_marker(project, validation.ROOT, definition)
+            self.assertEqual(status, "stale")
+            self.assertIn("project stems differ", reason)
+            (marker.parent / extra.name).write_bytes(FCPXML)
+            self.write_final_cut_review(project, source.parent, marker.parent)
+            self.record_gate(project, definition, [source, extra], [movie])
+            status, reason = validation.check_marker(project, validation.ROOT, definition)
+            self.assertEqual(status, "stale")
+            self.assertIn("Missing approved rendered movies", reason)
+            extra_movie = movie.with_name("extract 1.MP4")
+            extra_movie.write_bytes(b"extract render")
+            self.record_gate(project, definition, [source, extra], [movie, extra_movie])
+            self.assertEqual(validation.check_marker(project, validation.ROOT, definition)[0], "current")
+            for context in definition["inputs"][1:3]:
+                report = project / context["folder"] / "Extract Mappings.json"
+                report.parent.mkdir(parents=True)
+                report.write_text("{}")
+                self.assertEqual(validation.check_marker(project, validation.ROOT, definition)[0], "stale")
+                self.record_gate(project, definition, [source, extra], [movie, extra_movie])
+                self.assertEqual(validation.check_marker(project, validation.ROOT, definition)[0], "current")
+
+    def test_final_cut_render_provenance_uses_active_or_archived_approved_inputs_and_projects(self):
+        for archived in (False, True):
+            for change in ("input", "generated"):
+                with self.subTest(archived=archived, change=change), TemporaryDirectory() as directory:
+                    project = Path(directory).resolve()
+                    definition, source, movie, marker = self.gate_fixture(project, "3.7")
+                    if archived:
+                        stage_completion.archive_done(marker.parent)
+                    changed = source if change == "input" else marker.parent / "A.FCPXML"
+                    changed.write_bytes(FCPXML.replace(b'name="A"', b'name="changed A"'))
+                    candidate = stage_completion.build_manifest(project, validation.ROOT, "3.7")
+                    status, reason = validation.validate_evidence(project, validation.ROOT, definition, candidate)
+                    self.assertEqual(status, "stale")
+                    self.assertIn("Final Cut generation evidence changed", reason)
+                    self.write_final_cut_review(project, source.parent, marker.parent)
+                    candidate = stage_completion.build_manifest(project, validation.ROOT, "3.7")
+                    status, reason = validation.validate_evidence(project, validation.ROOT, definition, candidate)
+                    self.assertEqual(status, "stale")
+                    self.assertIn("new approved rendered movie", reason)
+                    movie.write_bytes(b"newly rendered movie with different identity")
+                    candidate = stage_completion.build_manifest(project, validation.ROOT, "3.7")
+                    self.assertEqual(validation.validate_evidence(project, validation.ROOT, definition, candidate)[0], "current")
+
+    def test_final_cut_detects_animation_changes_that_preserve_media_stat(self):
+        with TemporaryDirectory() as directory:
+            project = Path(directory).resolve()
+            definition, source, movie, marker = self.gate_fixture(project, "3.7")
+            media = project / "2-Production/3-Animations/A01/APPROVED/v001.mp4"
+            media.parent.mkdir(parents=True)
+            media.write_bytes(b"animation A")
+            stat = media.stat()
+            uri = "../../2-Production/3-Animations/A01/APPROVED/v001.mp4"
+            resources = (f'<resources><asset id="r1"><media-rep kind="original-media" src="{uri}"/>'
+                         f'<metadata><md key="studio.animation.sha256" value="{raw_sha256(media)}"/>'
+                         '</metadata></asset></resources>').encode()
+            (marker.parent / "A.FCPXML").write_bytes(FCPXML.replace(b"<library>", resources + b"<library>"))
+            animation = {"path": media.relative_to(project).as_posix(), "sha256": raw_sha256(media)}
+            self.write_final_cut_review(project, source.parent, marker.parent, [animation])
+            animation_done = media.parents[2] / "DONE"
+            animation_done.write_text(json.dumps({"outputs": [animation]}))
+            self.record_gate(project, definition, [source], [movie])
+            self.assertEqual(validation.check_marker(project, validation.ROOT, definition)[0], "current")
+            media.write_bytes(b"animation B")
+            os.utime(media, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+            status, reason = validation.check_marker(project, validation.ROOT, definition)
+            self.assertEqual(status, "stale")
+            self.assertIn("Approved animation source changed", reason)
+
+    def test_final_cut_requires_regeneration_when_animation_approval_inventory_changes(self):
+        with TemporaryDirectory() as directory:
+            project = Path(directory).resolve()
+            definition, _, _, _ = self.gate_fixture(project, "3.7")
+            animation_done = project / "2-Production/3-Animations/DONE"
+            video = animation_done.parent / "A01/APPROVED/v001.mp4"
+            video.parent.mkdir(parents=True)
+            video.write_bytes(b"new approved animation")
+            animation_done.write_text(json.dumps({"outputs": [{"path": video.relative_to(project).as_posix(),
+                                                                 "sha256": raw_sha256(video)}]}))
+            status, reason = validation.check_marker(project, validation.ROOT, definition)
+            self.assertEqual(status, "stale")
+            self.assertIn("animation inventory differs", reason)
 
     def test_script_review_checks_approval_and_root_inventory_without_writing(self):
         definition = validation.load_stages()["1.1"]
