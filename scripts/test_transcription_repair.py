@@ -171,18 +171,78 @@ class RepairTests(unittest.TestCase):
     def test_ambiguous_anchor_refused_with_diagnostics(self):
         changed = deepcopy(self.original)
         duplicate = deepcopy(changed["segments"][0])
-        for item in [duplicate, *duplicate["words"]]:
-            item["start"] += 15
-            item["end"] += 15
+        # Both occurrences fit the timing tolerance: neither may be guessed.
         changed["segments"].append(duplicate)
         # Use a full-window synthetic recognizer so both anchor occurrences reach splice.
         def recognize(*args, **kwargs):
             return {"raw_asr": {}, "alignment": changed, "window_start": 0}
-        with self.assertRaisesRegex(repair.RepairError, "ambiguous") as caught:
+        with self.assertRaisesRegex(repair.RepairError, "Ambiguous") as caught:
             repair.repair_transcription(self.root, self.mapping_path, 3, recognizer=recognize)
         self.assertTrue(Path(caught.exception.report_path).exists())
         self.assertEqual(json.loads(Path(caught.exception.report_path).read_text())["status"], "failed")
         self.assertFalse((self.takes / "Script__Takes.v2.json").exists())
+
+    def test_repeated_recognition_anchor_at_other_time_is_allowed(self):
+        changed = deepcopy(self.original)
+        duplicate = deepcopy(changed["segments"][0])
+        for item in [duplicate, *duplicate["words"]]:
+            item["start"] += 15
+            item["end"] += 15
+        changed["segments"].append(duplicate)
+        changed["segments"][2]["words"][0]["word"] = "Corrected"
+
+        def recognize(*args, **kwargs):
+            return {"raw_asr": {}, "alignment": changed, "window_start": 0}
+
+        result = repair.repair_transcription(self.root, self.mapping_path, 3, recognizer=recognize)
+        self.assertEqual(result["status"], "changed")
+        native = json.loads(Path(result["transcript_path"]).read_text())
+        words = repair._native_words(native)
+        self.assertEqual(len(words), 15)
+        self.assertEqual(words[6]["word"], "Corrected")
+
+    def test_repeated_source_anchors_preserve_the_selected_occurrence(self):
+        original = deepcopy(self.original)
+        # Repeat both boundary phrases later in the source.
+        for source in (original["segments"][0], original["segments"][4]):
+            duplicate = deepcopy(source)
+            for item in [duplicate, *duplicate["words"]]:
+                item["start"] += 18
+                item["end"] += 18
+            original["segments"].append(duplicate)
+        changed = deepcopy(original)
+        changed["segments"][2]["words"][0]["word"] = "Corrected"
+        candidate, summary = repair.splice(original, changed, 3, 12)
+        self.assertTrue(summary["wording_changed"])
+        self.assertEqual(repair._native_words(candidate)[6]["word"], "Corrected")
+        self.assertEqual(candidate["segments"][4:], original["segments"][4:])
+
+    def test_repeated_anchor_selects_later_match_within_tolerance(self):
+        words = repair._native_words(self.original)
+        earlier = deepcopy(words[:3])
+        selected = deepcopy(words[:3])
+        for word in selected:
+            word["start"] += 15
+            word["end"] += 15
+        original = earlier + selected
+        recognized = deepcopy(original)
+        for word in recognized[3:]:
+            word["start"] += 0.5
+            word["end"] += 0.5
+        self.assertEqual(repair._anchor(original, recognized, 3, 6, 0.5), (3, 6))
+
+    def test_repeated_anchor_without_match_at_source_time_is_refused(self):
+        words = repair._native_words(self.original)
+        for field in ("start", "end"):
+            with self.subTest(field=field):
+                shifted = deepcopy(words[:3])
+                shifted[0][field] += 0.6
+                later = deepcopy(words[:3])
+                for word in later:
+                    word["start"] += 15
+                    word["end"] += 15
+                with self.assertRaisesRegex(repair.RepairError, "timing is unstable"):
+                    repair._anchor(words, shifted + later, 0, 3, 0.5)
 
     def test_unknown_nonmonotonic_and_unstable_anchors_refused(self):
         for change in ("unknown", "nonmonotonic", "unstable"):

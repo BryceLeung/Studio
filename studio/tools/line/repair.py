@@ -108,27 +108,35 @@ def _anchor(original: list[dict], recognized: list[dict], first: int, end: int,
     pattern = [_norm(word["word"]) for word in original[first:end]]
     if not pattern:
         raise RepairError("Missing outer context anchor.")
-    old_tokens = [_norm(word["word"]) for word in original]
     new_tokens = [_norm(word["word"]) for word in recognized]
-    def occurrences(tokens):
-        return [i for i in range(len(tokens) - len(pattern) + 1) if tokens[i:i + len(pattern)] == pattern]
-    if occurrences(old_tokens) != [first]:
-        raise RepairError("Ambiguous outer context anchor in original transcript.")
-    candidates = occurrences(new_tokens)
-    if len(candidates) != 1:
-        raise RepairError("Missing or ambiguous outer context anchor in recognition.")
-    index = candidates[0]
-    _check_timing(recognized[index:index + len(pattern)])
-    if any(abs(original[first + j][field] - recognized[index + j][field]) > tolerance
-           for j in range(len(pattern)) for field in ("start", "end")):
+    _check_timing(original[first:end])
+    occurrences = [i for i in range(len(new_tokens) - len(pattern) + 1)
+                   if new_tokens[i:i + len(pattern)] == pattern]
+    if not occurrences:
+        raise RepairError("Missing outer context anchor in recognition.")
+    # The source word range identifies the intended occurrence. Repeated takes
+    # elsewhere are harmless; require one recognition match at that source time.
+    candidates = []
+    for index in occurrences:
+        try:
+            _check_timing(recognized[index:index + len(pattern)])
+        except RepairError:
+            continue
+        if all(abs(original[first + j][field] - recognized[index + j][field]) <= tolerance
+               for j in range(len(pattern)) for field in ("start", "end")):
+            candidates.append(index)
+    if not candidates:
         raise RepairError("Outer context anchor timing is unstable; repair refused.")
+    if len(candidates) != 1:
+        raise RepairError("Ambiguous outer context anchor in recognition at source time.")
+    index = candidates[0]
     return index, index + len(pattern)
 
 
 def splice(original: dict, aligned: dict, first: int, end: int, *,
            timing_threshold: float = 0.5, anchor_words: int = 3,
            anchor_tolerance: float = 0.5) -> tuple[dict, dict]:
-    """Replace [first,end) only between unique outer word anchors, in source time."""
+    """Replace [first,end) only between word anchors unique at their source time."""
     old, new = (_native_words(document, validate_timing=False) for document in (original, aligned))
     if not 0 <= first < end <= len(old):
         raise RepairError("Selected transcript range is invalid.")
