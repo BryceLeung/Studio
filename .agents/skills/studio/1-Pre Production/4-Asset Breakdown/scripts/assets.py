@@ -213,7 +213,7 @@ def validate_proposal(proposal, ctx):
     refs = proposal["extracts"]
     if not isinstance(refs, list) or any(not isinstance(ref, str) for ref in refs) or len(set(refs)) != len(refs):
         raise ValueError("Invalid extract references")
-    # Retained registry references are inert metadata, never resolved against 1.3.
+    # Stage 1.4 validates references structurally without resolving them against 1.3.
 
 
 def proposals(ctx, envelope):
@@ -361,12 +361,13 @@ def set_control(registry, key, value):
     registry["control"][key] = value
 
 
-# Keep the shipped header byte-for-byte: it is part of the registry parser contract.
-# Its Extracts field is now inert metadata, not an instruction to resolve 1.3 inputs.
+AUTOMATIC_EXTRACTS = "Automatic (by script passage)"
+LEGACY_EMPTY_EXTRACTS = "Full film only"
 INTRO = ("# Asset Registry\n\n"
          "Set Review to Pending Review, Keep, or Reject. Edit Type, Extracts, Passage, Asset, and Why in place.\n"
-         "Extracts: use explicit IDs separated by commas, or Full film only. Keep rejected cards and stable IDs.\n"
+         f"Extracts: use explicit IDs separated by commas, or {AUTOMATIC_EXTRACTS}. Keep rejected cards and stable IDs.\n"
          "Titles, Source, and Origin are read-only. Save edits before running helpers; machine evidence lives in Asset Registry.json (do not edit).\n\n")
+LEGACY_INTRO = INTRO.replace(AUTOMATIC_EXTRACTS, LEGACY_EMPTY_EXTRACTS)
 HUMAN_FIELDS = ("Review", "Type", "Extracts", "Passage", "Brief", "Notes")
 
 
@@ -400,7 +401,7 @@ def render(registry):
                  f"**Review:** {row['Review']}\n"
                  f"**Type:** {row['Type']} | **Origin:** {row['Origin']}\n"
                  f"**Source:** {prose(Path(row['Script']).stem)} | **Extracts:** "
-                 + (", ".join(refs) if refs else "Full film only") + "\n"
+                  + (", ".join(refs) if refs else AUTOMATIC_EXTRACTS) + "\n"
                  "**Passage**\n"
                  + "\n".join("> " + prose(line) for line in row["Passage"].split("\n")) + "\n\n"
                   "**Asset:** " + prose(row["Brief"]) + "\n"
@@ -428,9 +429,10 @@ def unique_object(pairs):
 
 
 def parse(text, evidence_text, *, errors=None):
-    if not text.startswith(INTRO):
+    intro = next((header for header in (INTRO, LEGACY_INTRO) if text.startswith(header)), None)
+    if intro is None:
         raise ValueError("Registry header changed; only current compact Markdown/JSON registries are supported")
-    body = text[len(INTRO):]
+    body = text[len(intro):]
     final_paragraph = body.rsplit("\n\n", 1)[-1]
     if (body.endswith("\n") and not body.endswith("\n\n") and
             (final_paragraph.startswith("**Why:** ") or "\n**Why:** " in final_paragraph)):
@@ -464,7 +466,12 @@ def parse(text, evidence_text, *, errors=None):
         internal = metadata[identity]
         if not isinstance(internal, dict) or set(internal) != (set(HEADERS) - set(HUMAN_FIELDS) - {"ID"}) | {"Extracts"}:
             raise ValueError("Invalid internal asset metadata")
-        references = [] if refs == "Full film only" else refs.split(", ")
+        if refs in (AUTOMATIC_EXTRACTS, LEGACY_EMPTY_EXTRACTS):
+            references = []
+        elif re.fullmatch(r"EXTRACT-\d+(?:, EXTRACT-\d+)*", refs):
+            references = refs.split(", ")
+        else:
+            raise ValueError(f"Extracts must be explicit EXTRACT IDs or {AUTOMATIC_EXTRACTS}")
         row = dict(internal, ID=identity, Review=review, Type=kind,
                    Extracts=internal["Extracts"] if json.loads(internal["Extracts"]) == references else encoded(references),
                    Passage="\n".join(unprose(line[2:]) for line in passage[:-1].split("\n")),
@@ -472,8 +479,6 @@ def parse(text, evidence_text, *, errors=None):
         if (heading != prose(title(row)) or origin != row["Origin"] or
                 source != prose(Path(row["Script"]).stem)):
             raise ValueError("Read-only title, Source, or Origin changed")
-        if refs != "Full film only" and not re.fullmatch(r"EXTRACT-\d+(?:, EXTRACT-\d+)*", refs):
-            raise ValueError("Extracts must be explicit EXTRACT IDs or Full film only")
         registry["assets"].append(row)
         body = body[card.end():]
     if set(metadata) != {row["ID"] for row in registry["assets"]}:

@@ -139,10 +139,10 @@ class AnimationIntake:
             row = versions[0][0]["registry"]
             if row["Script"] != script_path:
                 continue
-            if extract_number is not None and not any(
-                int(ref.removeprefix("EXTRACT-")) == extract_number for ref in json.loads(row["Extracts"])
-            ):
-                continue
+            if extract_number is not None:
+                refs = json.loads(row["Extracts"])
+                if refs and not any(int(ref.removeprefix("EXTRACT-")) == extract_number for ref in refs):
+                    continue
             start, end = int(row["Start"]), int(row["End"])
             if (not 0 <= start <= end < len(script["words"]) or
                     " ".join(w["text"] for w in script["words"][start:end + 1]) != row["Passage"]):

@@ -3,6 +3,7 @@
   "schema_version": 1,
   "step": "3.7",
   "workflow_dependencies": [
+    "studio/first_cut_exports.py",
     "studio/score_versions.py",
     ".agents/skills/studio/3-Post Production/7-Final Cut/scripts/final_cut.py",
     "studio/final_cut_animations.py",
@@ -21,7 +22,7 @@
     {"step": "2.3", "folder": "2-Production/3-Animations"}
   ],
   "inputs": [
-    {"folder": "3-Post Production/6-First Cut/APPROVED", "filename_regex": "^.+\\.FCPXML$", "minimum": 1, "complete_set": true},
+    {"folder": "3-Post Production/6-First Cut/APPROVED", "filename_regex": "^.+\\.FCPXML$", "bundle_member": "Info.fcpxml", "minimum": 0, "complete_set": true},
     {"folder": "3-Post Production/6-First Cut/Extracts", "filename_regex": "^Extract Mappings\\.json$", "minimum": 0, "maximum": 1, "complete_set": true},
     {"folder": "3-Post Production/6-First Cut/Extracts/Portrait", "filename_regex": "^Extract Mappings\\.json$", "minimum": 0, "maximum": 1, "complete_set": true},
     {"folder": "3-Post Production/4-Take Selection", "filename_regex": "^.+__Scores\\.v[1-9][0-9]*\\.json$", "minimum": 1, "complete_set": true}

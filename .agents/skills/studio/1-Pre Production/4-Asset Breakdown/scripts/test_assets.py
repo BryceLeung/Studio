@@ -901,14 +901,28 @@ class AssetTests(unittest.TestCase):
         for old, new in (("| Comparison diagram", "| Changed title"),
                          ("**Source:** A", "**Source:** B"),
                          ("**Origin:** AI", "**Origin:** User"),
-                          ("**Asset:** Comparison diagram", "**Asset:** **Why:**\nAmbiguous"),
-                         ("**Extracts:** Full film only", "**Extracts:** EXTRACT-9, unknown")):
+                         ("**Asset:** Comparison diagram", "**Asset:** **Why:**\nAmbiguous"),
+                         ("**Extracts:** Automatic (by script passage)", "**Extracts:** EXTRACT-9, unknown")):
             with self.subTest(old=old):
                 changed = text.replace(old, new, 1)
                 self.path.write_text(changed, encoding="utf-8")
                 with self.assertRaises(ValueError):
                     self.reconcile([self.suggestion()])
                 self.assertEqual(self.path.read_text(encoding="utf-8"), changed)
+
+    def test_legacy_extract_label_and_header_read_without_rewriting(self):
+        self.reconcile([self.suggestion()])
+        text = self.path.read_text(encoding="utf-8")
+        self.assertIn("**Extracts:** Automatic (by script passage)", text)
+        legacy = text.replace("Automatic (by script passage)", "Full film only")
+        self.path.write_text(legacy, encoding="utf-8")
+        before = assets.snapshot(self.project)
+        registry = assets.load(self.project)
+        self.assertTrue(registry["assets"])
+        self.assertTrue(all(row["Extracts"] == "[]" for row in registry["assets"]))
+        self.assertEqual(assets.render(registry), text)
+        self.reconcile([self.suggestion()])
+        self.assertEqual(assets.snapshot(self.project), before)
 
     def test_failed_atomic_save_preserves_original(self):
         self.reconcile()

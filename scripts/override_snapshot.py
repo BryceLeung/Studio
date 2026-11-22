@@ -95,7 +95,12 @@ def collect_snapshot(project, workflow, step):
         paths = []
         if directory.exists() and not directory.is_dir():
             raise ValueError(f"Inventory folder is not a directory: {folder}")
-        if directory.is_dir():
+        if scope == "project" and "bundle_member" in rule:
+            from studio.first_cut_exports import exports
+
+            minimum = max(1, minimum)
+            paths = [path.relative_to(roots[scope]).as_posix() for path in exports(roots[scope], rule).values()]
+        elif directory.is_dir():
             for path in directory.iterdir():
                 name = path.relative_to(roots[scope]).as_posix()
                 if not pattern.fullmatch(path.name) or _excluded(name) or (scope == "workflow" and name.casefold() == ROOT_SKILL.casefold()):

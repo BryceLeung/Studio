@@ -229,8 +229,8 @@ def build_xml(project, output, name, document, scores, syncs, probes, padding_ms
         return identifier
     if (first_video.get("color_primaries"), first_video.get("color_transfer")) != ("bt709", "bt709"):
         raise ValueError("Project color space needs explicit handling for non-Rec.709 footage.")
-    project_format = format_for({"width": portrait.WIDTH, "height": portrait.HEIGHT}
-                                if face_paths is not None else first_video, frame)
+    project_video = {"width": portrait.WIDTH, "height": portrait.HEIGHT} if face_paths is not None else first_video
+    project_format = format_for(project_video, frame)
     framing_warnings = []
     title_effect = resource_id() if with_subtitles else None
     if title_effect:
@@ -310,7 +310,8 @@ def build_xml(project, output, name, document, scores, syncs, probes, padding_ms
         element(clip, "mc-source", angleID=angles[take["angle"]], srcEnable="video")
         if with_subtitles:
             subtitle_count += subtitles.add_titles(clip, take, transcript_words[take["transcript_source"]["path"]],
-                                                    frame, title_effect, subtitle_count, portrait=face_paths is not None)
+                                                    frame, title_effect, subtitle_count,
+                                                    canvas_size=(project_video["width"], project_video["height"]))
         element(clip, "marker", start=time(take["cut_in"]), duration=time(frame), value=f"{label} IN")
         # OUT labels the final included frame, so the marker stays inside the trim.
         element(clip, "marker", start=time(take["cut_out"] - frame), duration=time(frame), value=f"{label} OUT")

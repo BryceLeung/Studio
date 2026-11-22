@@ -15,7 +15,8 @@ ROOT = next(path for path in Path(__file__).resolve().parents if (path / "studio
 sys.path.insert(0, str(ROOT))
 
 from scripts.stage_invalidation import _default_log, invalidate, prepare_regeneration
-from scripts.validation import require_prerequisites, StageValidation
+from scripts.validation import load_stages, require_prerequisites, StageValidation
+from studio.first_cut_exports import export_stem, exports
 from studio import final_cut_animations as animations
 from studio.fingerprints import sha256
 from studio import score_versions
@@ -305,20 +306,18 @@ def run(project, ffprobe="ffprobe", regenerate=False):
         entries, diagnostics = animations.load(project, ROOT, ffprobe=ffprobe)
         lookup = contexts(guard)
         planned, projects = {}, []
-        for source in sorted(approved.iterdir()):
-            if not source.is_file() or source.suffix.casefold() != ".fcpxml":
-                continue
-            source = guard.confined(source)
-            if source.stem.casefold() not in lookup:
-                raise ValueError(f"No current script or extract mapping for {source.name}")
-            score, extract_number = lookup[source.stem.casefold()]
+        rule = load_stages(ROOT)[STEP]["inputs"][0]
+        for key, source in exports(project, rule).items():
+            if key not in lookup:
+                raise ValueError(f"No current script or extract mapping for {export_stem(source)}")
+            score, extract_number = lookup[key]
             scores = json.loads(guard.confined(score).read_text(encoding="utf-8-sig"))
             mapping = guard.confined(scores["source_mapping"]["path"])
             document = json.loads(mapping.read_text(encoding="utf-8-sig"))
             if document.get("schema_version") == 2:
                 document = {"script": document["sources"]["script"],
                             "script_groupings": document["groupings"]["script"]}
-            output = directory / source.name
+            output = directory / (source.name if source.parent == approved else export_stem(source) + ".FCPXML")
             source_xml = source.read_bytes()
             planned[output], report = convert(source_xml, project, source, output, document, extract_number, entries)
             projects.append(dict(report, input=source.relative_to(project).as_posix(), output=output.name,

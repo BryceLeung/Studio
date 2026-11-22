@@ -7,18 +7,20 @@ import xml.etree.ElementTree as ET
 from scripts import stage_completion as completion
 from scripts.validation import StageValidation, recorded_fingerprints
 from studio.final_cut_animations import verify_sources
+from studio.first_cut_exports import export_stem, exports, matches_rule
 from studio.fingerprints import matches, matches_identity
 
 
 class Validation(StageValidation):
     def validate_stage(self):
-        sources = self.files(self.definition["inputs"][0])
+        sources = exports(self.project, self.definition["inputs"][0])
+        self.require_inventory("inputs", sources.values())
         projects = self.files(self.definition["outputs"][0])
         report, = self.files(self.definition["outputs"][1])
         movies = self.files(self.definition["outputs"][2])
-        expected = {path.stem.casefold(): path.stem for path in sources}
+        expected = {key: export_stem(path) for key, path in sources.items()}
         generated = {path.stem.casefold() for path in projects}
-        if len(expected) != len(sources) or len(generated) != len(projects):
+        if len(generated) != len(projects):
             raise ValueError("Duplicate Final Cut project stems")
         if expected.keys() - generated or generated - expected.keys():
             raise ValueError(f"Final Cut project stems differ from approved First Cut XML: "
@@ -55,8 +57,8 @@ class Validation(StageValidation):
                 or not isinstance(review.get("browser"), list)):
             raise ValueError("Final Cut REVIEW.json must record project and animation provenance")
         output_by_stem = {path.stem.casefold(): path for path in projects}
-        expected = {source.relative_to(self.project).as_posix(): (source, output_by_stem[source.stem.casefold()])
-                    for source in sources}
+        expected = {source.relative_to(self.project).as_posix(): (source, output_by_stem[key])
+                    for key, source in sources.items()}
         for row in review["projects"]:
             source_output = expected.pop(row["input"], None)
             if source_output is None:
@@ -87,10 +89,8 @@ class Validation(StageValidation):
     @staticmethod
     def fingerprints(manifest, section, rules):
         return [entry for entry in recorded_fingerprints({section: manifest.get(section)})
-                if entry.get("scope") == "project" and any(
-                    completion.relative_path(entry["path"]).parent.as_posix() == rule["folder"]
-                    and re.fullmatch(rule["filename_regex"], Path(entry["path"]).name, re.I)
-                    for rule in rules)]
+                 if entry.get("scope") == "project" and any(
+                     matches_rule(completion.relative_path(entry["path"]), rule) for rule in rules)]
 
     def validate_render_provenance(self, movies, expected):
         """Preserved approved files are not new render evidence after inputs change."""

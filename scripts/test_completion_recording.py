@@ -10,6 +10,7 @@ from unittest.mock import patch
 from scripts import stage_completion as completion
 from scripts import validation
 from scripts.script_docx_fixture import write_script_docx
+from studio import first_cut_exports
 
 
 class RecordingTests(unittest.TestCase):
@@ -41,6 +42,44 @@ class RecordingTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Cannot complete"):
             completion.record_done(self.project, validation.ROOT, "1.1", candidate)
         self.assertFalse(self.marker("1.1").exists())
+
+    def test_first_cut_bundle_is_recorded_and_checked_in_place(self):
+        definition = self.stages["3.6"]
+        for rule in definition["inputs"]:
+            folder = self.project / rule["folder"]
+            folder.mkdir(parents=True, exist_ok=True)
+            if rule["minimum"]:
+                names = {
+                    "4-Take Selection": ["A__Scores.v1.json"], "6-First Cut": ["A.FCPXML"],
+                    "APPROVED": ["Short-Form Excerpt Shortlist.md"],
+                    "1-Footage Intake": ["A__C01__camA.mov", "A__C01__camB.mov", "A__C01__lav.wav"],
+                    "1-Sync": ["A__C01.json"], "2-Transcribe": ["A__C01__lav.json"],
+                    "3-Find Takes": ["A__Takes.v1.json"], "5-Face Tracking": ["Face Paths.json"],
+                }
+                if folder != self.script.parent:
+                    for name in names[folder.name]:
+                        (folder / name).write_bytes(b"fixture")
+        approvals = self.project / definition["outputs"][0]["folder"]
+        xml = approvals / "A.fcpxmld/Info.fcpxml"
+        xml.parent.mkdir(parents=True)
+        content = b"<fcpxml><project><sequence><spine/></sequence></project></fcpxml>"
+        xml.write_bytes(content)
+        manifest = first_cut_exports.build_manifest(self.project, validation.ROOT, "3.6")
+        self.assertEqual([entry["path"] for entry in manifest["outputs"]],
+                         [xml.relative_to(self.project).as_posix()])
+        with patch.object(validation, "require_prerequisites"):
+            completion.record_done(self.project, validation.ROOT, "3.6", manifest)
+        check = lambda: validation.check_marker(self.project, validation.ROOT, definition)
+        self.assertEqual(check()[0], "current")
+        (approvals / "a.fcpxml").write_bytes(content)
+        with self.assertRaisesRegex(ValueError, "Duplicate First Cut approval"):
+            first_cut_exports.build_manifest(self.project, validation.ROOT, "3.6")
+        (approvals / "a.fcpxml").unlink()
+        xml.write_bytes(content + b"\n")
+        self.assertEqual(check()[0], "stale")
+        xml.unlink()
+        with self.assertRaisesRegex(ValueError, "Expected a regular approved First Cut XML"):
+            first_cut_exports.build_manifest(self.project, validation.ROOT, "3.6")
 
     def test_agent_owned_approval_steps_share_the_writer_and_graph(self):
         self.record("1.1")

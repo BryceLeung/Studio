@@ -6,6 +6,7 @@ import xml.etree.ElementTree as ET
 
 from scripts import stage_completion as completion
 from scripts.validation import StageValidation, recorded_fingerprints
+from studio.first_cut_exports import export_stem, exports, matches_rule
 from studio.fingerprints import matches_identity
 from studio.score_versions import latest_scores
 
@@ -27,19 +28,20 @@ class Validation(StageValidation):
             expected.update(stems)
 
         target = self.definition["outputs"][0]
-        approved = self.by_stem(self.files(target))
+        approved = exports(self.project, target)
         if expected - approved.keys():
             raise ValueError(f"Missing approved First Cut FCPXML for projects: {sorted(expected - approved.keys())}")
         if approved.keys() - expected:
             raise ValueError(f"Unexpected approved First Cut FCPXML: {sorted(approved.keys() - expected)}")
+        self.require_inventory("outputs", approved.values(), exact=True)
         for path in approved.values():
             try:
                 root = ET.parse(path).getroot()
             except ET.ParseError as error:
-                raise ValueError(f"Invalid approved First Cut FCPXML: {path.name}: {error}") from error
+                raise ValueError(f"Invalid approved First Cut FCPXML: {path.relative_to(self.project)}: {error}") from error
             projects = list(root.iter("project"))
             if root.tag != "fcpxml" or len(projects) != 1 or projects[0].find("sequence/spine") is None:
-                raise ValueError(f"Approved FCPXML must contain one project with a timeline: {path.name}")
+                raise ValueError(f"Approved FCPXML must contain one project with a timeline: {path.relative_to(self.project)}")
         self.validate_edit_provenance(approved, target)
 
     def files(self, rule):
@@ -79,7 +81,7 @@ class Validation(StageValidation):
             if not isinstance(entry, dict) or not isinstance(entry.get("path"), str):
                 raise NotImplementedError("Malformed historical First Cut output evidence needs review")
             path = completion.relative_path(entry["path"])
-            if path.parent.as_posix() != target["folder"] or not re.fullmatch(target["filename_regex"], path.name, re.I):
+            if not matches_rule(path, target):
                 continue  # Movie-only history did not record approval of edited XML.
             digest = entry.get("sha256")
             if (entry.get("scope") != "project" or entry.get("method", "sha256") != "sha256"
@@ -103,6 +105,6 @@ class Validation(StageValidation):
                 and all(completion.matches_entry(entry, self.project, self.workflow) for entry in old_inputs)):
             return
         for entry in old_edits:
-            stem = Path(entry["path"]).stem.casefold()
+            stem = export_stem(Path(entry["path"])).casefold()
             if stem in approved and matches_identity(approved[stem], entry):
-                raise ValueError(f"Generation inputs changed; a new approved First Cut edit is required for {approved[stem].stem}")
+                raise ValueError(f"Generation inputs changed; a new approved First Cut edit is required for {export_stem(approved[stem])}")

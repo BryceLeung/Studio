@@ -1,13 +1,57 @@
 """Build editable, word-highlighted Final Cut titles inside take compounds."""
 from fractions import Fraction
 import math
+import unicodedata
 import xml.etree.ElementTree as ET
 
 
 TITLE_UID = ".../Titles.localized/Bumper:Opener.localized/Basic Title.localized/Basic Title.moti"
 HIGHLIGHT_COLOR = "1 0.827451 0.301961 1"  # #ffd34d in the approved style mockup.
-LINE_LENGTH = 15
 FONT_SIZE = 140
+SAFE_PADDING = 0.12
+LINE_HEIGHT_EM = 1.4
+
+
+def width_em(text):
+    """Conservative advance estimate for Arial Black and wide fallback glyphs."""
+    total = 0.0
+    for char in text:
+        if unicodedata.combining(char):
+            continue
+        if char in " ilI.,:;!'|":
+            total += 0.45
+        elif char in "MWmw@%&" or not char.isascii():
+            total += 1.2
+        elif char.isupper():
+            total += 0.95
+        else:
+            total += 0.8
+    return total
+
+
+def phrase_layout(labels, canvas_size):
+    width, height = canvas_size
+    portrait = height > width
+    base_size = FONT_SIZE // 2 if portrait else FONT_SIZE
+    margin = math.floor(width * (0.5 - SAFE_PADDING))
+    # Leave slack inside the paragraph box for differences in FCP font metrics.
+    budget = min(2 * margin * 0.95, 11 * base_size)
+    line_width = width_em(" ".join(labels))
+    split = None
+    if line_width * base_size > budget and len(labels) > 1:
+        line_width, split = min(
+            (max(width_em(" ".join(labels[:i])), width_em(" ".join(labels[i:]))), i)
+            for i in range(1, len(labels))
+        )
+    line_height = LINE_HEIGHT_EM * (1 if split is None else 2)
+    room_below_center = height * (0.5 - SAFE_PADDING)
+    font_size = math.floor(min(base_size, budget / line_width, room_below_center / line_height))
+    if font_size < 1:
+        raise ValueError("Subtitle phrase cannot fit inside the padded frame.")
+    # FCP's transform Y is a percentage of frame height. Reserve the whole
+    # block below the anchor rather than assuming FCP vertically centers it.
+    lowest_y = math.ceil(100 * (line_height * font_size - room_below_center) / height)
+    return font_size, split, margin, max(-22 if portrait else -24, lowest_y)
 
 
 def frame_at(value, frame):
@@ -19,7 +63,7 @@ def time(value):
     return f"{value.numerator}/{value.denominator}s" if value.denominator != 1 else f"{value.numerator}s"
 
 
-def add_titles(clip, take, words, frame, effect_id, id_start=0, portrait=False, lane=1):
+def add_titles(clip, take, words, frame, effect_id, id_start=0, lane=1, *, canvas_size=(3840, 2160)):
     """Anchor source-time titles to the multicam clip, matching FCP's exported XML."""
     start_index, end_index = take["transcript"]["word_start"], take["transcript"]["word_end"]
     selected = words[start_index:end_index + 1]
@@ -81,9 +125,7 @@ def add_titles(clip, take, words, frame, effect_id, id_start=0, portrait=False, 
         groups.append(phrase)
     for group_index, group in enumerate(groups):
         display = [(word, index) for index, (labels, _, _) in enumerate(group) for word in labels]
-        font_size = min(FONT_SIZE, FONT_SIZE * LINE_LENGTH // max(len(word) for word, _ in display))
-        if portrait:
-            font_size //= 2
+        font_size, split, margin, y = phrase_layout([word for word, _ in display], canvas_size)
         # Hold the final highlight until the next phrase, or the end of this take.
         group_end = groups[group_index + 1][0][1] if group_index + 1 < len(groups) else take["cut_out"]
         for index, (_, start, _) in enumerate(group):
@@ -96,28 +138,22 @@ def add_titles(clip, take, words, frame, effect_id, id_start=0, portrait=False, 
             # Basic Title is point text by default. Request paragraph layout and
             # keep explicit word-boundary breaks for Final Cut versions that ignore it.
             for name, key, value in (("Layout Method", "314", "1 (Paragraph)"),
-                                     ("Left Margin", "323", "-450" if portrait else "-1500"),
-                                     ("Right Margin", "324", "450" if portrait else "1500")):
+                                     ("Left Margin", "323", str(-margin)),
+                                     ("Right Margin", "324", str(margin))):
                 ET.SubElement(title, "param", {"name": name,
                                                "key": f"9999/999166631/999166633/2/{key}", "value": value})
             text = ET.SubElement(title, "text")
             plain, highlight = f"ts{id_start + count}p", f"ts{id_start + count}h"
-            line_length = 0
             for n, (label, owner) in enumerate(display):
                 color = HIGHLIGHT_COLOR if owner == index else "1 1 1 1"
                 if n:
-                    separator = "\n" if line_length + 1 + len(label) > LINE_LENGTH else " "
-                    text[-1].text += separator
-                    line_length = len(label) if separator == "\n" else line_length + 1 + len(label)
-                else:
-                    line_length = len(label)
+                    text[-1].text += "\n" if n == split else " "
                 ET.SubElement(text, "text-style", {"ref": highlight if owner == index else plain,
                                                     "fontColor": color}).text = label
             for style_id, color in ((plain, "1 1 1 1"), (highlight, HIGHLIGHT_COLOR)):
                 definition = ET.SubElement(title, "text-style-def", {"id": style_id})
                 ET.SubElement(definition, "text-style", {"font": "Arial Black", "fontSize": str(font_size),
                                                            "fontColor": color, "alignment": "center"})
-            if portrait:
-                ET.SubElement(title, "adjust-transform", {"position": "0 -28"})
+            ET.SubElement(title, "adjust-transform", {"position": f"0 {y}"})
             count += 1
     return count

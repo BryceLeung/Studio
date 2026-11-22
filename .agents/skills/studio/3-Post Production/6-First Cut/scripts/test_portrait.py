@@ -212,7 +212,8 @@ class PortraitTests(unittest.TestCase):
                              [("camA", "take3", ["trailing_hold"]), ("camB", "take3", ["trailing_hold"])])
             self.assertEqual(len(root.findall("resources/media/sequence")), 4)
             for title in root.findall(".//title"):
-                self.assertEqual(title.find("adjust-transform").attrib["position"], "0 -28")
+                self.assertEqual(title.find("adjust-transform").attrib["position"], "0 -22")
+                self.assertEqual(title.find("param[@name='Right Margin']").attrib["value"], "410")
                 self.assertEqual(title.find("text-style-def/text-style").attrib["fontSize"], "70")
 
     def test_crop_clamps_and_centered_fallback_is_reported(self):

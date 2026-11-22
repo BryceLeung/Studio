@@ -6,9 +6,15 @@ description: Run or resume Studio substage 3.6, creating Final Cut Pro projects 
 # 3.6 — First Cut
 
 Normal generation uses the root skill's shared prerequisite walk. After editing
-and exporting the expected project FCPXML files into `APPROVED/`, invoke the
-shared completion recorder with `--stage 3.6`. It validates the draft and edited
-project inventories and current input fingerprints before writing `DONE`.
+and exporting the expected projects into `APPROVED/`, run this completion helper
+from the workflow root using the shared interpreter:
+
+```text
+python "<workflow-root>/studio/first_cut_exports.py" --project-root "<real-project-root>" --stage 3.6
+```
+
+It gathers bundle-aware evidence and calls the shared recorder, which validates
+the draft and edited project inventories and current fingerprints before writing `DONE`.
 Generation alone never records completion. Do not hand-author the marker.
 
 Read the Studio root skill for project resolution and logging rules. Resolve the
@@ -113,10 +119,12 @@ the trial in 0-Tmp, without replacing First Cut exports or satisfying 3.6.
 Edit the generated projects in Final Cut Pro. Finalize the take choices, trims,
 camera switches, and dialogue edit. You can leave an audition open with the
 desired take active; Final Cut Pro exports that pick first. Export each edited
-project as a plain, single-project `.fcpxml` (not an `.fcpxmld` bundle) into
+project as a single-project `.fcpxmld` bundle or standalone `.fcpxml` into
 `3-Post Production/6-First Cut/APPROVED/` with the same filename stem as the
-generated project. Keep the generated drafts in their generation folders. No
-movie render is required here. The edited export is the input to 3.7.
+generated project. Keep one export per stem. Studio reads and fingerprints
+`Info.fcpxml` directly inside each bundle. Keep the generated drafts in their
+generation folders. No movie render is required here. The edited export is the
+input to 3.7.
 
 Record current input fingerprints (including the generated project inventories)
 and the complete edited-export inventory in `DONE`. Source media, sync checks,

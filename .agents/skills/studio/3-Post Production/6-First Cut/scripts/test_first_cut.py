@@ -316,7 +316,7 @@ class FirstCutTests(unittest.TestCase):
             self.assertEqual([style.attrib["fontSize"] for style in titles[0].findall("text-style-def/text-style")],
                              ["140", "140"])
             self.assertEqual({p.attrib["name"]: p.attrib["value"] for p in titles[0].findall("param")},
-                             {"Layout Method": "1 (Paragraph)", "Left Margin": "-1500", "Right Margin": "1500"})
+                             {"Layout Method": "1 (Paragraph)", "Left Margin": "-1459", "Right Margin": "1459"})
             self.assertFalse(titles[0].findall(".//text-style[@strokeWidth]"))
 
     def test_collapsed_subtitle_words_share_adjacent_highlights_without_losing_text(self):
@@ -374,7 +374,8 @@ class FirstCutTests(unittest.TestCase):
                              for label, start, end in (("one", 100, 200), ("two", 300, 400),
                                                        ("three", 500, third_word_end), ("four", 900, 1000))]
                     clip = ET.Element("mc-clip")
-                    cut.subtitles.add_titles(clip, take, words, frame, "r1", portrait=portrait)
+                    canvas = (1080, 1920) if portrait else (3840, 2160)
+                    cut.subtitles.add_titles(clip, take, words, frame, "r1", canvas_size=canvas)
                     titles = clip.findall("title")
                     self.assertEqual([title.attrib["name"] for title in titles],
                                      ["one two three"] * 3 + ["four"])
@@ -392,9 +393,9 @@ class FirstCutTests(unittest.TestCase):
                 "origins": {"lav": Fraction(0)}, "cut_in": Fraction(0), "cut_out": frame * 30}
         words = [{"text": "a", "start_ms": 6, "end_ms": 14}]
         clip = ET.Element("mc-clip")
-        cut.subtitles.add_titles(clip, take, words, frame, "r1", portrait=True)
+        cut.subtitles.add_titles(clip, take, words, frame, "r1", canvas_size=(1080, 1920))
         self.assertEqual(cut.parse_time(clip.find("title").attrib["duration"]), take["cut_out"])
-        self.assertEqual(clip.find("title/adjust-transform").attrib["position"], "0 -28")
+        self.assertEqual(clip.find("title/adjust-transform").attrib["position"], "0 -22")
         take["cut_out"] = Fraction(1, 100)
         with self.assertRaisesRegex(ValueError, "No subtitle frame fits"):
             cut.subtitles.add_titles(ET.Element("mc-clip"), take, words, frame, "r1")
@@ -429,6 +430,39 @@ class FirstCutTests(unittest.TestCase):
                                                "end_ms": 1000}], Fraction(1, 30), "r1")
         self.assertLess(int(clip.find("title/text-style-def/text-style").attrib["fontSize"]),
                         cut.subtitles.FONT_SIZE)
+
+    def test_subtitle_safe_padding_uses_canvas_and_glyph_width_in_each_highlight(self):
+        for width, height in ((1080, 1920), (1920, 1080), (3840, 2160)):
+            for labels, expected in ((["WWWWWW", "MMMMMM"], "WWWWWW\nMMMMMM"),
+                                     (["iiiiii", "llllll"], "iiiiii llllll"),
+                                     (["WWWWWWWWWWWWWWWWWWWW"], "WWWWWWWWWWWWWWWWWWWW")):
+                with self.subTest(canvas=(width, height), labels=labels):
+                    clip = ET.Element("mc-clip")
+                    take = {"take_key": "padding", "transcript": {"word_start": 0, "word_end": len(labels) - 1},
+                            "origins": {"lav": Fraction(0)}, "cut_in": Fraction(0), "cut_out": Fraction(2)}
+                    words = [{"text": label, "start_ms": i * 1000, "end_ms": (i + 1) * 1000}
+                             for i, label in enumerate(labels)]
+                    cut.subtitles.add_titles(clip, take, words, Fraction(1, 30), "r1", canvas_size=(width, height))
+                    layouts = set()
+                    for title in clip.findall("title"):
+                        text = "".join(title.find("text").itertext())
+                        self.assertEqual(text, expected)
+                        params = {p.attrib["name"]: p.attrib["value"] for p in title.findall("param")}
+                        left, right = int(params["Left Margin"]), int(params["Right Margin"])
+                        self.assertEqual(left, -right)
+                        self.assertGreaterEqual(width / 2 - right, width * 0.12)
+                        size = int(title.find("text-style-def/text-style").attrib["fontSize"])
+                        x, y = map(int, title.find("adjust-transform").attrib["position"].split())
+                        self.assertEqual(x, 0)
+                        lines = text.splitlines()
+                        self.assertLessEqual(max(cut.subtitles.width_em(line) for line in lines) * size,
+                                             right - left)
+                        self.assertGreaterEqual(height * (0.5 + y / 100) - len(lines) * 1.4 * size,
+                                                height * 0.12)
+                        if len(labels) == 1:
+                            self.assertLess(size, 70 if height > width else 140)
+                        layouts.add((size, y))
+                    self.assertEqual(len(layouts), 1)
 
     def test_explicit_script_discard_omits_sentence_but_retains_take_compound(self):
         with TemporaryDirectory() as directory:

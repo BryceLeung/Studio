@@ -41,8 +41,8 @@ class FinalCutTests(unittest.TestCase):
         self.source = self.project / cut.FIRST_CUT / "APPROVED/A.fcpxml"
         self.output = self.project / cut.STAGE / self.source.name
 
-    def convert(self, xml=XML, entries=(), extract=None):
-        payload, report = cut.convert(xml, self.project, self.source, self.output, DOCUMENT, extract, entries)
+    def convert(self, xml=XML, entries=(), extract=None, document=DOCUMENT):
+        payload, report = cut.convert(xml, self.project, self.source, self.output, document, extract, entries)
         root = ET.fromstring(payload)
         project = root.find("library/event/project")
         return root, project.find("sequence/spine"), report
@@ -91,12 +91,50 @@ class FinalCutTests(unittest.TestCase):
         self.assertEqual(report["placements"][0]["offset"], "8s")
         self.assertIsNotNone(root.find("library/event[@name='Animations']/asset-clip"))
 
-    def test_excludes_unassigned_extract_animation_and_rejects_unsafe_edits(self):
-        root, _, report = self.convert(entries=[self.asset()], extract=2)
+    def test_automatic_animation_follows_anchor_into_extracts(self):
+        entry = self.asset()
+        entry["registry"]["Extracts"] = "[]"
+        for extract in (None, 1, 2):
+            with self.subTest(extract=extract):
+                _, spine, report = self.convert(entries=[entry], extract=extract)
+                self.assertEqual(len(report["placements"]), 1)
+                self.assertIsNotNone(spine.find("mc-clip/asset-clip[@enabled='0']"))
+        document = {"script": dict(DOCUMENT["script"], words=[{"text": "Hello"}, {"text": "Elsewhere"}]),
+                    "script_groupings": [*DOCUMENT["script_groupings"], {"word_start": 1, "word_end": 1}]}
+        entry["registry"].update(Start="1", End="1", Passage="Elsewhere")
+        root, _, report = self.convert(entries=[entry], extract=2, document=document)
         self.assertEqual(report["placements"], [])
         self.assertIsNotNone(root.find("library/event[@name='Animations']/asset-clip"))
+
+    def test_explicit_extract_ids_restrict_placement(self):
+        entry = self.asset()
+        root, _, report = self.convert(entries=[entry], extract=2)
+        self.assertEqual(report["placements"], [])
+        self.assertIsNotNone(root.find("library/event[@name='Animations']/asset-clip"))
+        _, _, report = self.convert(entries=[entry])
+        self.assertEqual(len(report["placements"]), 1)
+
+    def test_rejects_unsafe_edits(self):
         with self.assertRaisesRegex(ValueError, "Cannot transfer adjust-transform"):
             self.convert(XML.replace(b'tart="4s" duration="2s">', b'tart="4s" duration="2s"><adjust-transform/>'))
+
+    def test_generation_reads_bundle_and_uses_its_stem_and_xml_location(self):
+        source = self.source.with_suffix(".fcpxmld") / "Info.fcpxml"
+        source.parent.mkdir(parents=True)
+        source.write_bytes(XML)
+        scores = self.project / cut.SCORES / "A__Scores.v1.json"
+        scores.parent.mkdir(parents=True)
+        scores.write_text(json.dumps({"source_mapping": {"path": "mapping.json"}}))
+        (self.project / "mapping.json").write_text(json.dumps(DOCUMENT))
+        with patch.object(cut, "require_prerequisites"), patch.object(cut.animations, "load", return_value=([], [])), \
+                patch.object(cut, "invalidate"):
+            report = cut.run(self.project)
+        row, = report["projects"]
+        self.assertEqual(row["input"], source.relative_to(self.project).as_posix())
+        self.assertEqual(row["output"], "A.FCPXML")
+        media = ET.parse(self.output.with_suffix(".FCPXML")).find("resources/asset/media-rep")
+        self.assertEqual(media.get("src"), "../6-First%20Cut/APPROVED/Media%20with%20space.mov")
+        self.assertEqual(source.read_bytes(), XML)
 
     def test_generation_does_not_overwrite_existing_edit(self):
         self.source.parent.mkdir(parents=True)

@@ -68,8 +68,9 @@ def _recognizable_output(entry, definition):
             return False
         path = completion.relative_path(entry["path"])
         rules = [*definition["outputs"], *(rule for rule in definition["inputs"] if rule.get("role") == "project")]
-        if not any(path.parent.as_posix() == rule["folder"]
-                   and re.fullmatch(rule["filename_regex"], path.name, re.I) for rule in rules):
+        from studio.first_cut_exports import matches_rule
+
+        if not any(matches_rule(path, rule) for rule in rules):
             return False
         method = entry.get("method", "sha256" if "sha256" in entry else "legacy-media-stat")
         if method == "sha256":
