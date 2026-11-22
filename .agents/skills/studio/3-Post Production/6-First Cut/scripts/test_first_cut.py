@@ -251,6 +251,16 @@ class FirstCutTests(unittest.TestCase):
             self.assertTrue(all(m.attrib["src"].startswith("../../2-Production/")
                                 for m in tree.findall("resources/asset/media-rep")))
 
+    def test_project_name_matches_sanitized_filename_stem(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            output = root / cut.STAGE / "02-Overview- did it work- Portrait.FCPXML"
+            title = "02-Overview: did it work? Portrait"
+            xml, report = cut.build_xml(root, output, title, *fixture(root), 50)
+            project = ET.fromstring(xml).find("library/event/project")
+            self.assertEqual(project.attrib["name"], output.stem)
+            self.assertEqual(report["script"], title)
+
     def test_padding_is_configurable_and_cannot_override_shared_cut(self):
         with TemporaryDirectory() as directory:
             doc, scores, syncs, probes = fixture(Path(directory))

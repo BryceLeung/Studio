@@ -317,7 +317,8 @@ def build_xml(project, output, name, document, scores, syncs, probes, padding_ms
         element(clip, "marker", start=time(take["cut_out"] - frame), duration=time(frame), value=f"{label} OUT")
     library = element(root, "library")
     event = element(library, "event", name=f"{name} — First Cut")
-    project_node = element(event, "project", name=name)
+    # Final Cut uses the project name as its suggested export filename.
+    project_node = element(event, "project", name=output.stem)
     total = sum((a["candidates"][0]["cut_out"] - a["candidates"][0]["cut_in"] for a in auditions), Fraction(0))
     sequence = element(project_node, "sequence", format=project_format, duration=time(total), tcStart="0s",
                        tcFormat="NDF", audioLayout="stereo", audioRate="48k")
