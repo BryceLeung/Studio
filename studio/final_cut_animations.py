@@ -103,6 +103,7 @@ class AnimationIntake:
     def __init__(self, entries, project, output, resources, resource_id, frame, time):
         self.frame, self.time = frame, time
         self.assets = defaultdict(list)
+        self.cutaways = []
         formats = {}
         for entry in entries:
             source_frame, duration = entry["frame"], entry["duration"]
@@ -166,40 +167,54 @@ class AnimationIntake:
         parent.insert(index, node)
 
     def place(self, clip, take, assets, snap, cursor):
-        """Stage cutaways inside a trimmed mc-clip; report their offsets on the timeline."""
+        """Attach cutaways on the project timeline; report their timeline offsets."""
         placed, skipped = [], []
         if not assets:
             return placed, skipped
-        if clip.tag != "mc-clip":
-            raise ValueError("Animation cutaways require a direct mc-clip")
+        if clip.tag not in {"mc-clip", "ref-clip", "clip"}:
+            raise ValueError("Animation cutaways require a timeline clip")
         clip_start = Fraction(clip.get("start", "0s").removesuffix("s"))
-        clip_duration = Fraction(clip.attrib["duration"].removesuffix("s"))
         offset = max(0, snap(take["word_in"], self.frame) - take["cut_in"])
-        coverage = min(clip_duration, take["cut_out"] - take["cut_in"]) - offset
-        versions_to_place = []
+        start = cursor + offset
         for asset in assets:
             for version in self.assets[asset]:
                 path = version[0]["path"]
-                duration = math.floor(min(coverage, version[3]) / self.frame) * self.frame
+                duration = math.floor(version[3] / self.frame) * self.frame
                 if duration <= 0:
                     skipped.append({"asset_id": asset, "path": path, "take_key": take["take_key"],
                                     "reason": "no_usable_frame"})
                     continue
-                versions_to_place.append((asset, version, duration))
-        if not versions_to_place:
-            return placed, skipped
-        # Keep existing connected video and titles above the new cutaways.
-        for child in clip:
-            lane = int(child.get("lane", "0"))
-            if lane > 0:
-                child.set("lane", str(lane + len(versions_to_place)))
-        index = next((i for i, child in enumerate(clip)
-                      if child.tag in {"marker", "chapter-marker", "rating", "keyword", "analysis-marker", "metadata"}
-                      or isinstance(child.tag, str) and child.tag.startswith("filter-")), len(clip))
-        for lane, (asset, version, duration) in enumerate(versions_to_place, 1):
-            self.clip(clip, version, duration, index + lane - 1, lane=str(lane),
-                      offset=self.time(clip_start + offset), enabled="0")
-            placed.append({"asset_id": asset, "path": version[0]["path"], "sentence": take["sentence"],
-                           "take_key": take["take_key"], "offset": self.time(cursor + offset),
-                           "duration": self.time(duration)})
+                self.cutaways.append((start, duration, clip, version, clip_start + offset))
+                placed.append({"asset_id": asset, "path": path, "sentence": take["sentence"],
+                               "take_key": take["take_key"], "offset": self.time(start),
+                               "duration": self.time(duration)})
         return placed, skipped
+
+    def attach_cutaways(self, sequence):
+        if not self.cutaways:
+            return
+        # Reserve timeline-wide lanes so cutaways can cross cuts without covering titles.
+        lane_ends = []
+        assignments = []
+        for start, duration, clip, version, offset in sorted(self.cutaways, key=lambda item: item[0]):
+            lane = next((i for i, end in enumerate(lane_ends) if end <= start), len(lane_ends))
+            if lane == len(lane_ends):
+                lane_ends.append(start + duration)
+            else:
+                lane_ends[lane] = start + duration
+            assignments.append((lane + 1, duration, clip, version, offset))
+        for clip in sequence.find("spine"):
+            for node in (clip, *clip):
+                lane = int(node.get("lane", "0"))
+                if lane > 0:
+                    node.set("lane", str(lane + len(lane_ends)))
+        for lane, duration, clip, version, offset in assignments:
+            index = next((i for i, child in enumerate(clip)
+                          if child.tag in {"marker", "chapter-marker", "rating", "keyword", "analysis-marker", "metadata"}
+                          or isinstance(child.tag, str) and child.tag.startswith("filter-")), len(clip))
+            self.clip(clip, version, duration, index, lane=str(lane), offset=self.time(offset), enabled="0")
+        if "duration" in sequence.attrib:
+            tc_start = Fraction(sequence.get("tcStart", "0s").removesuffix("s"))
+            duration = max(lane_ends) - tc_start
+            if duration > Fraction(sequence.attrib["duration"].removesuffix("s")):
+                sequence.set("duration", self.time(duration))

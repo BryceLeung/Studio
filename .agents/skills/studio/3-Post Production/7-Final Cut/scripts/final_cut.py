@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Flatten edited Studio First Cut projects and stage approved animation cutaways."""
+"""Finalize takes, lift subtitles, and stage approved animation cutaways."""
 import argparse
 from copy import deepcopy
 from fractions import Fraction
@@ -42,111 +42,80 @@ def timing(node, attr, default="0s"):
 
 def insert_anchor(clip, node):
     index = next((i for i, child in enumerate(clip)
-                  if child.tag in MARKERS or child.tag in {"filter-audio", "metadata"}), len(clip))
+                  if child.tag in MARKERS or child.tag == "metadata"
+                  or isinstance(child.tag, str) and child.tag.startswith("filter-")), len(clip))
     clip.insert(index, node)
 
 
-def transfer_outer(clip, wrapper, primary=None):
-    """Retain connected clips and markers when removing a transparent wrapper."""
-    if (set(wrapper.attrib) - {"id", "ref", "name", "offset", "start", "duration", "enabled",
-                              "lane", "modDate", "srcEnable", "useAudioSubroles", "format",
-                              "tcStart", "tcFormat"}
-            or wrapper.get("srcEnable", "all") != "all"):
-        raise ValueError(f"Unsupported edits on enclosing {wrapper.tag}: {wrapper.get('name', '')}")
-    shift = timing(clip, "start") - timing(wrapper, "start")
-    # Outer connected clips sat above the compound as a whole.
-    top = max((int(node.get("lane", "0")) for node in clip), default=0)
-    for node in wrapper:
-        if node is primary or node.tag == "metadata":
-            continue
-        copied = deepcopy(node)
-        if node.tag in ANCHORS and node.get("lane", "0") != "0":
-            lane = int(node.get("lane"))
-            copied.set("offset", timestamp(timing(node, "offset") + shift))
-            if lane > 0:
-                copied.set("lane", str(lane + max(0, top)))
-            insert_anchor(clip, copied)
-        elif node.tag in MARKERS:
-            copied.set("start", timestamp(timing(node, "start") + shift))
-            index = next((i for i, child in enumerate(clip)
-                          if child.tag in {"filter-audio", "metadata"}), len(clip))
-            clip.insert(index, copied)
-        elif node.tag == "note" and clip.find("note") is None:
-            clip.insert(0, copied)
-        else:
-            raise ValueError(f"Cannot transfer {node.tag} from {wrapper.tag}; apply that edit after flattening")
-    if wrapper.get("enabled") == "0":
-        clip.set("enabled", "0")
-
-
-def unwrap(item, resources):
-    pick = item
-    container = None
+def finalize_take(item, resources, resource_id):
+    wrapper = item
     if item.tag == "clip":
         primary = [child for child in item if child.tag in ANCHORS and child.get("lane", "0") == "0"]
         if len(primary) != 1 or primary[0].tag not in {"ref-clip", "audition"}:
-            return item
-        container, pick = item, primary[0]
-        if timing(pick, "offset") != timing(container, "start"):
-            raise ValueError("Cannot unwrap a compound that does not start at its enclosing clip's in-point")
-    if pick.tag == "audition":
-        if not len(pick):
+            return item, None, None, []
+        wrapper = primary[0]
+    pick = wrapper
+    if wrapper.tag == "audition":
+        if not len(wrapper):
             raise ValueError("Empty audition in edited First Cut")
-        pick = pick[0]  # FCP exports the active item first.
+        pick = wrapper[0]  # FCP exports the active item first.
+        for key in ("offset", "lane"):
+            if key in wrapper.attrib:
+                pick.set(key, wrapper.attrib[key])
+        if item is not wrapper:
+            index = list(item).index(wrapper)
+            item.remove(wrapper)
+            item.insert(index, pick)
     if pick.tag != "ref-clip":
-        if item.tag == "audition" or container is not None:
+        if wrapper.tag == "audition":
             raise ValueError("Expected a Studio take compound as the active audition pick")
-        return item
+        return item, None, None, []
 
     media = resources.get(pick.get("ref"))
     spine = None if media is None else media.find("sequence/spine")
     if spine is None or len(spine) != 1 or spine[0].tag != "mc-clip":
         raise ValueError(f"Unsupported compound {pick.get('name', pick.get('ref'))}: expected one multicam clip")
-    source = spine[0]
-    clip = deepcopy(source)
-    left = timing(pick, "start") - timing(source, "offset")
-    length = timing(pick, "duration", None)
-    if container is not None and length != timing(container, "duration", None):
-        raise ValueError("Take and enclosing clip durations differ; cannot flatten losslessly")
-    if left < 0 or length <= 0 or left + length > timing(source, "duration", None):
-        raise ValueError("Edited take extends outside its compound's multicam range")
-    clip.set("offset", timestamp(timing(item, "offset")))
-    if item.get("lane") is not None:
-        clip.set("lane", item.get("lane"))
-    else:
-        clip.attrib.pop("lane", None)
-    start = timing(source, "start") + left
-    end = start + length
-    clip.set("start", timestamp(start))
-    clip.set("duration", timestamp(length))
-    if left or length != timing(source, "duration"):
-        if source.find("timeMap") is not None or any(key in source.attrib for key in ("audioStart", "audioDuration")):
-            raise ValueError("Cannot flatten a trimmed compound with an internal retime or split audio edit")
-    for node in list(clip):
-        if node.tag in MARKERS and "start" in node.attrib and not start <= timing(node, "start") < end:
-            clip.remove(node)
-        if node.tag not in ANCHORS:
-            continue
-        offset = timing(node, "offset")
-        if "duration" not in node.attrib:
-            if left or length != timing(source, "duration"):
-                raise ValueError(f"Cannot safely trim a connected {node.tag} without an explicit duration")
-            continue
-        out = offset + timing(node, "duration")
-        low, high = max(offset, start), min(out, end)
+    multicam = spine[0]
+    clip = pick if item is wrapper else item
+    titles = multicam.findall("title")
+    if titles and any(node.find("timeMap") is not None or node.find("conform-rate") is not None
+                      for node in (clip, pick, multicam)):
+        raise ValueError("Cannot safely lift subtitles through retiming or rate conform")
+    # A connected title's offset is expressed in its parent's source time.
+    shift = timing(multicam, "offset") - timing(multicam, "start")
+    low_bound = timing(pick, "start")
+    high_bound = low_bound + timing(pick, "duration", None)
+    if clip is not pick:
+        shift += timing(pick, "offset") - timing(pick, "start")
+        low_bound = max(timing(clip, "start"), timing(pick, "offset"))
+        high_bound = min(timing(clip, "start") + timing(clip, "duration", None),
+                         timing(pick, "offset") + timing(pick, "duration", None))
+    top = max((0, *(int(node.get("lane", "0")) for node in clip)))
+    for node in titles:
+        if any(child.tag in ANCHORS for child in node):
+            raise ValueError("Cannot safely lift a subtitle with connected clips of its own")
+        offset = timing(node, "offset") + shift
+        low = max(offset, low_bound)
+        high = min(offset + timing(node, "duration", None), high_bound)
         if low >= high:
-            clip.remove(node)
-        elif (low, high) != (offset, out):
-            if node.tag != "title" or any(child.tag in ANCHORS for child in node):
-                raise ValueError(f"Cannot safely trim a connected {node.tag} at a compound boundary")
-            node.set("offset", timestamp(low))
-            node.set("start", timestamp(timing(node, "start") + low - offset))
-            node.set("duration", timestamp(high - low))
-
-    transfer_outer(clip, pick)
-    if container is not None:
-        transfer_outer(clip, container, primary[0])
-    return clip
+            continue
+        lifted = deepcopy(node)
+        lifted.set("offset", timestamp(low))
+        lifted.set("start", timestamp(timing(node, "start") + low - offset))
+        lifted.set("duration", timestamp(high - low))
+        lifted.set("lane", str(top + max(1, int(node.get("lane", "1")))))
+        if pick.get("enabled") == "0" or multicam.get("enabled") == "0":
+            lifted.set("enabled", "0")
+        styles = {}
+        for definition in lifted.iter("text-style-def"):
+            new_id = resource_id()
+            styles[definition.attrib["id"]] = new_id
+            definition.set("id", new_id)
+        for style in lifted.iter("text-style"):
+            if style.get("ref") in styles:
+                style.set("ref", styles[style.get("ref")])
+        insert_anchor(clip, lifted)
+    return clip, media, multicam, titles
 
 
 def convert(xml, project, source, output, document, extract_number, entries=()):
@@ -155,7 +124,7 @@ def convert(xml, project, source, output, document, extract_number, entries=()):
     projects = list(root.iter("project"))
     resources = root.find("resources")
     if root.tag != "fcpxml" or len(projects) != 1 or resources is None:
-        raise ValueError(f"Export exactly one project as a plain FCPXML: {source.name}")
+        raise ValueError(f"Export exactly one project as FCPXML: {source.name}")
     edit = projects[0]
     sequence = edit.find("sequence")
     spine = edit.find("sequence/spine")
@@ -195,37 +164,39 @@ def convert(xml, project, source, output, document, extract_number, entries=()):
     intake = animations.AnimationIntake(entries, project, output, resources, resource_id, frame, timestamp)
     selected, notes, placements = [], [], []
     identified = {}
+    compounds = {}
     for index, item in enumerate(list(spine)):
-        clip = unwrap(item, by_id)
-        if clip is not item:
-            # The same source compound can appear more than once in the edited timeline.
-            styles = {}
-            for definition in clip.iter("text-style-def"):
-                new_id = resource_id()
-                styles[definition.attrib["id"]] = new_id
-                definition.set("id", new_id)
-            for style in clip.iter("text-style"):
-                if style.get("ref") in styles:
-                    style.set("ref", styles[style.get("ref")])
-            spine[index] = clip
-        if clip.tag != "mc-clip":
+        clip, media, multicam, titles = finalize_take(item, by_id, resource_id)
+        spine[index] = clip
+        if multicam is None and clip.tag != "mc-clip":
             continue
-        name = clip.get("name", "")
-        labels = [name, *(node.get("value", "") for node in clip.findall("marker")), item.get("name", "")]
+        if media is not None:
+            compounds[media] = (multicam, titles)
+        angle_clip = multicam if multicam is not None else clip
+        name = (media.get("name") if media is not None else None) or angle_clip.get("name", "")
+        labels = [name, angle_clip.get("name", ""), clip.get("name", ""),
+                  *(node.get("value", "") for node in angle_clip.findall("marker"))]
         label = next((match for value in labels if (match := re.match(r"S(\d+)\b", value))), None)
         sentence = int(label[1]) if label else None
-        if sentence is not None and 1 <= sentence <= len(document["script_groupings"]):
+        if document is not None and sentence is not None and 1 <= sentence <= len(document["script_groupings"]):
             identified.setdefault(sentence, []).append(clip)
-        else:
+        elif document is not None:
             notes.append({"clip": name, "reason": "no_studio_sentence_label"})
         selected.append({"sentence": sentence, "clip": name, "offset": clip.get("offset", "0s"),
                          "source_in": clip.get("start", "0s"), "duration": clip.get("duration"),
-                         "angles": [node.attrib for node in clip.findall("mc-source")]})
+                         "angles": [node.attrib for node in angle_clip.findall("mc-source")]})
 
-    if any(node.tag in {"ref-clip", "audition"} for node in spine.iter()):
-        raise ValueError("Unsupported nested compound or audition in edited timeline")
+    if any(node.tag == "audition" for node in spine.iter()):
+        raise ValueError("Unsupported nested audition in edited timeline")
+    for media, (multicam, titles) in compounds.items():
+        if titles:
+            # Do not let FCP reuse the original library compound with embedded titles.
+            media.attrib.pop("uid", None)
+            media.attrib.pop("modDate", None)
+            for title in titles:
+                multicam.remove(title)
     ranges = [{"sentence": n, "candidates": [{"script": document["script_groupings"][n - 1]}]} for n in identified]
-    anchors, warnings = intake.anchors(document, ranges, extract_number)
+    anchors, warnings = intake.anchors(document, ranges, extract_number) if entries else ({}, [])
     notes.extend(warnings)
     for sentence, asset_ids in anchors.items():
         if len(identified[sentence]) != 1:
@@ -240,18 +211,25 @@ def convert(xml, project, source, output, document, extract_number, entries=()):
             notes.append({"sentence": sentence, "asset_ids": asset_ids, "reason": "no_subtitle_timing"})
             continue
         take = {"sentence": sentence, "take_key": clip.get("name", str(sentence)), "cut_in": start,
-                "cut_out": end, "word_in": min(title_offsets)}
+                 "word_in": min(title_offsets)}
         placed, warnings = intake.place(clip, take, asset_ids, lambda value, unit: round(value / unit) * unit,
                                           timing(clip, "offset"))
         placements.extend(placed)
         notes.extend(warnings)
+    intake.attach_cutaways(sequence)
 
-    # Strip unreferenced take compounds; the selected multicam media stays editable.
-    used = {node.get("ref") for node in root.iter()}
+    # Follow resource references from the edit rather than counting references in discarded takes.
+    used = set()
+    pending = [node.get("ref") for section in root if section is not resources for node in section.iter()]
+    while pending:
+        ref = pending.pop()
+        if ref in by_id and ref not in used:
+            used.add(ref)
+            pending.extend(node.get("ref") for node in by_id[ref].iter())
     for media in resources.findall("media"):
         if media.find("sequence") is not None and media.get("id") not in used:
             resources.remove(media)
-    edit.set("name", f"{edit.get('name', source.stem)} - Final Cut")
+    edit.set("name", f"{edit.get('name', export_stem(source))} - Final Cut")
     for key in ("uid", "modDate"):
         edit.attrib.pop(key, None)
     library = root.find("library")
@@ -268,7 +246,7 @@ def convert(xml, project, source, output, document, extract_number, entries=()):
     for event in library.findall("event"):
         if edit in event:
             event.attrib.pop("uid", None)
-            event.set("name", f"{source.stem} - Final Cut")
+            event.set("name", f"{export_stem(source)} - Final Cut")
     intake.browser(library)
     animations.verify_sources(root, project, output)
     payload = b'<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE fcpxml>\n' + ET.tostring(root, encoding="utf-8") + b"\n"
@@ -352,14 +330,41 @@ def run(project, ffprobe="ffprobe", regenerate=False):
         raise
 
 
+def preview(project, stem):
+    """Preview the presenter edit only without invoking the stage transition."""
+    project = project.resolve(strict=True)
+    rule = load_stages(ROOT)[STEP]["inputs"][0]
+    source = exports(project, rule).get(stem.casefold())
+    if source is None:
+        raise ValueError(f"No approved First Cut export with stem: {stem}")
+    scratch = project / "3-Post Production/0-Tmp"
+    if scratch.is_symlink() or scratch.parent.is_symlink():
+        raise ValueError(f"Preview directory must not be a symlink: {scratch}")
+    output = scratch / f"{export_stem(source)} - Final Cut Preview.fcpxml"
+    payload, report = convert(source.read_bytes(), project, source, output, None, None)
+    scratch.mkdir(exist_ok=True)
+    if output.is_symlink():
+        raise ValueError(f"Preview output must not be a symlink: {output}")
+    if not output.exists() or output.read_bytes() != payload:
+        with output.open("xb") as stream:
+            stream.write(payload)
+    return {"output": str(output), "selected_takes": len(report["selected"]),
+            "subtitle_titles": report["subtitle_titles"]}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--project-root", required=True, type=Path)
     parser.add_argument("--ffprobe", default="ffprobe")
     parser.add_argument("--regenerate", action="store_true")
+    parser.add_argument("--preview", metavar="APPROVED_STEM", help="write a presenter-only preview into 0-Tmp")
     args = parser.parse_args()
     try:
-        print(json.dumps(run(args.project_root, args.ffprobe, args.regenerate), indent=2))
+        if args.preview and args.regenerate:
+            parser.error("--preview cannot be combined with --regenerate")
+        result = preview(args.project_root, args.preview) if args.preview else run(
+            args.project_root, args.ffprobe, args.regenerate)
+        print(json.dumps(result, indent=2))
     except (OSError, ValueError, TypeError, KeyError, ArithmeticError, ET.ParseError) as error:
         parser.exit(1, f"Final Cut failed: {error}\n")
 

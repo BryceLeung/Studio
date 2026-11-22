@@ -47,12 +47,12 @@ class FinalCutTests(unittest.TestCase):
         project = root.find("library/event/project")
         return root, project.find("sequence/spine"), report
 
-    def asset(self):
-        media = self.project / cut.animations.APPROVALS / "A01/APPROVED/v001 animation #1.mp4"
+    def asset(self, asset_id="A01"):
+        media = self.project / cut.animations.APPROVALS / asset_id / "APPROVED/v001 animation #1.mp4"
         media.parent.mkdir(parents=True)
         media.write_bytes(b"approved animation")
-        return {"asset_id": "A01", "path": media.relative_to(self.project).as_posix(), "sha256": raw_sha256(media),
-                "registry": {"ID": "A01", "Brief": "Animate an example", "Script": "Approved/A.docx",
+        return {"asset_id": asset_id, "path": media.relative_to(self.project).as_posix(), "sha256": raw_sha256(media),
+                "registry": {"ID": asset_id, "Brief": "Animate an example", "Script": "Approved/A.docx",
                              "Start": "0", "End": "0", "Passage": "Hello", "Extracts": '["EXTRACT-1"]'},
                 "width": 1920, "height": 1080, "duration": Fraction(5), "frame": Fraction(1, 25)}
 
@@ -61,20 +61,21 @@ class FinalCutTests(unittest.TestCase):
         gap, clip = spine
         self.assertEqual((gap.tag, gap.get("duration")), ("gap", "8s"))
         self.assertEqual((clip.tag, clip.get("offset"), clip.get("start"), clip.get("duration")),
-                         ("mc-clip", "8s", "21s", "2s"))
+                         ("ref-clip", "8s", "4s", "2s"))
         self.assertEqual(report["selected"][0]["clip"], "S001 C02 T002")
-        self.assertEqual([angle.get("angleID") for angle in clip.findall("mc-source")], ["lav", "camB"])
+        multicam = root.find("resources/media[@id='r5']/sequence/spine/mc-clip")
+        self.assertEqual([angle.get("angleID") for angle in multicam.findall("mc-source")], ["lav", "camB"])
         self.assertEqual([(t.get("offset"), t.get("duration")) for t in clip.findall("title")],
-                         [("21s", "1s"), ("22s", "1s")])
+                         [("4s", "1s"), ("5s", "1s")])
         title = clip.find("title")
         self.assertEqual(title.get("start"), "3601s")
         self.assertEqual("".join(title.find("text").itertext()), "Picked take")
         self.assertEqual(title.find("text/text-style").get("ref"), title.find("text-style-def").get("id"))
-        self.assertEqual(clip.find("asset-clip").get("offset"), "43/2s")
-        self.assertEqual(clip.find("marker").get("value"), "An edit marker")
-        self.assertFalse(root.findall("resources/media/sequence"))
+        self.assertEqual(clip.find("asset-clip").get("offset"), "9/2s")
+        self.assertIsNotNone(multicam.find("marker[@value='An edit marker']"))
+        self.assertIsNone(multicam.find("title"))
+        self.assertIsNone(root.find("resources/media[@id='r6']"))
         self.assertFalse(list(spine.iter("audition")))
-        self.assertFalse(list(spine.iter("ref-clip")))
         self.assertEqual(root.find("resources/asset/media-rep").get("src"), "../6-First%20Cut/Media%20with%20space.mov")
         self.assertIsNone(root.find("library/event/project").get("uid"))
 
@@ -82,14 +83,36 @@ class FinalCutTests(unittest.TestCase):
         xml = XML.replace(b'<audition offset="8s"><ref-clip ref="r5"', b'<ref-clip offset="8s" ref="r5"')
         xml = xml.replace(b'<ref-clip ref="r6" duration="4s"/></audition>', b'')
         root, spine, report = self.convert(xml, [self.asset()], 1)
-        clip = spine.find("mc-clip")
+        clip = spine.find("ref-clip")
         cutaway = clip.find("asset-clip[@enabled='0']")
         self.assertEqual((cutaway.get("lane"), cutaway.get("offset"), cutaway.get("duration"), cutaway.get("srcEnable")),
-                         ("1", "21s", "2s", "video"))
+                         ("1", "4s", "5s", "video"))
         self.assertGreater(int(clip.find("title").get("lane")), int(cutaway.get("lane")))
-        self.assertLess(list(clip).index(cutaway), list(clip).index(clip.find("marker")))
         self.assertEqual(report["placements"][0]["offset"], "8s")
+        self.assertEqual(root.find("library/event/project/sequence").get("duration"), "13s")
         self.assertIsNotNone(root.find("library/event[@name='Animations']/asset-clip"))
+
+    def test_full_length_cutaways_cross_cuts_below_subtitles_and_use_separate_lanes(self):
+        xml = XML.replace(b'</audition>', b'''</audition>
+            <ref-clip ref="r6" name="S002" offset="10s" duration="4s">
+                <title ref="r3" lane="1" offset="0s" duration="4s"/>
+            </ref-clip>''').replace(b'<sequence format="r1" duration="10s">',
+                                     b'<sequence format="r1" duration="14s">').replace(b'S001 C01 T001', b'S002 C01 T001')
+        document = {"script": dict(DOCUMENT["script"], words=[{"text": "Hello"}, {"text": "Next"}]),
+                    "script_groupings": [*DOCUMENT["script_groupings"], {"word_start": 1, "word_end": 1}]}
+        following = self.asset("A02")
+        following["registry"].update(Start="1", End="1", Passage="Next")
+        following["duration"] = Fraction(3)
+        root, spine, report = self.convert(xml, [self.asset(), following], document=document)
+        first, second = spine.findall("ref-clip")
+        self.assertEqual([(clip.get("offset"), clip.get("duration")) for clip in (first, second)],
+                         [("8s", "2s"), ("10s", "4s")])
+        self.assertEqual([(row["offset"], row["duration"]) for row in report["placements"]],
+                         [("8s", "5s"), ("10s", "3s")])
+        self.assertEqual([clip.find("asset-clip[@enabled='0']").get("lane") for clip in (first, second)],
+                         ["1", "2"])
+        self.assertTrue(all(int(title.get("lane")) > 2 for title in spine.iter("title")))
+        self.assertEqual(root.find("library/event/project/sequence").get("duration"), "14s")
 
     def test_automatic_animation_follows_anchor_into_extracts(self):
         entry = self.asset()
@@ -98,7 +121,7 @@ class FinalCutTests(unittest.TestCase):
             with self.subTest(extract=extract):
                 _, spine, report = self.convert(entries=[entry], extract=extract)
                 self.assertEqual(len(report["placements"]), 1)
-                self.assertIsNotNone(spine.find("mc-clip/asset-clip[@enabled='0']"))
+                self.assertIsNotNone(spine.find("ref-clip/asset-clip[@enabled='0']"))
         document = {"script": dict(DOCUMENT["script"], words=[{"text": "Hello"}, {"text": "Elsewhere"}]),
                     "script_groupings": [*DOCUMENT["script_groupings"], {"word_start": 1, "word_end": 1}]}
         entry["registry"].update(Start="1", End="1", Passage="Elsewhere")
@@ -114,11 +137,37 @@ class FinalCutTests(unittest.TestCase):
         _, _, report = self.convert(entries=[entry])
         self.assertEqual(len(report["placements"]), 1)
 
-    def test_rejects_unsafe_edits(self):
-        with self.assertRaisesRegex(ValueError, "Cannot transfer adjust-transform"):
-            self.convert(XML.replace(b'tart="4s" duration="2s">', b'tart="4s" duration="2s"><adjust-transform/>'))
+    def test_preserves_compound_effect_and_rejects_unsafe_title_retime(self):
+        def with_adjustment(node):
+            return XML.replace(b'tart="4s" duration="2s">', b'tart="4s" duration="2s">' + node)
 
-    def test_generation_reads_bundle_and_uses_its_stem_and_xml_location(self):
+        _, spine, _ = self.convert(with_adjustment(b"<adjust-colorConform/>"))
+        clip = spine.find("ref-clip")
+        self.assertIs(clip[0], clip.find("adjust-colorConform"))
+        with self.assertRaisesRegex(ValueError, "Cannot safely lift subtitles through retiming"):
+            self.convert(with_adjustment(b"<timeMap/>"))
+
+    def test_repeated_compound_lifts_titles_for_each_trim_with_unique_styles(self):
+        xml = XML.replace(b"</audition>", b'</audition><ref-clip ref="r5" start="3s" duration="1s" offset="10s"/>')
+        _, spine, _ = self.convert(xml)
+        first, second = spine.findall("ref-clip")
+        self.assertEqual(second.find("title").get("offset"), "3s")
+        self.assertNotEqual(first.find("title/text-style-def").get("id"), second.find("title/text-style-def").get("id"))
+
+    def test_preview_does_not_change_stage_or_approved_xml(self):
+        self.source.parent.mkdir(parents=True)
+        self.source.write_bytes(XML)
+        with patch.object(cut, "require_prerequisites") as prerequisites, patch.object(cut, "invalidate") as invalidate:
+            report = cut.preview(self.project, "A")
+            self.assertEqual(cut.preview(self.project, "A"), report)
+        prerequisites.assert_not_called()
+        invalidate.assert_not_called()
+        self.assertFalse(self.output.parent.exists())
+        self.assertEqual(self.source.read_bytes(), XML)
+        self.assertEqual(report["selected_takes"], 1)
+        self.assertIsNotNone(ET.parse(report["output"]).find("library/event/project/sequence/spine/ref-clip/title"))
+
+    def test_standard_generation_finalizes_bundle_and_preserves_multicam_compounds(self):
         source = self.source.with_suffix(".fcpxmld") / "Info.fcpxml"
         source.parent.mkdir(parents=True)
         source.write_bytes(XML)
@@ -132,8 +181,19 @@ class FinalCutTests(unittest.TestCase):
         row, = report["projects"]
         self.assertEqual(row["input"], source.relative_to(self.project).as_posix())
         self.assertEqual(row["output"], "A.FCPXML")
-        media = ET.parse(self.output.with_suffix(".FCPXML")).find("resources/asset/media-rep")
+        output = ET.parse(self.output.with_suffix(".FCPXML"))
+        media = output.find("resources/asset/media-rep")
         self.assertEqual(media.get("src"), "../6-First%20Cut/APPROVED/Media%20with%20space.mov")
+        spine = output.find("library/event/project/sequence/spine")
+        self.assertFalse(list(spine.iter("audition")))
+        compound, = spine.findall("ref-clip")
+        self.assertEqual(compound.get("ref"), "r5")
+        multicam = output.find("resources/media[@id='r5']/sequence/spine/mc-clip")
+        self.assertEqual(multicam.get("ref"), "r4")
+        self.assertIsNotNone(output.find("resources/media[@id='r4']/multicam"))
+        self.assertIsNone(output.find("resources/media[@id='r6']"))
+        self.assertIsNone(multicam.find("title"))
+        self.assertEqual(len(compound.findall("title")), 2)
         self.assertEqual(source.read_bytes(), XML)
 
     def test_generation_does_not_overwrite_existing_edit(self):
