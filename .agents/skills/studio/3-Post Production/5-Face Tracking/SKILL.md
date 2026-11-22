@@ -72,13 +72,14 @@ sources before treating these paths as approved portrait crops.
 
 Normal project execution validates prerequisites through the shared JSON graph and submits its path/index manifest to the common `record_done` API. The stage retains its required-range and saved-path checks, including the approved no-extract case. Do not write `DONE` by hand.
 
-Write one `<Script>__C<nn>__camA__FacePath.v1.json` and corresponding camB JSON
+Write one `<Script>__C<nn>__camA__FacePath.v<N>.json` and corresponding camB JSON
 for each camera source used by an approved extract, in the project's OneDrive
 `3-Post Production/5-Face Tracking/`. Every JSON records source-second ranges
 as millisecond pairs, camera role, media identity (size and whole integer `mtime_s` seconds), declared
 input/dependency fingerprints, algorithm sampling/padding and verified model
-SHA-256, dimensions, face samples, and warnings. `Face Paths.json` inventories
-the exact path files (also written for the no-extract case). The append-only
+SHA-256, dimensions, face samples, and warnings. The first set is `v1` with
+the original `Face Paths.json` index; subsequent sets use `Face Paths.v<N>.json`.
+The index inventories the exact path files, even for the no-extract case. The append-only
 `LOG.md` records each attempt, outcome, and next review action.
 
 `DONE` requires validated upstream files, full extract/take/angle coverage,
@@ -86,9 +87,13 @@ persisted non-empty paths for every required source and a fingerprinted index.
 Warnings from zero or uncertain face detections do not prevent computational
 completion; they require review when constructing the portrait edit. A missing
 model, invalid input, or unreadable required frames prevents completion.
-The script reuses unchanged existing path files, refuses changed files instead
-of overwriting them, checks input/source/dependency fingerprints, and
-archives dependent `DONE` markers through the shared graph on changed completion or failure. The
+When input or tracking dependency fingerprints change, the script writes the
+next numbered set and preserves historical paths and indexes in place. It
+publishes the index after the camera paths. Validation checks the highest
+numbered index and matching paths and does not fall back to older sets. With
+unchanged inputs and dependencies, the script reuses valid paths without
+decoding video and refuses to overwrite damaged or mismatched files. Dependent
+`DONE` markers are archived through the shared graph on changed completion or failure. The
 no-extract condition writes an index and `DONE` without a detector download.
 Validate this stage's `DONE` before starting 3.6 First Cut. Face framing is
 independent of 3.4 take selection.
@@ -98,10 +103,11 @@ legacy `mtime_ns` values are normalized with integer division by 1,000,000,000.
 Only media identities in saved headers/indexes are normalized. Generator and
 other dependency SHA-256 checks remain exact and are never bypassed.
 
-Use `--regenerate` only after deliberately choosing replacement of stale saved
-paths. Required analysis is prepared before archiving the selected old path/index
-files into the pending `STALE/N/` slot. Valid unchanged paths remain in place;
-camera originals, approved shortlist, Takes reviews, and approved movies are
+Use `--regenerate` only after deliberately choosing replacement of saved work
+in the current set. Required analysis is prepared before archiving the selected
+path/index files into the pending `STALE/N/` slot. Historical versions and valid
+unchanged paths remain in place. Camera originals, approved shortlist, Takes
+reviews, and approved movies are
 never moved. Failure alone invalidates markers, not work files.
 
 Tests:

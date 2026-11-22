@@ -65,15 +65,23 @@ class Validation(StageValidation):
                     "dependencies": [{"scope": "workflow", "path": p.relative_to(track.ROOT).as_posix(),
                                       "sha256": track.find.sha256(p)} for p in dependencies]}
         outputs, path_outputs = [], []
+        directory = self.project / track.STAGE
+        latest = track.versions.latest_index(directory)
+        if latest is None:
+            raise ValueError("Missing Face Tracking index.")
+        version, index = latest
+        index = self.confined(index)
         for (media, role), spans in sorted(ranges.items(), key=lambda item: (str(item[0][0]), item[0][1])):
             media = self.confined(media)
-            path = self.confined(self.project / track.STAGE / (media.stem + "__FacePath.v1.json"))
+            path = track.versions.camera_path(directory, media, version)
+            if path.is_symlink():
+                raise ValueError(f"Redirected face path: {path}")
+            path = self.confined(path)
             header = dict(identity, media=track.media_fingerprint(media, self.project), role=role,
                           ranges_ms=[[round(float(a * 1000)), round(float(b * 1000))] for a, b in spans])
             track.validate_path(json.loads(path.read_text(encoding="utf-8-sig")), header)
             outputs.append(path)
             path_outputs.append(track.fingerprint(path, self.project))
-        index = self.confined(self.project / track.STAGE / "Face Paths.json")
         expected = {"schema": "studio.face-path-index", "schema_version": 1, "inputs": inputs,
                     "dependencies": identity["dependencies"], "paths": path_outputs,
                     "no_extracts": not extracts}

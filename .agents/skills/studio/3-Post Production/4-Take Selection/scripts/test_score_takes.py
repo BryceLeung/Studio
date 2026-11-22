@@ -163,6 +163,57 @@ class StageTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "current script"):
                 scoring.run_stage(project, [newer], project / "trial")
 
+    def test_newer_mapping_appends_scores_and_records_only_latest(self):
+        with TemporaryDirectory() as temp:
+            project = Path(temp).resolve()
+            first_mapping = self.fixture(project)
+            v4 = first_mapping.with_name("A__Takes.v4.json")
+            v4.write_bytes(first_mapping.read_bytes())
+            first = Path(scoring.run_stage(project, [v4])["outputs"][0])
+            original = first.read_bytes(), first.stat().st_mtime_ns
+            self.assertEqual(first.name, "A__Scores.v1.json")
+
+            v6 = first_mapping.with_name("A__Takes.v6.json")
+            v6.write_bytes(v4.read_bytes())
+            second = Path(scoring.run_stage(project, [v6])["outputs"][0])
+            self.assertEqual(second.name, "A__Scores.v2.json")
+            self.assertEqual((first.read_bytes(), first.stat().st_mtime_ns), original)
+            self.assertEqual(json.loads(second.read_text())["source_mapping"]["path"],
+                             v6.relative_to(project).as_posix())
+            marker = second.parent / "DONE"
+            self.assertEqual([entry["path"] for entry in json.loads(marker.read_text())["outputs"]],
+                             [second.relative_to(project).as_posix()])
+            mtime = second.stat().st_mtime_ns
+            self.assertEqual(scoring.run_stage(project, [v6])["outputs"], [str(second)])
+            self.assertEqual(second.stat().st_mtime_ns, mtime)
+            self.assertFalse((second.parent / "A__Scores.v3.json").exists())
+
+    def test_changed_mapping_at_same_version_does_not_append_scores(self):
+        with TemporaryDirectory() as temp:
+            project = Path(temp).resolve()
+            mapping = self.fixture(project)
+            output = project / "trial"
+            first = Path(scoring.run_stage(project, [mapping], output)["outputs"][0])
+            original = first.read_bytes()
+            mapping.write_bytes(mapping.read_bytes() + b" ")
+            with self.assertRaisesRegex(ValueError, "Stale mapping fingerprint"):
+                scoring.run_stage(project, [mapping], output)
+            self.assertEqual(first.read_bytes(), original)
+            self.assertFalse((output / "A__Scores.v2.json").exists())
+
+    def test_unchanged_scores_with_older_code_provenance_are_reused(self):
+        with TemporaryDirectory() as temp:
+            project = Path(temp).resolve()
+            mapping = self.fixture(project)
+            target = Path(scoring.run_stage(project, [mapping])["outputs"][0])
+            historical = json.loads(target.read_text())
+            historical["algorithm"]["code_sha256"] = "a" * 64
+            target.write_text(json.dumps(historical), encoding="utf-8")
+            original = target.read_bytes()
+            (target.parent / "DONE").unlink()
+            self.assertEqual(scoring.run_stage(project, [mapping])["outputs"], [str(target)])
+            self.assertEqual(target.read_bytes(), original)
+
     def test_project_done_lifecycle_and_failed_run_invalidates_only_markers(self):
         with TemporaryDirectory() as temp:
             project = Path(temp).resolve()

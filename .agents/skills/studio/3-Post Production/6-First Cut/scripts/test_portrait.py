@@ -283,6 +283,18 @@ class PortraitTests(unittest.TestCase):
             outputs = [entry, cut.scoring.fingerprint(index, project, "project")]
             (stage / "DONE").write_text(json.dumps({"outputs": outputs}))
             self.assertEqual(len(portrait.load_paths(cut, project)[0]), 1)
+            # An unpublished newer index must not fall back to the recorded v1 index.
+            newer = stage / "Face Paths.v10.json"
+            newer.write_bytes(index.read_bytes())
+            with self.assertRaisesRegex(ValueError, "index is not recorded"):
+                portrait.load_paths(cut, project)
+            newer_path = stage / "A__C01__camA__FacePath.v10.json"
+            newer_path.write_bytes(path.read_bytes())
+            entry = cut.scoring.fingerprint(newer_path, project, "project")
+            newer.write_text(json.dumps({"schema": "studio.face-path-index", "schema_version": 1, "paths": [entry]}))
+            outputs = [entry, cut.scoring.fingerprint(newer, project, "project")]
+            (stage / "DONE").write_text(json.dumps({"outputs": outputs}))
+            self.assertEqual(portrait.load_paths(cut, project)[1], outputs[::-1])
             stamp = source.stat().st_mtime_ns
             os.utime(source, ns=(stamp + 1_000_000_000, stamp + 1_000_000_000))
             with self.assertRaisesRegex(ValueError, "Stale face-path media"):

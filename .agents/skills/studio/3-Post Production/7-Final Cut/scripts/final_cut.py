@@ -18,11 +18,12 @@ from scripts.stage_invalidation import _default_log, invalidate, prepare_regener
 from scripts.validation import require_prerequisites, StageValidation
 from studio import final_cut_animations as animations
 from studio.fingerprints import sha256
+from studio import score_versions
 
 STEP = "3.7"
 FIRST_CUT = Path("3-Post Production/6-First Cut")
 STAGE = Path("3-Post Production/7-Final Cut")
-SCORES = Path("3-Post Production/4-Take Selection")
+SCORES = Path(score_versions.STAGE)
 ANCHORS = {"audio", "video", "clip", "title", "mc-clip", "ref-clip", "sync-clip", "asset-clip", "audition", "spine", "caption"}
 MARKERS = {"marker", "chapter-marker", "rating", "keyword", "analysis-marker"}
 
@@ -275,14 +276,8 @@ def convert(xml, project, source, output, document, extract_number, entries=()):
 
 
 def contexts(guard):
-    sources = {}
-    for path in sorted(guard.confined(SCORES).iterdir()):
-        match = re.fullmatch(r"(.+)__Scores\.v1\.json", path.name, re.I)
-        if match and path.is_file():
-            key = match[1].casefold()
-            if key in sources:
-                raise ValueError(f"Ambiguous First Cut script stem: {match[1]}")
-            sources[key] = path, None
+    sources = {key: (path, None) for key, (_, path) in
+               score_versions.latest_scores(guard.confined(SCORES)).items()}
     for directory in (FIRST_CUT / "Extracts", FIRST_CUT / "Extracts/Portrait"):
         path = guard.confined(directory / "Extract Mappings.json")
         if path.exists():

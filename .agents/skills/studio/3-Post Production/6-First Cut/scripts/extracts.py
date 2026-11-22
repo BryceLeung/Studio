@@ -120,23 +120,36 @@ def map_extract(extract, document, scores):
             "mapping_source": deepcopy(scores["source_mapping"])}
 
 
+def score_paths_by_source(project, score_paths):
+    supplied = {}
+    for path in score_paths:
+        match = cut.scoring.score_versions.NAME.fullmatch(Path(path).name)
+        if not match:
+            raise ValueError(f"Expected a numbered score file: {path}")
+        source = match[1].casefold() + ".docx"
+        if source in supplied:
+            raise ValueError(f"Pass only one score version for {match[1]}.")
+        supplied[source] = (project / path).resolve(strict=True)
+    return supplied
+
+
 def map_all(project, shortlist, score_paths):
-    supplied = {Path(p).name.removesuffix("__Scores.v1.json") + ".docx": (project / p).resolve(strict=True)
-                for p in score_paths}
+    supplied = score_paths_by_source(project, score_paths)
     contexts = {}
     for source, path in supplied.items():
         scores = cut.read_json(path)
         document = cut.scoring.load_mapping(project, project / scores["source_mapping"]["path"])
         reference = cut.scoring.checked_reference(project, project / scores["source_mapping"]["path"], scores["source_mapping"])
         expected = cut.scoring.score_document(document, reference)
-        if expected != scores:
+        if not cut.scoring.scores_match(scores, expected):
             raise ValueError(f"Stale scoring output: {path}")
         contexts[source] = (document, scores)
     result = []
     for extract in parse_shortlist(shortlist.read_text(encoding="utf-8-sig")):
-        if extract["source"] not in contexts:
+        key = extract["source"].casefold()
+        if key not in contexts:
             raise ValueError(f"Missing score file for {extract['source']}")
-        result.append(map_extract(extract, *contexts[extract["source"]]))
+        result.append(map_extract(extract, *contexts[key]))
     return {"schema": "studio.extract-mappings", "schema_version": 1,
             "shortlist": cut.scoring.fingerprint(shortlist, project, "project"), "extracts": result}
 
@@ -152,6 +165,11 @@ def generate(project, shortlist, score_paths, padding_ms, omit_discarded, regene
     cut.find.append_log(project / cut.STAGE, "Extract projects started", [
         f"Shortlist: {shortlist}; padding_ms={padding_ms}; omit_discarded={omit_discarded}; portrait={portrait}."])
     try:
+        supplied = score_paths_by_source(project, score_paths)
+        latest = cut.scoring.score_versions.latest_scores(project / cut.scoring.STAGE)
+        for source, path in supplied.items():
+            if latest.get(Path(source).stem, (None, None))[1] != path:
+                raise ValueError(f"Pass the latest stage 3.4 scores for {source}.")
         mappings = map_all(project, shortlist, score_paths)
         planned, reports, inputs, contexts = [], [], [], {}
         face_paths = None
@@ -167,8 +185,7 @@ def generate(project, shortlist, score_paths, padding_ms, omit_discarded, regene
                 raise ValueError(f"Extract {mapped['number']} requires review: {unresolved}")
             mapped["omitted_discarded_sentences"] = sorted(discarded_sentences) if omit_discarded else []
             if mapped["source"] not in contexts:
-                score_path = next((project / p).resolve(strict=True) for p in score_paths
-                                  if Path(p).name == Path(mapped["source"]).stem + "__Scores.v1.json")
+                score_path = supplied[mapped["source"].casefold()]
                 scores = cut.read_json(score_path)
                 source_path = project / scores["source_mapping"]["path"]
                 versions = cut.find.mapping.takes_versions(project, Path(mapped["source"]).stem + "__Takes")

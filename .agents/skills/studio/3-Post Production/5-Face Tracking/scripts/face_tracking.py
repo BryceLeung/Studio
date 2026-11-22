@@ -41,6 +41,7 @@ find = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(find)
 from scripts.stage_completion import record_done  # noqa: E402
 from scripts.validation import require_prerequisites  # noqa: E402
+from studio import face_path_versions as versions  # noqa: E402
 from studio.fingerprints import matches_identity, mtime_seconds  # noqa: E402
 
 STAGE = Path("3-Post Production/5-Face Tracking")
@@ -441,10 +442,33 @@ def analyze_video(media, spans, model):
     return {"width": width, "height": height, "frames": frames, "warnings": warnings}
 
 
+def next_set(directory, metadata, regenerate):
+    latest = versions.latest_index(directory)
+    if latest is None:
+        return 1, versions.index_path(directory, 1)
+    number, index = latest
+    try:
+        saved = normalized_media_header(json.loads(index.read_text(encoding="utf-8-sig")))
+        if (saved.get("schema") != metadata["schema"] or saved.get("schema_version") != metadata["schema_version"]
+                or type(saved.get("no_extracts")) is not bool
+                or any(not isinstance(saved.get(key), list) or not all(isinstance(item, dict) for item in saved[key])
+                       for key in ("inputs", "dependencies", "paths"))):
+            raise ValueError("Invalid face path index.")
+    except (ValueError, TypeError, KeyError) as error:
+        if not regenerate:
+            raise ValueError(f"Existing face path index is invalid; inspect before replacing: {index}") from error
+        return number, index
+    if any(saved[key] != value for key, value in normalized_media_header(metadata).items()):
+        return number + 1, versions.index_path(directory, number + 1)
+    return number, index
+
+
 def run(project, *, analyzer=analyze_video, get_model=model_path, regenerate=False):
     project = project.resolve(strict=True)
     require_prerequisites(project, ROOT, "3.5")
     directory = project / STAGE
+    if directory.resolve() != directory:
+        raise ValueError(f"Redirected Face Tracking folder: {directory}")
     find.append_log(directory, "Face Tracking started", ["Analyze only approved extract take ranges from 3.3."])
     try:
         shortlist = project / SHORTLIST
@@ -462,11 +486,16 @@ def run(project, *, analyzer=analyze_video, get_model=model_path, regenerate=Fal
                     "padding_ms": PADDING_MS, "model_sha256": MODEL_SHA256,
                     "inputs": inputs, "dependencies": [
                         {"scope": "workflow", "path": p.relative_to(ROOT).as_posix(), "sha256": find.sha256(p)}
-                        for p in dependencies]}
+                         for p in dependencies]}
+        metadata = {"schema": "studio.face-path-index", "schema_version": 1, "inputs": inputs,
+                    "dependencies": identity["dependencies"], "no_extracts": not extracts}
+        version, index = next_set(directory, metadata, regenerate)
         planned = []
         model = None
         for (media, role), spans in sorted(ranges.items(), key=lambda item: (str(item[0][0]), item[0][1])):
-            output = directory / (media.stem + "__FacePath.v1.json")
+            output = versions.camera_path(directory, media, version)
+            if output.is_symlink():
+                raise ValueError(f"Redirected face path: {output}")
             header = dict(identity, media=media_fingerprint(media, project), role=role,
                           ranges_ms=[[round(float(a * 1000)), round(float(b * 1000))] for a, b in spans])
             if output.exists() and not regenerate:
@@ -489,10 +518,7 @@ def run(project, *, analyzer=analyze_video, get_model=model_path, regenerate=Fal
                         {"scope": "project", "path": path.relative_to(project).as_posix(),
                           "sha256": find.fingerprints.digest_bytes(content, text=True)}
                         for path, content in planned]
-        index = directory / "Face Paths.json"
-        inventory = {"schema": "studio.face-path-index", "schema_version": 1, "inputs": inputs,
-                     "dependencies": identity["dependencies"], "paths": path_outputs,
-                     "no_extracts": not extracts}
+        inventory = dict(metadata, paths=path_outputs)
         index_bytes = (json.dumps(inventory, indent=2) + "\n").encode()
         if (not regenerate and index.exists()
                 and normalized_media_header(json.loads(index.read_text(encoding="utf-8-sig")))
@@ -517,7 +543,8 @@ def run(project, *, analyzer=analyze_video, get_model=model_path, regenerate=Fal
                 stream.write(index_bytes)
         outputs = path_outputs + [fingerprint(index, project)]
         completion_dependencies = [Path(__file__).with_name("validation.py"),
-                                   Path(__file__).parents[1] / "dependencies.json",
+                                    Path(__file__).parents[1] / "dependencies.json",
+                                    ROOT / "studio/face_path_versions.py",
                                    ROOT / "scripts/validation.py", ROOT / "scripts/stage_completion.py",
                                    ROOT / "scripts/stage_invalidation.py", ROOT / "studio/script_docx.py"]
         completion_dependencies.extend(ROOT / "studio/tools/line" / name for name in
@@ -531,7 +558,7 @@ def run(project, *, analyzer=analyze_video, get_model=model_path, regenerate=Fal
         if marker.exists() and json.loads(marker.read_text(encoding="utf-8-sig")) != manifest:
             find.invalidate(project, (3, 5), "Face Tracking completion changed; dependent stages need review.")
         manifest = record_done(project, ROOT, "3.5", manifest)
-        find.append_log(directory, "Face Tracking complete", [f"Paths: {len(path_outputs)}; approved extracts: {len(extracts)}.",
+        find.append_log(directory, "Face Tracking complete", [f"Index: {index.name}; paths: {len(path_outputs)}; approved extracts: {len(extracts)}.",
                             "Low-confidence, held, and centered frames require editorial review in First Cut."])
         return manifest
     except (OSError, ValueError, TypeError, KeyError, RuntimeError) as error:

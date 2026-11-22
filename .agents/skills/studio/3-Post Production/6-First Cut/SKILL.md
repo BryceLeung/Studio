@@ -12,19 +12,19 @@ project inventories and current input fingerprints before writing `DONE`.
 Generation alone never records completion. Do not hand-author the marker.
 
 Read the Studio root skill for project resolution and logging rules. Resolve the
-real OneDrive project root and pass each script's stage 3.4 `__Scores.v1.json`
+real OneDrive project root and pass each script's highest numbered stage 3.4 `__Scores.v<N>.json`
 file explicitly to the Python script. Validate stage 3.5 Face Tracking completion
 first; landscape exports do not consume its face paths. Use the dashboard Python environment and
 an available FFprobe executable:
 
 ```text
-python "<workflow-root>/.agents/skills/studio/3-Post Production/6-First Cut/scripts/first_cut.py" --project-root "<real-project-root>" --scores "3-Post Production/4-Take Selection/<Script>__Scores.v1.json" [...other scripts' score files...] --padding-ms 50
+python "<workflow-root>/.agents/skills/studio/3-Post Production/6-First Cut/scripts/first_cut.py" --project-root "<real-project-root>" --scores "3-Post Production/4-Take Selection/<Script>__Scores.v<N>.json" [...other scripts' latest score files...] --padding-ms 50
 ```
 
 Approved extract projects:
 
 ```text
-python "<workflow-root>/.agents/skills/studio/3-Post Production/6-First Cut/scripts/extracts.py" --project-root "<real-project-root>" --shortlist "1-Pre Production/3-Extracts/APPROVED/Short-Form Excerpt Shortlist.md" --scores "3-Post Production/4-Take Selection/<Script>__Scores.v1.json" [...other scripts' score files...] --generate --padding-ms 50
+python "<workflow-root>/.agents/skills/studio/3-Post Production/6-First Cut/scripts/extracts.py" --project-root "<real-project-root>" --shortlist "1-Pre Production/3-Extracts/APPROVED/Short-Form Excerpt Shortlist.md" --scores "3-Post Production/4-Take Selection/<Script>__Scores.v<N>.json" [...other scripts' latest score files...] --generate --padding-ms 50
 ```
 
 Omit `--generate` for read-only sentence/take matching. Add `--omit-discarded`

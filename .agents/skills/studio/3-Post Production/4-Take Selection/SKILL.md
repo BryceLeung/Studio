@@ -22,7 +22,11 @@ highest-scoring candidate for a script passage is the one to select. Retain
 enough source identity and the original inclusive, zero-based word ranges to
 associate each score with its input take, including across recordings.
 
-Write one `<Script>__Scores.v1.json` per script. Each scored take retains the
+Write `<Script>__Scores.v1.json` for a script's first score set. Score version
+numbers are independent of Takes version numbers. If the highest numbered
+score file references an older Takes version, write the next numbered score
+file and preserve the older file in place. Compare versions numerically.
+Each scored take retains the
 source mapping's project-relative path (including its saved version) and SHA-256,
 script and transcript source references, and both original word ranges. A
 derived `take_key` hashes that identity for convenience; it does not add IDs to
@@ -153,13 +157,14 @@ discarded script passages are not invented as takes.
 The script handles append-only logging through Studio's log helper, fingerprints
 the exact selected mappings, sources, scoring implementation and skill, and
 archives failed/stale completion markers using Studio's common graph helper.
-It does not fingerprint the shared Studio root skill. Matching output files are
-preserved on rerun. If an existing output differs, the script fails and preserves
-it for inspection before replacement; do not silently overwrite human edits.
-After a deliberate replacement decision, `--regenerate` computes the complete
-replacement set first, archives selected old score JSON into the pending
-`STALE/N/` slot, then publishes and verifies the new scores. It never moves Takes
-mappings or source inputs. Isolated trials do not mutate canonical archives.
+Only the highest numbered score file for each approved script is used for
+completion. Missing, invalid, or ambiguous latest scores never fall back to
+an earlier file. An unchanged mapping and matching scores are reused on rerun.
+If the mapping did not advance and its fingerprint or existing scores differ,
+the script fails and preserves the file for inspection. After a deliberate
+replacement decision, `--regenerate` archives only the differing score files
+being replaced into the pending `STALE/N/` slot. It never moves Takes mappings
+or source inputs. Isolated trials do not mutate canonical archives.
 This stage produces scores, not an editing timeline, and does not imply 3.2
 completion.
 

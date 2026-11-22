@@ -6,6 +6,7 @@ from statistics import median
 import xml.etree.ElementTree as ET
 
 import subtitles
+from studio.face_path_versions import latest_index
 
 
 WIDTH, HEIGHT = 1080, 1920
@@ -15,7 +16,10 @@ SAMPLE_EDGE_TOLERANCE_MS = 300
 
 def load_paths(cut, project):
     manifest = cut.validate_done(project, cut.FACE)
-    index_path = project / cut.FACE / "Face Paths.json"
+    latest = latest_index(project / cut.FACE)
+    if latest is None:
+        raise ValueError("Missing Face Tracking index.")
+    _, index_path = latest
     index_fingerprint = cut.scoring.fingerprint(index_path, project, "project")
     def recorded(path, reference):
         return any(entry.get("scope") == reference["scope"] and entry.get("path") == reference["path"]

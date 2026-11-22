@@ -176,6 +176,45 @@ class ValidationTests(unittest.TestCase):
             sync.write_text(json.dumps(result))
             self.check_read_only(checker, ValueError)
 
+    def test_changed_mapping_publishes_new_version_and_reuses_it(self):
+        with TemporaryDirectory() as directory:
+            project = Path(directory).resolve()
+            checker, old_paths, old_index = self.fixture(project)
+            stage = old_index.parent
+            old = {path: (path.read_bytes(), path.stat().st_mtime_ns) for path in (*old_paths, old_index)}
+            mapping = project / find.OUTPUT / "A__Takes.v1.json"
+            newer = mapping.with_name("A__Takes.v2.json")
+            newer.write_bytes(mapping.read_bytes())
+            (mapping.parent / "DONE").write_text(json.dumps({"conditions": {
+                "latest_versions": [{"path": newer.relative_to(project).as_posix()}]}}))
+
+            def analyze(media, spans, model):
+                return {"width": 640, "height": 360, "warnings": [], "frames": [
+                    {"time_ms": round(float(time * 1000)), "status": "centered", "face": None}
+                    for span in spans for time in span]}
+
+            with patch.object(track, "require_prerequisites"), patch("scripts.validation.require_prerequisites"), \
+                    patch.object(find, "append_log"):
+                manifest = track.run(project, analyzer=analyze, get_model=lambda: None)
+                index = stage / "Face Paths.v2.json"
+                self.assertTrue(index.is_file())
+                self.assertEqual({Path(item["path"]).name for item in manifest["outputs"]}, {
+                    index.name, *(path.name.replace(".v1.", ".v2.") for path in old_paths)})
+                self.assertEqual({path: (path.read_bytes(), path.stat().st_mtime_ns) for path in old}, old)
+                checker.manifest = manifest
+                self.check_read_only(checker)
+                def unexpected(*args):
+                    self.fail("Unchanged inputs should not load the model or decode video")
+                self.assertEqual(track.run(project, analyzer=unexpected, get_model=unexpected), manifest)
+                self.assertFalse((stage / "Face Paths.v3.json").exists())
+
+    def test_newer_invalid_index_cannot_fall_back_to_completed_set(self):
+        with TemporaryDirectory() as directory:
+            checker, _, index = self.fixture(Path(directory).resolve(), empty=True)
+            index.with_name("Face Paths.v10.json").write_text("{}")
+            index.with_name("Face Paths.v9.json").write_bytes(index.read_bytes())
+            self.check_read_only(checker, ValueError)
+
     def test_sync_reference_cannot_escape_project(self):
         with TemporaryDirectory() as directory:
             checker, _, _ = self.fixture(Path(directory).resolve())

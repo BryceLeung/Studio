@@ -22,8 +22,7 @@ def preview(project, shortlist, scores_paths, number, output):
     unresolved = [i for i in mapped["issues"] if i["reason"] != "script_explicitly_discarded"]
     if unresolved:
         raise ValueError(f"Extract has unresolved mapping issues: {unresolved}")
-    scores_path = next((project / p).resolve(strict=True) for p in scores_paths
-                       if Path(p).name == Path(mapped["source"]).stem + "__Scores.v1.json")
+    scores_path = extracts.score_paths_by_source(project, scores_paths)[mapped["source"].casefold()]
     scores = cut.read_json(scores_path)
     document = cut.scoring.load_mapping(project, project / scores["source_mapping"]["path"])
     syncs, probes = {}, {}

@@ -101,8 +101,9 @@ class FinalCutTests(unittest.TestCase):
     def test_generation_does_not_overwrite_existing_edit(self):
         self.source.parent.mkdir(parents=True)
         self.source.write_bytes(XML)
-        scores = self.project / cut.SCORES / "A__Scores.v1.json"
+        scores = self.project / cut.SCORES / "A__Scores.v10.json"
         scores.parent.mkdir(parents=True)
+        scores.with_name("A__Scores.v9.json").write_text("historical scores")
         scores.write_text(json.dumps({"source_mapping": {"path": "mapping.json"}}))
         (self.project / "mapping.json").write_text(json.dumps(DOCUMENT))
         with patch.object(cut, "require_prerequisites") as prerequisites, patch.object(cut.animations, "load", return_value=([], [])), \

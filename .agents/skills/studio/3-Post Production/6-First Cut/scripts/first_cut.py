@@ -397,10 +397,13 @@ def run(project, score_paths, padding_ms=50, ffprobe="ffprobe", regenerate=False
     if type(padding_ms) is not int or padding_ms < 0:
         raise ValueError("padding_ms must be a nonnegative integer")
     inventory = find.discover(project)
-    expected = [(project / scoring.STAGE / (s.stem + "__Scores.v1.json")).resolve() for s, _ in inventory]
+    latest = scoring.score_versions.latest_scores(project / scoring.STAGE)
+    if any(script.stem.casefold() not in latest for script, _ in inventory):
+        raise ValueError("Missing numbered score file for an approved script.")
+    expected = [latest[script.stem.casefold()][1] for script, _ in inventory]
     supplied = [(project / p).resolve(strict=True) if not p.is_absolute() else p.resolve(strict=True) for p in score_paths]
     if len(supplied) != len(set(supplied)) or set(supplied) != set(expected):
-        raise ValueError("Pass one stage 3.4 score file for every approved script.")
+        raise ValueError("Pass the latest stage 3.4 score file for every approved script.")
     directory = project / STAGE
     find.append_log(directory, "First Cut started", [f"padding_ms={padding_ms}; start camA; flip at nonadjacent selections."])
     try:
@@ -414,7 +417,7 @@ def run(project, score_paths, padding_ms=50, ffprobe="ffprobe", regenerate=False
             document = scoring.load_mapping(project, source_path)
             reference = scoring.checked_reference(project, source_path, scores["source_mapping"])
             calculated = scoring.score_document(document, reference)
-            if calculated != scores:
+            if not scoring.scores_match(scores, calculated):
                 raise ValueError(f"Stale or changed scoring output: {score_path}")
             check = find.check_mapping(project, source_path, find.sources.load_script(project, script),
                                        [find.sources.load_transcript(project, p) for p in transcript_paths])
@@ -453,6 +456,7 @@ def run(project, score_paths, padding_ms=50, ffprobe="ffprobe", regenerate=False
         for output, xml, item_report in planned:
             validate_xml(xml, output, item_report)
         dependencies = [Path(__file__), Path(subtitles.__file__), Path(__file__).parents[1] / "SKILL.md", SCORER, scoring.FIND_SCRIPT,
+                         ROOT / "studio/score_versions.py",
                          ROOT / "scripts/append-log.py", ROOT / "studio/fingerprints.py", ROOT / "studio/script_docx.py"]
         dependencies.extend(ROOT / "studio/tools/line" / name for name in
                             ("mapping.py", "sources.py", "combined.py", "quality.py", "actions.py", "boundaries.py"))

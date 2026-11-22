@@ -29,6 +29,7 @@ class Validation(StageValidation):
         find = scoring.find
         for folder in (find.APPROVED, find.TRANSCRIBED, find.OUTPUT, scoring.STAGE):
             self.confined(self.project / folder)
+        scores = scoring.score_versions.latest_scores(self.project / scoring.STAGE)
         inputs, outputs, latest, count = [], [], [], 0
         for script_path, transcript_paths in find.discover(self.project):
             script_path = self.confined(script_path)
@@ -42,13 +43,16 @@ class Validation(StageValidation):
                 [find.sources.load_transcript(self.project, p) for p in transcript_paths])
             if not check["coverage"]["complete"]:
                 raise ValueError(f"Incomplete reviewed Takes coverage: {path}")
-            target = self.confined(self.project / scoring.STAGE / (script_path.stem + "__Scores.v1.json"))
+            latest_score = scores.get(script_path.stem.casefold())
+            if not latest_score:
+                raise ValueError(f"Missing numbered scores for {script_path.stem}")
+            target = self.confined(latest_score[1])
             persisted = json.loads(target.read_text(encoding="utf-8-sig"))
             reference = scoring.checked_reference(self.project, path, persisted["source_mapping"])
             document = scoring.load_mapping(self.project, path)
             expected = scoring.score_document(document, reference)
             scoring.validate_scores(document, persisted)
-            if persisted != expected:
+            if not scoring.scores_match(persisted, expected):
                 raise ValueError(f"Persisted take scores differ from current scoring: {target}")
             inputs.extend((path, script_path, *transcript_paths))
             outputs.append(target)

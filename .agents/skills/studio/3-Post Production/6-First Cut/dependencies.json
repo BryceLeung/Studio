@@ -3,6 +3,8 @@
   "schema_version": 1,
   "step": "3.6",
   "workflow_dependencies": [
+    "studio/score_versions.py",
+    "studio/face_path_versions.py",
     "studio/script_docx.py",
     ".agents/skills/studio/3-Post Production/6-First Cut/scripts/first_cut.py",
     ".agents/skills/studio/3-Post Production/6-First Cut/scripts/extracts.py",
@@ -39,7 +41,7 @@
     {"step": "3.5", "folder": "3-Post Production/5-Face Tracking"}
   ],
   "inputs": [
-    {"folder": "3-Post Production/4-Take Selection", "filename_regex": "^.+__Scores\\.v1\\.json$", "minimum": 1, "complete_set": true},
+    {"folder": "3-Post Production/4-Take Selection", "filename_regex": "^.+__Scores\\.v[1-9][0-9]*\\.json$", "minimum": 1, "complete_set": true},
     {"folder": "3-Post Production/6-First Cut", "filename_regex": "^.+\\.FCPXML$", "minimum": 1, "complete_set": true, "role": "project"},
     {"folder": "3-Post Production/6-First Cut/Extracts", "filename_regex": "^.+\\.FCPXML$", "minimum": 0, "complete_set": true, "role": "project"},
     {"folder": "3-Post Production/6-First Cut/Extracts/Portrait", "filename_regex": "^.+\\.FCPXML$", "minimum": 0, "complete_set": true, "role": "project"},
@@ -49,7 +51,7 @@
     {"folder": "3-Post Production/1-Sync", "filename_regex": "^.+__C\\d{2}\\.json$", "minimum": 1, "complete_set": true},
     {"folder": "3-Post Production/2-Transcribe", "filename_regex": "^.+__C\\d{2}__lav\\.json$", "minimum": 1, "complete_set": true},
     {"folder": "3-Post Production/3-Find Takes", "filename_regex": "^.+__Takes\\.v[1-9]\\d*\\.json$", "minimum": 1, "complete_set": true},
-    {"folder": "3-Post Production/5-Face Tracking", "filename_regex": "^(?:Face Paths|.+__C\\d{2}__cam[AB]__FacePath\\.v1)\\.json$", "minimum": 1, "complete_set": true}
+    {"folder": "3-Post Production/5-Face Tracking", "filename_regex": "^(?:Face Paths(?:\\.v[1-9][0-9]*)?|.+__C\\d{2}__cam[AB]__FacePath\\.v[1-9][0-9]*)\\.json$", "minimum": 1, "complete_set": true}
   ],
   "outputs": [
     {"folder": "3-Post Production/6-First Cut/APPROVED", "filename_regex": "^.+\\.FCPXML$", "minimum": 1, "complete_set": true}

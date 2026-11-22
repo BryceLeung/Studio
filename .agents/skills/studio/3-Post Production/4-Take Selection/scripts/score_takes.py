@@ -14,13 +14,15 @@ import re
 
 ROOT = next(p for p in Path(__file__).resolve().parents
             if (p / "studio/tools/line/mapping.py").is_file())
-STAGE = Path("3-Post Production/4-Take Selection")
 FIND_SCRIPT = ROOT / ".agents/skills/studio/3-Post Production/3-Find Takes/scripts/find_takes.py"
 spec = importlib.util.spec_from_file_location("studio_find_takes_for_selection", FIND_SCRIPT)
 find = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(find)
 from scripts.stage_completion import record_done, same_manifest  # noqa: E402
 from scripts.validation import require_prerequisites  # noqa: E402
+from studio import score_versions  # noqa: E402
+
+STAGE = Path(score_versions.STAGE)
 
 
 def fingerprint(path: Path, root: Path, scope: str) -> dict:
@@ -35,6 +37,27 @@ def checked_reference(project: Path, path: Path, reference: dict) -> dict:
             or not find.fingerprints.matches(path, reference["sha256"])):
         raise ValueError(f"Stale mapping fingerprint: {path}")
     return reference
+
+
+def scores_match(persisted, calculated):
+    """A code-only change need not replace otherwise identical verified scores."""
+    algorithm = persisted.get("algorithm") if isinstance(persisted, dict) else None
+    digest = algorithm.get("code_sha256") if isinstance(algorithm, dict) else None
+    if not isinstance(digest, str) or not re.fullmatch(r"[a-fA-F0-9]{64}", digest):
+        return False
+    comparable = dict(algorithm, code_sha256=calculated["algorithm"]["code_sha256"])
+    return dict(persisted, algorithm=comparable) == calculated
+
+
+def scored_mapping_version(reference, script_stem):
+    path = reference.get("path") if isinstance(reference, dict) else None
+    prefix = (find.OUTPUT / (script_stem + "__Takes")).as_posix()
+    match = re.fullmatch(re.escape(prefix) + r"\.v([1-9][0-9]*)\.json", path, re.I) if isinstance(path, str) else None
+    digest = reference.get("sha256") if match else None
+    if (not match or reference.get("scope") != "project" or not isinstance(digest, str)
+            or not re.fullmatch(r"[a-fA-F0-9]{64}", digest)):
+        raise ValueError("Existing scores lack a valid numbered source mapping reference.")
+    return int(match[1])
 
 
 def provenance() -> dict:
@@ -156,7 +179,10 @@ def validate_manifest(project: Path, path: Path) -> None:
 
 def run_stage(project: Path, inputs: list[Path], output_dir: Path | None = None, regenerate=False) -> dict:
     project = project.resolve(strict=True)
-    directory = output_dir.resolve() if output_dir else project / STAGE
+    canonical = project / STAGE
+    directory = output_dir.resolve() if output_dir else canonical
+    if directory in (canonical, canonical.resolve()) and canonical.resolve() != canonical:
+        raise ValueError("Refusing a redirected Take Selection stage folder.")
     isolated = directory != project / STAGE
     if regenerate and isolated:
         raise ValueError("Regeneration is only supported for project stage outputs, not isolated trials.")
@@ -173,20 +199,22 @@ def run_stage(project: Path, inputs: list[Path], output_dir: Path | None = None,
     failed = (3, 4)
     try:
         inventory = find.discover(project)
-        expected, sources = [], []
+        expected, mapping_versions, sources = [], [], []
         for script_path, transcript_paths in inventory:
             versions = find.mapping.takes_versions(project, script_path.stem + "__Takes")
             if not versions or sum(v == versions[-1][0] for v, _ in versions) != 1:
                 raise ValueError(f"Missing or ambiguous latest Takes version: {script_path.stem}")
             path = versions[-1][1].resolve()
             expected.append(path)
+            mapping_versions.append(versions[-1][0])
             sources.extend((script_path, *transcript_paths))
         supplied = [((project / p) if not p.is_absolute() else p).resolve(strict=True) for p in inputs]
         failed = (3, 4)
         if len(set(supplied)) != len(supplied) or set(supplied) != set(expected):
             raise ValueError("Pass exactly the latest numbered mapping for every approved script.")
         planned = []
-        for (script_path, transcript_paths), path in zip(inventory, expected):
+        existing = score_versions.latest_scores(directory)
+        for (script_path, transcript_paths), path, mapping_version in zip(inventory, expected, mapping_versions):
             failed = (3, 3)
             check = find.check_mapping(project, path, find.sources.load_script(project, script_path),
                                        [find.sources.load_transcript(project, p) for p in transcript_paths])
@@ -195,30 +223,38 @@ def run_stage(project: Path, inputs: list[Path], output_dir: Path | None = None,
             failed = (3, 4)
             document = load_mapping(project, path)
             reference = fingerprint(path, project, "project")
+            latest = existing.get(script_path.stem.casefold())
             target = directory / (script_path.stem + "__Scores.v1.json")
-            if target.exists() and not regenerate:
-                previous = json.loads(target.read_text(encoding="utf-8-sig"))
-                reference = checked_reference(project, path, previous["source_mapping"])
+            previous = None
+            if latest:
+                score_version, target = latest
+                try:
+                    previous = json.loads(target.read_text(encoding="utf-8-sig"))
+                    if not isinstance(previous, dict):
+                        raise ValueError(f"Expected a score object: {target}")
+                    old_reference = previous.get("source_mapping")
+                    if mapping_version > scored_mapping_version(old_reference, script_path.stem):
+                        target = directory / f"{script_path.stem}__Scores.v{score_version + 1}.json"
+                        previous = None
+                    else:
+                        reference = checked_reference(project, path, old_reference)
+                except (ValueError, KeyError, TypeError):
+                    if not regenerate:
+                        raise
+                    previous = None
             result = score_document(document, reference)
-            planned.append((target, result))
-        failed = (3, 4)
-        # Check all existing results before writing any. Preserve edits/stale results.
-        changed = False
-        for target, result in planned:
-            try:
-                differs = not target.exists() or json.loads(target.read_text(encoding="utf-8-sig")) != result
-            except (ValueError, TypeError):
+            reuse = scores_match(previous, result)
+            replace = latest is not None and target == latest[1] and not reuse
+            if replace:
                 if not regenerate:
-                    raise
-                differs = True
-            changed = changed or differs
-            if not regenerate and target.exists() and differs:
-                raise ValueError(f"Existing scores differ; inspect before replacing: {target}")
+                    raise ValueError(f"Existing scores differ; inspect before replacing: {target}")
+            planned.append((target, previous if reuse else result, replace))
         dependencies = [Path(__file__), Path(__file__).parents[1] / "SKILL.md", FIND_SCRIPT,
                          Path(__file__).parents[1] / "dependencies.json",
                          Path(__file__).with_name("validation.py"), ROOT / "scripts/validation.py",
                          ROOT / "scripts/stage_completion.py", ROOT / "scripts/stage_invalidation.py",
                          ROOT / "scripts/append-log.py", ROOT / "studio/fingerprints.py", ROOT / "studio/script_docx.py"]
+        dependencies.append(ROOT / "studio/score_versions.py")
         dependencies.extend(ROOT / "studio/tools/line" / name for name in
                             ("mapping.py", "sources.py", "combined.py", "quality.py", "actions.py", "boundaries.py"))
         manifest = {"project": project.name, "step": "3.4", "algorithm": provenance(),
@@ -226,9 +262,10 @@ def run_stage(project: Path, inputs: list[Path], output_dir: Path | None = None,
                     "dependencies": [fingerprint(p, ROOT, "workflow") for p in dependencies],
                     "conditions": {"latest_mapping_paths": [p.relative_to(project).as_posix() for p in expected],
                                    "every_take_scored": True,
-                                   "take_count": sum(r["take_count"] for _, r in planned)}}
+                                    "take_count": sum(r["take_count"] for _, r, _ in planned)}}
         marker = directory / "DONE"
-        if not isolated and marker.exists() and not (regenerate and changed):
+        replacements = [target for target, _, replace in planned if replace]
+        if not isolated and marker.exists() and not replacements:
             old = json.loads(marker.read_text(encoding="utf-8-sig"))
             comparable = {k: v for k, v in old.items() if k not in ("outputs", "completed_at")}
             if comparable != manifest and not same_manifest(comparable, manifest, project, ROOT,
@@ -236,23 +273,23 @@ def run_stage(project: Path, inputs: list[Path], output_dir: Path | None = None,
                 find.invalidate(project, (3, 4), "Take Selection inputs or scoring rules changed.")
             else:
                 validate_manifest(project, marker)
-        if regenerate and changed:
+        if replacements:
             from scripts.stage_invalidation import prepare_regeneration
-            prepare_regeneration(project, ROOT, "3.4", [p for p, _ in planned if p.exists()],
+            prepare_regeneration(project, ROOT, "3.4", replacements,
                                  "Explicit Take Selection regeneration.", append_log=find.append_log)
-        for target, result in planned:
+        for target, result, _ in planned:
             if not target.exists():
                 find.write_json(target, result)
             # Verify the persisted artifact, not just the in-memory calculation.
             if json.loads(target.read_text(encoding="utf-8-sig")) != result:
                 raise ValueError(f"Score output verification failed: {target}")
         if not isolated:
-            manifest["outputs"] = [fingerprint(p, project, "project") for p, _ in planned]
+            manifest["outputs"] = [fingerprint(p, project, "project") for p, _, _ in planned]
             manifest["completed_at"] = datetime.now(timezone.utc).isoformat()
             record_done(project, ROOT, "3.4", manifest)
         report = {"complete": True, "done_written": not isolated,
                   "take_count": manifest["conditions"]["take_count"],
-                  "outputs": [str(p) for p, _ in planned]}
+                  "outputs": [str(p) for p, _, _ in planned]}
         find.append_log(directory, "Take Selection passed", [json.dumps(report),
             "Input fingerprints: " + json.dumps(manifest["inputs"]),
             "Every input take has one verified finite numerical score."])

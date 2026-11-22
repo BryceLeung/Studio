@@ -28,7 +28,7 @@ class ExtractTests(unittest.TestCase):
                     clip["size_bytes"] = stat.st_size
                     seconds = stat.st_mtime_ns // 1_000_000_000
                     clip[timestamp_key] = seconds if timestamp_key == "mtime_s" else seconds * 1_000_000_000 + 900_000_000
-                score = project / "A__Scores.v1.json"
+                score = project / "A__Scores.v2.json"
                 score.write_text(json.dumps(scores))
                 sync_path = project / cut.SYNC / "A__C01.json"
                 sync_path.parent.mkdir(parents=True)

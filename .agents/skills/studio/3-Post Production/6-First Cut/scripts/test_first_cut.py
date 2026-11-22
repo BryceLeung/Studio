@@ -84,17 +84,22 @@ class FirstCutTests(unittest.TestCase):
         self.assertEqual(cut.STAGE, Path("3-Post Production/6-First Cut"))
         with TemporaryDirectory() as directory:
             project = Path(directory).resolve()
-            score = project / cut.scoring.STAGE / "A__Scores.v1.json"
+            score = project / cut.scoring.STAGE / "A__Scores.v10.json"
             score.parent.mkdir(parents=True)
             score.write_text("{}")
+            previous = score.with_name("A__Scores.v9.json")
+            previous.write_text("{}")
             with patch.object(cut.find, "append_log"), patch.object(cut, "require_prerequisites") as prerequisites, \
                     patch.object(cut.find, "discover", return_value=[(project / "A.docx", [])]), \
                     patch.object(cut, "read_json", side_effect=TypeError("invalid input")):
                 with patch.object(cut.find, "invalidate") as invalidate:
+                    with self.assertRaisesRegex(ValueError, "latest stage 3.4 score file"):
+                        cut.run(project, [previous])
                     with self.assertRaisesRegex(TypeError, "invalid input"):
                         cut.run(project, [score])
                     self.assertEqual(invalidate.call_args.args[:2], (project, (3, 6)))
-                prerequisites.assert_called_once_with(project, cut.ROOT, "3.6")
+                self.assertEqual(prerequisites.call_count, 2)
+                prerequisites.assert_called_with(project, cut.ROOT, "3.6")
 
     def test_bad_arguments_do_not_invalidate_or_log_current_completion(self):
         with TemporaryDirectory() as directory:
@@ -152,7 +157,8 @@ class FirstCutTests(unittest.TestCase):
             mapping.write_text("{}")
             score = project / cut.scoring.STAGE / "A__Scores.v1.json"
             score.parent.mkdir(parents=True)
-            scores = {"source_mapping": cut.scoring.fingerprint(mapping, project, "project")}
+            scores = {"source_mapping": cut.scoring.fingerprint(mapping, project, "project"),
+                      "algorithm": cut.scoring.provenance()}
             score.write_text(json.dumps(scores))
             (project / cut.EXTRACTS / "APPROVED").mkdir(parents=True)
             output = project / cut.STAGE / "A.FCPXML"

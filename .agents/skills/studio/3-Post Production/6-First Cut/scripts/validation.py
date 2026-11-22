@@ -7,13 +7,13 @@ import xml.etree.ElementTree as ET
 from scripts import stage_completion as completion
 from scripts.validation import StageValidation, recorded_fingerprints
 from studio.fingerprints import matches_identity
+from studio.score_versions import latest_scores
 
 
 class Validation(StageValidation):
     def validate_stage(self):
         source = self.definition["inputs"][0]
-        scores = {re.sub(r"__Scores\.v1\.json$", "", path.name, flags=re.I).casefold()
-                  for path in self.files(source)}
+        scores = set(latest_scores(self.confined(source["folder"])))
         expected = set()
         for rule in self.definition["inputs"]:
             if rule.get("role") != "project":
