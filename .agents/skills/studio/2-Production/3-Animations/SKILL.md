@@ -1,6 +1,6 @@
 ---
 name: studio-animations
-description: Run or resume Studio substage 2.3 interactively, discussing one registry asset at a time, sketching fast image previews, rendering Remotion candidates and saving reusable assets only on request, and waiting for human-approved videos.
+description: Run or resume Studio substage 2.3 interactively, discussing one registry asset at a time, sketching fast image previews, rendering Remotion candidates, saving reusable objects on request, storing requested generated sound effects in the shared sounds library, and waiting for human-approved videos.
 ---
 
 # 2.3 - Animations
@@ -48,6 +48,7 @@ After successful preflight, create missing working directories for every current
     CHARACTERS/
     BACKGROUND/
     OBJECTS/
+    SOUNDS/
   A10/
     Animation.json
     request.01.md
@@ -76,7 +77,7 @@ After successful preflight, create missing working directories for every current
 
 ### Asset-specific scripts
 
-Always create project-specific preparation, assembly, revision, verification and save helpers in the owning asset's `scripts/` directory in the resolved OneDrive project, such as `2-Production/3-Animations/A04/scripts/`. Helpers specific to a shared-library character, background or object belong in that object's `scripts/` directory, such as `2-Production/3-Animations/ASSETS/CHARACTERS/trump_girl/scripts/`. Create the directory only when a helper is needed. This rule applies to all script languages and subordinate sketch, render and save workflows; do not create new executable helpers in candidate versions or the workflow repository for asset-specific work. Preserve existing versioned script copies as provenance rather than moving or rewriting historical artifacts.
+Always create project-specific preparation, assembly, revision, verification and save helpers in the owning asset's `scripts/` directory in the resolved OneDrive project, such as `2-Production/3-Animations/A04/scripts/`. Helpers specific to a shared-library character, background, object or sound belong in that library item's `scripts/` directory, such as `2-Production/3-Animations/ASSETS/CHARACTERS/trump_girl/scripts/`. Create the directory only when a helper is needed. This rule applies to all script languages and subordinate sketch, render and save workflows; do not create new executable helpers in candidate versions or the workflow repository for asset-specific work. Preserve existing versioned script copies as provenance rather than moving or rewriting historical artifacts.
 
 Only maintained, reusable workflow tooling belongs in this skill's repository `scripts/` directory. Project-local helpers must accept explicit paths for shared tooling they need, such as `--renderer-root`, rather than deriving the repository or renderer location from their own `__file__`. Pass `--project-root` explicitly and keep recorded project paths portable. Script placement does not bypass normal mutation, logging, rendering or approval gates.
 
@@ -100,6 +101,12 @@ These are subordinate workflows, not additional numbered stages, and do not repl
 6. Only when the user explicitly asks to save an object, copy the selected version into `ASSETS/CHARACTERS/<name>/vNNN/`, `ASSETS/BACKGROUND/<name>/vNNN/` or `ASSETS/OBJECTS/<name>/vNNN/` as appropriate. Preserve the original candidate and existing library versions. If the selected version is ambiguous, resolve that before copying. Retain source, required resources, provenance and any attribution/licensing information with the saved version. Saving an object is not animation approval.
 7. Assemble or revise the animation only when requested, using the agreed objects and treatment. Freeze selected library resources into this animation's `references/`, and copy reusable code into its own `src/`; record the source library version. Never import live code or reference mutable files from the shared library or another animation. Later library updates must not silently change an existing animation.
 8. Render an animation preview only when requested, using the maintained render workflow below. Inspect the work, follow the review handoff below, then stop for feedback. Continue revisions interactively. Move to the next animation only on the user's explicit instruction, not because a render succeeded or an object was saved. An instruction to move on is not final video approval; preserve pending approval status and the existing completion gate.
+
+## Generated sound effects
+
+- When the user requests a generated sound effect, check the stage-local `ASSETS/SOUNDS/` library for relevant existing versions. Publish every newly generated effect as a WAV in `ASSETS/SOUNDS/<sound-name>/vNNN/`, even if it was requested for only one animation. Do not leave the only copy in an animation's `references/`. Use a descriptive, portable name and a new version for revisions; never overwrite existing versions. Record how the sound was generated and any inputs or licensing that apply.
+- The generation request authorizes this library write without a separate save request. It does not authorize adding the effect to a composition unless requested, nor does it authorize a video render or approval. The explicit save gate for visual objects is unchanged.
+- When adding a cue to an animation, copy the selected version into that animation's `references/`, record the source library version, and use the local copy via `staticFile()`. Never reference the shared library live. Leave existing effects, snapshots and approvals in place unless the user requests a migration.
 
 ## Review handoff
 

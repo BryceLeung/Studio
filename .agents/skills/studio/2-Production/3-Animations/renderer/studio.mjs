@@ -1,5 +1,8 @@
-import {mkdtemp, realpath, rm, writeFile} from 'node:fs/promises';
+import {createHash} from 'node:crypto';
+import {access, mkdir, mkdtemp, realpath, rm, writeFile} from 'node:fs/promises';
+import {constants} from 'node:fs';
 import {createRequire} from 'node:module';
+import {arch, platform} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {spawn} from 'node:child_process';
@@ -22,15 +25,51 @@ const directory = path.dirname(source);
 const assetId = path.basename(directory);
 const isFullAnimation = path.basename(path.dirname(directory)) === '3-Animations' &&
   /^(?:A(?:0[1-9]|[1-9][0-9])|ASSET-\d{6,})$/.test(assetId);
-const temporary = await mkdtemp(path.join(renderer, 'node_modules/.cache/studio-animations-studio-'));
-const config = path.join(temporary, 'remotion.config.ts');
 const modules = path.join(renderer, 'node_modules');
+// Use the browser installed by `remotion browser ensure` in the shared renderer.
+const browserPlatform = {
+  darwin: arch() === 'arm64' ? 'mac-arm64' : 'mac-x64',
+  linux: arch() === 'arm64' ? 'linux-arm64' : 'linux64',
+  win32: 'win64',
+}[platform()];
+if (!browserPlatform) throw new Error(`Unsupported Remotion browser platform: ${platform()}`);
+const browserDir = path.join(modules, '.remotion', 'chrome-headless-shell', browserPlatform,
+  `chrome-headless-shell-${browserPlatform}`);
+let browserExecutable;
+for (const name of ['headless_shell', platform() === 'win32' ? 'chrome-headless-shell.exe' : 'chrome-headless-shell']) {
+  const executable = path.join(browserDir, name);
+  try {
+    await access(executable, constants.X_OK);
+    browserExecutable = executable;
+    break;
+  } catch (error) {
+    if (!['ENOENT', 'EACCES'].includes(error.code)) throw error;
+  }
+}
+if (!browserExecutable) {
+  throw new Error('Shared browser missing. Run npm run remotion -- browser ensure in the renderer directory during explicit setup.');
+}
+const cache = path.join(modules, '.cache');
+const cacheKey = createHash('sha256').update(JSON.stringify([entry, references])).digest('hex');
+const webpackCache = path.join(cache, 'studio-animations-webpack', cacheKey);
+await mkdir(cache, {recursive: true});
+const temporary = await mkdtemp(path.join(cache, 'studio-animations-studio-'));
+const config = path.join(temporary, 'remotion.config.ts');
 await writeFile(config, [
   // Keep this import external to config bundling so it shares the CLI's state.
   'import {Config} from "@remotion/cli/config";',
+  // Disable the CLI production cache; the live Studio compiler handles its own cache below.
+  'Config.setCachingEnabled(false);',
+  `Config.setBrowserExecutable(${JSON.stringify(browserExecutable)});`,
   ...(isFullAnimation ? [`Config.setOutputLocation(${JSON.stringify(`out/${assetId}.mp4`)});`] : []),
   'Config.overrideWebpackConfig((config) => ({',
-  '  ...config, resolve: {...config.resolve,',
+  '  ...config,',
+  // Remotion sets its cache after this override, so redirect it during compiler setup.
+  '  plugins: [...(config.plugins ?? []), {apply(compiler) {',
+  '    const cache = compiler.options.cache;',
+  `    if (cache && cache.type === 'filesystem') cache.cacheDirectory = ${JSON.stringify(webpackCache)};`,
+  '  }}],',
+  '  resolve: {...config.resolve,',
   `    modules: [${JSON.stringify(modules)}, ...(config.resolve?.modules ?? ['node_modules'])],`,
   `    alias: {...config.resolve?.alias, react: ${JSON.stringify(path.dirname(require.resolve('react/package.json')))},`,
   `      'react-dom': ${JSON.stringify(path.dirname(require.resolve('react-dom/package.json')))},`,
