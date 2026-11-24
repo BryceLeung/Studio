@@ -9,6 +9,7 @@ from pathlib import Path
 import re
 import sys
 from urllib.parse import quote, unquote, urlsplit
+from urllib.request import url2pathname
 import xml.etree.ElementTree as ET
 
 ROOT = next(path for path in Path(__file__).resolve().parents if (path / "studio/fingerprints.py").is_file())
@@ -18,11 +19,14 @@ from scripts.stage_invalidation import _default_log, invalidate, prepare_regener
 from scripts.validation import load_stages, require_prerequisites, StageValidation
 from studio.first_cut_exports import export_stem, exports
 from studio import final_cut_animations as animations
+from studio import final_cut_extras as extras
 from studio.fingerprints import sha256
 from studio import score_versions
 
 STEP = "3.7"
 FIRST_CUT = Path("3-Post Production/6-First Cut")
+FOOTAGE = Path("2-Production/1-Footage Intake")
+RECORDING = re.compile(r".+__C\d{2}__(?:cam[AB]\.(?:mov|mp4)|lav\.wav)", re.I)
 STAGE = Path("3-Post Production/7-Final Cut")
 SCORES = Path(score_versions.STAGE)
 ANCHORS = {"audio", "video", "clip", "title", "mc-clip", "ref-clip", "sync-clip", "asset-clip", "audition", "spine", "caption"}
@@ -118,7 +122,58 @@ def finalize_take(item, resources, resource_id):
     return clip, media, multicam, titles
 
 
-def convert(xml, project, source, output, document, extract_number, entries=()):
+def rebase_media(resources, project, source, output):
+    """Relink FCP-managed presenter originals to the project's intake files."""
+    intake = project / FOOTAGE
+    originals = {}
+    if intake.is_dir():
+        for path in intake.iterdir():
+            if RECORDING.fullmatch(path.name) and path.is_file():
+                originals.setdefault(path.name.casefold(), []).append(path)
+
+    def update(node, original):
+        src = node.get("src")
+        if not src:
+            return
+        url = urlsplit(src)
+        if url.scheme == "file":
+            if url.netloc and url.netloc.lower() != "localhost":
+                if original:
+                    raise ValueError(f"Cannot verify nonlocal original media URL in {source.name}: {src}")
+                return
+            path = Path(url2pathname(url.path))
+        elif not url.scheme and not url.netloc:
+            path = Path(unquote(url.path))
+        else:
+            return
+        target = source.parent / path
+        managed = (target.parent.name.casefold() == "original media"
+                   and any(part.lower().endswith(".fcpbundle") for part in target.parts))
+        if original and managed and RECORDING.fullmatch(path.name):
+            matches = originals.get(path.name.casefold(), [])
+            if len(matches) != 1:
+                raise ValueError(f"Expected one Footage Intake original for {path.name} in {source.name}, found {len(matches)}")
+            target = matches[0].resolve()
+            if not target.is_relative_to(project.resolve()):
+                raise ValueError(f"Footage Intake original points outside the project: {matches[0]}")
+            node.set("src", target.as_uri())
+        elif not url.scheme and not path.is_absolute():
+            node.set("src", quote(Path(os.path.relpath(target.resolve(), output.parent)).as_posix(), safe="/."))
+
+        if original:
+            target = target.resolve()
+            if not target.is_file() or target.stat().st_size == 0:
+                raise ValueError(f"Missing or empty original media for {source.name}: {target}")
+
+    for asset in resources.findall("asset"):
+        update(asset, original=True)
+        for media in asset.findall("media-rep"):
+            update(media, original=media.get("kind", "original-media") == "original-media")
+    for effect in resources.findall("effect"):
+        update(effect, original=False)
+
+
+def convert(xml, project, source, output, document, extract_number, entries=(), extra_entries=()):
     # Preserve comment nodes (some FCP filters store settings in them) and title whitespace.
     root = ET.fromstring(xml, parser=ET.XMLParser(target=ET.TreeBuilder(insert_comments=True)))
     projects = list(root.iter("project"))
@@ -146,13 +201,9 @@ def convert(xml, project, source, output, document, extract_number, entries=()):
                 ids.add(candidate)
                 return candidate
 
-    for media in [*resources.findall("asset"), *resources.findall("asset/media-rep"), *resources.findall("effect")]:
-        src = media.get("src")
-        if src and not urlsplit(src).scheme and not Path(unquote(src)).is_absolute():
-            target = (source.parent / unquote(src)).resolve()
-            media.set("src", quote(Path(os.path.relpath(target, output.parent)).as_posix(), safe="/."))
+    rebase_media(resources, project, source, output)
 
-    if entries:
+    if entries or extra_entries:
         options = root.find("import-options")
         if options is None:
             options = ET.Element("import-options")
@@ -248,6 +299,8 @@ def convert(xml, project, source, output, document, extract_number, entries=()):
             event.attrib.pop("uid", None)
             event.set("name", f"{export_stem(source)} - Final Cut")
     intake.browser(library)
+    extras.browser(library, resources, resource_id, extra_entries)
+    extras.validate(root, [entry[0] for entry in extra_entries])
     animations.verify_sources(root, project, output)
     payload = b'<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE fcpxml>\n' + ET.tostring(root, encoding="utf-8") + b"\n"
     return payload, {"selected": selected, "subtitle_titles": len(list(spine.iter("title"))),
@@ -284,8 +337,9 @@ def run(project, ffprobe="ffprobe", regenerate=False):
         entries, diagnostics = animations.load(project, ROOT, ffprobe=ffprobe)
         lookup = contexts(guard)
         planned, projects = {}, []
-        rule = load_stages(ROOT)[STEP]["inputs"][0]
-        for key, source in exports(project, rule).items():
+        definition = load_stages(ROOT)[STEP]
+        extra_entries = extras.load(extras.sources(project, definition), ffprobe)
+        for key, source in exports(project, definition["inputs"][0]).items():
             if key not in lookup:
                 raise ValueError(f"No current script or extract mapping for {export_stem(source)}")
             score, extract_number = lookup[key]
@@ -297,7 +351,8 @@ def run(project, ffprobe="ffprobe", regenerate=False):
                             "script_groupings": document["groupings"]["script"]}
             output = directory / (source.name if source.parent == approved else export_stem(source) + ".FCPXML")
             source_xml = source.read_bytes()
-            planned[output], report = convert(source_xml, project, source, output, document, extract_number, entries)
+            planned[output], report = convert(source_xml, project, source, output, document, extract_number,
+                                              entries, extra_entries)
             projects.append(dict(report, input=source.relative_to(project).as_posix(), output=output.name,
                                  input_sha256=sha256(source, content=source_xml),
                                  output_sha256=sha256(output, content=planned[output])))
@@ -322,6 +377,7 @@ def run(project, ffprobe="ffprobe", regenerate=False):
         guard.confined(STAGE / "APPROVED").mkdir(exist_ok=True)
         _default_log(directory, "Final Cut ready for review", [
             f"Projects: {', '.join(item['output'] for item in projects)}; see REVIEW.json for placements and diagnostics.",
+            *([f"Each XML includes a browser-only EXTRAS event ({len(extra_entries)} clips)."] if extra_entries else []),
             "Review in Final Cut Pro and render each project into APPROVED with the same name stem."])
         return report
     except (OSError, ValueError, TypeError, KeyError, ArithmeticError, ET.ParseError) as error:

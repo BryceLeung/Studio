@@ -1,4 +1,4 @@
-"""Import approved animation media and build disabled project-timeline cutaways."""
+"""Import approved animation media and build active project-timeline cutaways."""
 from collections import defaultdict
 from fractions import Fraction
 import importlib.util
@@ -212,7 +212,7 @@ class AnimationIntake:
             index = next((i for i, child in enumerate(clip)
                           if child.tag in {"marker", "chapter-marker", "rating", "keyword", "analysis-marker", "metadata"}
                           or isinstance(child.tag, str) and child.tag.startswith("filter-")), len(clip))
-            self.clip(clip, version, duration, index, lane=str(lane), offset=self.time(offset), enabled="0")
+            self.clip(clip, version, duration, index, lane=str(lane), offset=self.time(offset))
         if "duration" in sequence.attrib:
             tc_start = Fraction(sequence.get("tcStart", "0s").removesuffix("s"))
             duration = max(lane_ends) - tc_start

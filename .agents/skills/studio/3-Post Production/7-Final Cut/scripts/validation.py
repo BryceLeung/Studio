@@ -7,6 +7,7 @@ import xml.etree.ElementTree as ET
 from scripts import stage_completion as completion
 from scripts.validation import StageValidation, recorded_fingerprints
 from studio.final_cut_animations import verify_sources
+from studio import final_cut_extras as extras
 from studio.first_cut_exports import export_stem, exports, matches_rule
 from studio.fingerprints import matches, matches_identity
 
@@ -26,6 +27,7 @@ class Validation(StageValidation):
             raise ValueError(f"Final Cut project stems differ from approved First Cut XML: "
                              f"missing={sorted(expected.keys() - generated)}, extra={sorted(generated - expected.keys())}")
         self.validate_review(json.loads(report.read_text(encoding="utf-8-sig")), sources, projects)
+        extra_paths = extras.sources(self.project, self.definition)
         for path in projects:
             try:
                 root = ET.parse(path).getroot()
@@ -34,6 +36,7 @@ class Validation(StageValidation):
             if root.tag != "fcpxml" or len(list(root.iter("project"))) != 1:
                 raise ValueError(f"Final Cut FCPXML must contain one project: {path.name}")
             verify_sources(root, self.project, path)
+            extras.validate(root, extra_paths)
 
         if any(path.stat().st_size == 0 for path in movies):
             raise ValueError("Approved rendered movies must not be empty")
@@ -82,7 +85,7 @@ class Validation(StageValidation):
 
     def render_inputs(self, manifest):
         """The render consumes generated XML, not REVIEW.json or workflow code."""
-        sources = self.definition["inputs"]
+        sources = [rule for rule in self.definition["inputs"] if rule["folder"] != extras.SOURCE.as_posix()]
         projects = self.definition["outputs"][0]
         return self.fingerprints(manifest, "inputs", sources) + self.fingerprints(manifest, "outputs", [projects])
 

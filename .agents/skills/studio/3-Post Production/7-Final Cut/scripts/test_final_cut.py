@@ -40,6 +40,9 @@ class FinalCutTests(unittest.TestCase):
         self.project = Path(temporary.name).resolve()
         self.source = self.project / cut.FIRST_CUT / "APPROVED/A.fcpxml"
         self.output = self.project / cut.STAGE / self.source.name
+        original = self.source.parent.parent / "Media with space.mov"
+        original.parent.mkdir(parents=True)
+        original.write_bytes(b"source media")
 
     def convert(self, xml=XML, entries=(), extract=None, document=DOCUMENT):
         payload, report = cut.convert(xml, self.project, self.source, self.output, document, extract, entries)
@@ -79,12 +82,29 @@ class FinalCutTests(unittest.TestCase):
         self.assertEqual(root.find("resources/asset/media-rep").get("src"), "../6-First%20Cut/Media%20with%20space.mov")
         self.assertIsNone(root.find("library/event/project").get("uid"))
 
-    def test_stages_disabled_video_below_subtitles_on_finalized_compound(self):
+    def test_relinks_stale_managed_media_to_intake_with_actual_filename_case(self):
+        original = self.project / cut.FOOTAGE / "Example #1__C01__camA.MOV"
+        original.parent.mkdir(parents=True)
+        original.write_bytes(b"original camera footage")
+        stale = self.project / "Old Library.fcpbundle/Event/Original Media/Example #1__C01__camA.mov"
+        xml = XML.replace(b"../Media%20with%20space.mov", stale.as_uri().encode())
+        root, _, _ = self.convert(xml)
+        self.assertEqual(root.find("resources/asset/media-rep").get("src"), original.as_uri())
+        self.assertFalse(stale.exists())
+
+    def test_missing_original_media_stops_conversion(self):
+        xml = XML.replace(b"../Media%20with%20space.mov", b"../Missing.mov")
+        with self.assertRaisesRegex(ValueError, "Missing or empty original media.*Missing.mov"):
+            self.convert(xml)
+
+    def test_stages_active_video_below_subtitles_on_finalized_compound(self):
         xml = XML.replace(b'<audition offset="8s"><ref-clip ref="r5"', b'<ref-clip offset="8s" ref="r5"')
         xml = xml.replace(b'<ref-clip ref="r6" duration="4s"/></audition>', b'')
         root, spine, report = self.convert(xml, [self.asset()], 1)
         clip = spine.find("ref-clip")
-        cutaway = clip.find("asset-clip[@enabled='0']")
+        cutaway = clip.find("asset-clip[@srcEnable='video']")
+        self.assertIsNotNone(cutaway)
+        self.assertNotIn("enabled", cutaway.attrib)
         self.assertEqual((cutaway.get("lane"), cutaway.get("offset"), cutaway.get("duration"), cutaway.get("srcEnable")),
                          ("1", "4s", "5s", "video"))
         self.assertGreater(int(clip.find("title").get("lane")), int(cutaway.get("lane")))
@@ -109,8 +129,9 @@ class FinalCutTests(unittest.TestCase):
                          [("8s", "2s"), ("10s", "4s")])
         self.assertEqual([(row["offset"], row["duration"]) for row in report["placements"]],
                          [("8s", "5s"), ("10s", "3s")])
-        self.assertEqual([clip.find("asset-clip[@enabled='0']").get("lane") for clip in (first, second)],
-                         ["1", "2"])
+        cutaways = [clip.find("asset-clip[@srcEnable='video']") for clip in (first, second)]
+        self.assertEqual([clip.get("lane") for clip in cutaways], ["1", "2"])
+        self.assertTrue(all("enabled" not in clip.attrib for clip in cutaways))
         self.assertTrue(all(int(title.get("lane")) > 2 for title in spine.iter("title")))
         self.assertEqual(root.find("library/event/project/sequence").get("duration"), "14s")
 
@@ -121,7 +142,9 @@ class FinalCutTests(unittest.TestCase):
             with self.subTest(extract=extract):
                 _, spine, report = self.convert(entries=[entry], extract=extract)
                 self.assertEqual(len(report["placements"]), 1)
-                self.assertIsNotNone(spine.find("ref-clip/asset-clip[@enabled='0']"))
+                cutaway = spine.find("ref-clip/asset-clip[@srcEnable='video']")
+                self.assertIsNotNone(cutaway)
+                self.assertNotIn("enabled", cutaway.attrib)
         document = {"script": dict(DOCUMENT["script"], words=[{"text": "Hello"}, {"text": "Elsewhere"}]),
                     "script_groupings": [*DOCUMENT["script_groupings"], {"word_start": 1, "word_end": 1}]}
         entry["registry"].update(Start="1", End="1", Passage="Elsewhere")
@@ -170,6 +193,7 @@ class FinalCutTests(unittest.TestCase):
     def test_standard_generation_finalizes_bundle_and_preserves_multicam_compounds(self):
         source = self.source.with_suffix(".fcpxmld") / "Info.fcpxml"
         source.parent.mkdir(parents=True)
+        (source.parent.parent / "Media with space.mov").write_bytes(b"bundle-relative source media")
         source.write_bytes(XML)
         scores = self.project / cut.SCORES / "A__Scores.v1.json"
         scores.parent.mkdir(parents=True)
@@ -216,6 +240,42 @@ class FinalCutTests(unittest.TestCase):
             self.assertEqual(self.output.read_bytes(), b"human edit")
             self.assertEqual(self.source.read_bytes(), XML)
             prerequisites.assert_called_with(self.project, cut.ROOT, "3.7")
+
+    def test_extras_are_optional_and_import_with_animations_without_entering_the_timeline(self):
+        self.source.parent.mkdir(parents=True)
+        self.source.write_bytes(XML)
+        scores = self.project / cut.SCORES / "A__Scores.v1.json"
+        scores.parent.mkdir(parents=True)
+        scores.write_text(json.dumps({"source_mapping": {"path": "mapping.json"}}))
+        (self.project / "mapping.json").write_text(json.dumps(DOCUMENT))
+        footage = self.project / cut.extras.SOURCE / "Camera B #1.MOV"
+        definition = cut.load_stages(cut.ROOT)[cut.STEP]
+        metadata = ({"width": 1920, "height": 1080}, [{"channels": 2, "sample_rate": "48000"}],
+                    Fraction(1, 30), Fraction(4))
+        with patch.object(cut, "require_prerequisites"), patch.object(cut.animations, "load", return_value=([self.asset()], [])), \
+                patch.object(cut.extras, "probe", return_value=metadata) as probe, patch.object(cut, "invalidate"):
+            cut.run(self.project)
+            original = ET.parse(self.output)
+            self.assertIsNone(original.find("library/event[@name='EXTRAS']"))
+            footage.parent.mkdir(parents=True)
+            footage.write_bytes(b"extra video")
+            (footage.parent / "notes.txt").write_text("not a video")
+            cut.run(self.project, regenerate=True)
+            probe.assert_called_once_with(footage, "ffprobe")
+            root = ET.parse(self.output).getroot()
+            self.assertIsNotNone(root.find("library/event[@name='Animations']/asset-clip"))
+            clip = root.find("library/event[@name='EXTRAS']/asset-clip")
+            self.assertIsNotNone(clip)
+            asset = root.find(f"resources/asset[@id='{clip.get('ref')}']")
+            self.assertEqual(asset.find("media-rep").get("src"), footage.as_uri())
+            self.assertEqual(asset.get("audioChannels"), "2")
+            self.assertEqual(ET.tostring(root.find("library/event/project")),
+                             ET.tostring(original.find("library/event/project")))
+            self.assertEqual(list(self.output.parent.glob("*.fcpxml")), [self.output])
+            self.assertFalse((self.output.parent / "EXTRAS").exists())
+            cut.extras.validate(root, cut.extras.sources(self.project, definition))
+            with self.assertRaisesRegex(ValueError, "browser-only EXTRAS event"):
+                cut.extras.validate(root, [])
 
 
 if __name__ == "__main__":

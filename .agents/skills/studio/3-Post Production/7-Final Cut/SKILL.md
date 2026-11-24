@@ -23,13 +23,20 @@ them to the approved trims without reselecting takes or cameras. Unsupported
 compound structures and retimes that prevent safe subtitle lifting stop
 conversion. Keep Studio take names/markers so animation anchors remain identifiable.
 
+Presenter camera and lav references inside Final Cut library `Original Media`
+folders are linked back to the uniquely matching original files in
+`2-Production/1-Footage Intake/`, using their actual filename casing. The
+generated links point directly to the local intake files. Other local original
+media references are preserved or rebased from the export location. Missing or
+empty local originals stop generation before any XML is published.
+
 For a presenter-only review of one approved export before the full-stage gates
 are met, add `--preview "<approved-export-stem>"`. This writes a separate FCPXML
 in `3-Post Production/0-Tmp/` without replacing differing previews or changing
 the canonical Final Cut, approvals, or completion status. It omits animations.
 
 Approved MP4s are imported into the `Animations` event. Eligible animation
-versions appear as disabled video-only cutaways below the subtitles, initially
+versions appear as active video-only cutaways below the subtitles, initially
 timed from the first visible subtitle inside the selected sentence trim. Each
 cutaway keeps its full usable duration at the project frame rate, even across
 later cuts. A cutaway that runs past the last presenter clip can extend the
@@ -38,7 +45,16 @@ By default, extracts inherit animations whose script anchor starts in a sentence
 used in the edited timeline. A nonempty registry Extracts list restricts placement
 to those extract IDs without changing full-film placement. Unmatched or ambiguous
 anchors are reported in `REVIEW.json` and the assets remain available in the
-browser. Review timing and enable the desired versions in Final Cut Pro.
+browser. Review timing and disable any unwanted or overlapping alternatives in
+Final Cut Pro before rendering.
+
+Drop optional extra clips directly into `2-Production/1-Footage Intake/EXTRAS/`.
+These are independent of the 2.1 scripted camera/lav sets. When the folder
+contains supported video files (`MOV`, `MP4`, `M4V`, `MXF`, `MTS`, `M2TS`),
+3.7 links to those originals in an `EXTRAS` event inside each generated project
+XML, alongside `Animations` in the destination library. There is no separate XML
+or library to import, and no extras are placed on the timelines. An empty or
+absent intake folder adds no `EXTRAS` event.
 
 Outputs are separate same-stem FCPXML files in `3-Post Production/7-Final Cut/`.
 Identical outputs are reused. Differing outputs stop without replacement; add
