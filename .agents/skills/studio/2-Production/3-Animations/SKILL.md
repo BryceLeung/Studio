@@ -159,18 +159,15 @@ Inspect each requested preview for legibility, composition, timing, motion, clip
 
 ## Opening Remotion Studio
 
-Use one workflow-managed review server per machine on port `3000`, shared across projects, full animations and isolated candidates. Use this procedure for explicit Studio opens and review handoffs. Serialize these operations under the coordinator; do not delegate competing launches.
-
-1. Resolve the exact review directory and confirm `src/Studio.tsx` and `references/` exist before switching processes. Use the full animation's working directory for its current composition or the specific candidate version's directory. Never substitute the canonical asset for an isolated candidate. Keep the usual prerequisite and execution approval rules.
-2. List the tracked background processes. Identify this workflow's launch by its `Studio 2.3 review` label and command, or by the verified project source for legacy 2.3 launches. To reuse port `3000`, verify `/__remotion_config` reports `isRemotion: true` and confirm the listener belongs to a tracked launch using the exact target's `src/Studio.tsx` and `references/`. Remotion can report the enclosing asset as `cwd` for older candidates without a local package, so an asset-level `cwd` does not identify a candidate version. Use the listener's process command line and tracked process tree if needed. A generic HTTP 200 is not enough.
-3. If the exact preview is already live on `3000`, leave it running. Otherwise stop the previous workflow-managed review process and child tree by tracked process ID before starting the new one. Close verified legacy 2.3 review processes on other ports as part of consolidation. Do not stop unrelated or unverified listeners. If port `3000` is occupied by one, report the conflict instead of falling back to another port.
-4. Start the shared launcher below in a tracked **persistent** background process labeled `Studio 2.3 review` (or the equivalent in other hosts). Persistence keeps the link alive across Kilo sessions; stopping the old process prevents accumulation. Wait for readiness, verify port `3000`, the exact target identity and a responding root URL. If startup fails or selects another port, stop that new process and report the blocker. Link the verified root URL so the same browser tab can be refreshed after a switch.
+Use `scripts/review_studio.py` for explicit opens and review handoffs. Run it from the workflow root with the selected stage interpreter in a tracked persistent background process labeled `Studio 2.3 review`, with readiness pattern `Studio review ready:` and a 60-second timeout.
 
 ```text
-node "<stage-root>/renderer/studio.mjs" --source-dir "<review-directory>/src" --public-dir "<review-directory>/references" --port 3000 --no-open
+python "./.agents/skills/studio/2-Production/3-Animations/scripts/review_studio.py" --project-root "<real-project-root>" --asset-id A13 --candidate "529-girl-power-up/v012"
 ```
 
-Run from the workflow root, using `.agents/skills/studio/2-Production/3-Animations` as `<stage-root>`. The launcher uses the shared renderer installation and does not install packages. Do not bypass the review procedure with the lower-level `animations.py studio` command, which may reuse or select other ports.
+Omit `--candidate` only for a full animation. The command verifies prerequisites and the exact target, reuses or switches its managed review on port `3000`, and prints the verified URL after the build. Link that URL in the handoff. A terminal invocation runs in the foreground. Use `--stop` by itself to stop the managed review. It does not open a browser, install dependencies, render media, or stop unmanaged listeners.
+
+If a legacy review still occupies port `3000`, identify it by its tracked `Studio 2.3 review` label and verified project source, then stop it at its source once. Do not stop an unrelated process or fall back to another port. Use the Python helper for new launches, not the legacy `animations.py studio` command.
 
 Studio edits save directly to source and make older renders differ from the working version, without revoking their approvals. Test the generated controls by changing and resetting one value, and check timeline timing after restructuring. Keep previous candidates and snapshots. A manual Studio export counts for completion when the human places the chosen full-animation MP4 in `APPROVED/`; it does not gain render provenance.
 
