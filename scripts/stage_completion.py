@@ -2,6 +2,7 @@
 import argparse
 from contextlib import contextmanager
 from datetime import datetime, timezone
+import errno
 import json
 import hashlib
 import os
@@ -25,8 +26,12 @@ from studio import fingerprints
 _mutation_state = threading.local()
 
 
+class MutationBusyError(Exception):
+    """Another process holds a nonblocking mutation guard."""
+
+
 @contextmanager
-def mutation_guard(project):
+def mutation_guard(project, *, blocking=True):
     """Serialize local project mutations, allowing nested transitions in one thread."""
     project = Path(project).resolve(strict=True)
     key = (os.getpid(), str(project))
@@ -44,15 +49,19 @@ def mutation_guard(project):
     try:
         if not stat.S_ISREG(os.fstat(descriptor).st_mode):
             raise ValueError(f"Mutation lock must be a regular file: {path}")
-        if os.name == "nt":
-            import msvcrt
-            if os.fstat(descriptor).st_size == 0:
-                os.write(descriptor, b"\0")
-            os.lseek(descriptor, 0, os.SEEK_SET)
-            msvcrt.locking(descriptor, msvcrt.LK_LOCK, 1)
-        else:
-            import fcntl
-            fcntl.flock(descriptor, fcntl.LOCK_EX)
+        try:
+            if os.name == "nt":
+                import msvcrt
+                # Byte-range locks can extend past EOF; don't write to a contended lock file.
+                msvcrt.locking(descriptor, msvcrt.LK_LOCK if blocking else msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+                flags = fcntl.LOCK_EX if blocking else fcntl.LOCK_EX | fcntl.LOCK_NB
+                fcntl.flock(descriptor, flags)
+        except OSError as error:
+            if not blocking and error.errno in (errno.EACCES, errno.EAGAIN):
+                raise MutationBusyError(path) from error
+            raise
         locked = True
         held.add(key)
         yield

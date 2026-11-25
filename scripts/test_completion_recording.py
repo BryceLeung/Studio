@@ -292,6 +292,19 @@ class RecordingTests(unittest.TestCase):
                 child.kill()
                 child.communicate()
 
+    def test_nonblocking_mutation_guard_reports_contention_then_acquires(self):
+        command = (
+            "import sys; from scripts.stage_completion import MutationBusyError, mutation_guard\n"
+            "try:\n"
+            "    with mutation_guard(sys.argv[1], blocking=False): print('acquired')\n"
+            "except MutationBusyError: print('busy')"
+        )
+        args = [sys.executable, "-c", command, str(self.project)]
+        kwargs = dict(cwd=validation.ROOT, capture_output=True, text=True, check=True, timeout=5)
+        with completion.mutation_guard(self.project):
+            self.assertEqual(subprocess.run(args, **kwargs).stdout.strip(), "busy")
+        self.assertEqual(subprocess.run(args, **kwargs).stdout.strip(), "acquired")
+
     def test_completion_clears_all_job_pointers_but_preserves_archives(self):
         from scripts.stage_invalidation import invalidate, read_pending
         self.record("1.1")
