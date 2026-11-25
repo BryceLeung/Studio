@@ -112,9 +112,9 @@ These are subordinate workflows, not additional numbered stages, and do not repl
 
 Use this rule when handing back authored or revised Remotion work, including isolated object candidates. It does not apply to text proposals, scaffold setup, static sketches, save-only actions or status checks.
 
-**Every animation change without a new render requires a live Remotion Studio handoff.** Start the [single review server](#opening-remotion-studio), or reuse it if it already serves the exact updated composition. If another review is active, follow the chat prompt flow below instead of switching automatically. Verify that the updated composition has built and that the server still serves it immediately before sending a ready link. Label that clickable link with the asset ID. Do this without waiting for a separate preview request and without rendering an MP4.
+**Every animation change without a new render requires a live Remotion Studio handoff by default.** Start the [single review server](#opening-remotion-studio), or reuse it if it already serves the exact updated composition. If another review is active, follow the chat prompt flow below instead of switching automatically. Verify that the updated composition has built and that the server still serves it immediately before sending a ready link. Label that clickable link with the asset ID. Do this without waiting for a separate preview request and without rendering an MP4 unless the user chooses Background Render.
 
-Use the same Studio handoff after a render. If Studio cannot be verified for the exact composition, report the blocker. A successful build alone, an earlier MP4, or a link to another composition does not satisfy the handoff.
+Use the same Studio handoff after a render unless the user chose Background Render or Abort. Background Render is an MP4-only handoff; never open or switch Studio for it. Otherwise, if Studio cannot be verified for the exact composition, report the blocker. A successful build alone, an earlier MP4, or a link to another composition does not satisfy the live handoff.
 
 If an MP4 is available, also link to that exact playable file, including an inspection render or a reused current render. Keep it available and label inspection-only or isolated videos as such. A link is not registration or approval. If only a historical MP4 is available and the matching composition cannot be served, link the MP4 and explain why Studio was not switched.
 
@@ -165,15 +165,23 @@ Run `scripts/review_studio.py` from the workflow root with the selected stage in
 python "./.agents/skills/studio/2-Production/3-Animations/scripts/review_studio.py" --project-root "<real-project-root>" --asset-id A13 --candidate "529-girl-power-up/v012"
 ```
 
-If the process reports `Studio review waiting:`, use Kilo's `question` tool in the same turn. Name the requested review and, if known, the current review. Offer **Abort** (`a`, cancel only this request), **Retry now** (`r`, check now and keep retrying if still busy), and **Take over** (`t`, replace the managed review after the current operation finishes). Explain that the background request retries every 10 seconds while the question is open and never takes over by default. Do not move on or ask the user to type into the process card. Send the selection to the same pending request using the handle printed after `Reply handle:` (omit the terminating period):
+If the process reports `Studio review waiting:`, use Kilo's `question` tool in the same turn. Name the requested review and, if known, the current review. Offer these choices in this order:
+
+1. **Take Over** (`t`): replace the managed review after the current operation finishes.
+2. **Background Render** (`b`): render the exact requested target without opening or switching Studio; return a clickable MP4 link when ready.
+3. **Abort** (`a`): cancel only this request, leaving the active review alone.
+
+The pending request waits for a choice even if Studio becomes free. Do not move on or ask the user to type into the process card. Send the selection to the same pending request using the handle printed after `Reply handle:` (omit the terminating period):
 
 ```text
-python "./.agents/skills/studio/2-Production/3-Animations/scripts/review_studio.py" --reply "<handle>" <a|r|t>
+python "./.agents/skills/studio/2-Production/3-Animations/scripts/review_studio.py" --reply "<handle>" <t|b|a>
 ```
 
-Do not include the handle in the chat question. After a reply, check the same tracked process for ready, aborted, or still waiting. If the reply was too late, check its output: it may already be starting or serving the requested target. Do not start a duplicate or send `--stop` in response to a late Abort. If Retry or an accepted Take over is still waiting, report it as pending, not ready. If the question tool is unavailable, ask for the choice in chat and continue with the same tracked process when the user responds.
+Do not include the handle in the chat question. After a reply, check the same tracked process for ready, aborted, cancelled for Background Render, or takeover queued. If the process no longer accepts a reply, check its output before doing anything else. Do not start a duplicate or send `--stop` in response to a failed reply. If an accepted Take Over is still waiting, report it as pending, not ready. If the question tool is unavailable, ask for the choice in chat and continue with the same tracked process when the user responds.
 
-Omit `--candidate` only for a full animation. The helper verifies the target, reuses the same managed review on port `3000` or starts it when the port is free, and prints the verified URL when ready. Use `--terminal` only in a real foreground terminal to get the keyboard menu. Use `--stop` by itself to explicitly release the managed review when done. The helper does not open a browser, install dependencies, render media, or stop unmanaged listeners.
+After `Studio review cancelled for Background Render.`, start one **session-scoped** tracked process (not persistent) with the original target arguments and `--background-render`. Use `Studio playback ready:` for readiness and allow time for the render. Keep this same process running: it serves only the verified MP4 on a dedicated loopback port and prints the URL for a clickable Markdown link. If rendering is still in progress, follow that same process until ready; do not restart it or open Studio. Full animations use the maintained registered render workflow (including reuse). Candidate renders are inspection-only, use a temporary copy of the exact candidate, never replace its existing preview, and expire with the playback process.
+
+Omit `--candidate` only for a full animation. The helper verifies the target, reuses the same managed review on port `3000` or starts it when the port is free, and prints the verified URL when ready. Use `--terminal` only in a real foreground terminal to get the keyboard menu; Background Render from that menu serves playback until the foreground process ends. Use `--stop` by itself to explicitly release the managed review when done. The helper does not open a browser, install dependencies, or stop unmanaged listeners.
 
 If a legacy review still occupies port `3000`, identify it by its tracked `Studio 2.3 review` label and verified project source, then stop it at its source once. Do not stop an unrelated process or fall back to another port. Use the Python helper for new launches, not the legacy `animations.py studio` command.
 

@@ -1,8 +1,9 @@
-"""Start, reuse or explicitly take over the single Remotion Studio review on port 3000."""
+"""Open the single Remotion Studio review on port 3000 or render an MP4 without it."""
 
 import argparse
 from contextlib import nullcontext
 from http.client import HTTPConnection, HTTPException
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import hmac
 import json
 import os
@@ -15,8 +16,10 @@ import signal
 import socket
 import subprocess
 import sys
+from tempfile import TemporaryDirectory
 from threading import Thread
 import time
+from urllib.parse import quote
 
 import animations as stage
 
@@ -24,7 +27,7 @@ import animations as stage
 PORT = 3000
 URL = f'http://localhost:{PORT}'
 LOOPBACK = '127.0.0.1'
-RETRY_SECONDS = 10
+BACKGROUND_SELECTED = 'Studio review cancelled for Background Render.'
 
 
 def target(project, asset, candidate):
@@ -151,56 +154,44 @@ def wait_for_build(child, directory, asset):
     raise ValueError(f'Remotion did not build and serve {directory} on port {PORT} within 30 seconds')
 
 
-def wait_for_choice(reason, allow_takeover):
-    if not sys.stdin.isatty():
-        print(f'{reason} Retrying in {RETRY_SECONDS}s.', flush=True)
-        time.sleep(RETRY_SECONDS)
-        return 'r'
+def wait_for_choice(reason, allow_takeover, allow_render=True):
+    stage.require(sys.stdin.isatty(), 'Use --chat when no interactive terminal is available')
 
-    choices = set('art' if allow_takeover else 'ar')
-    menu = '[a] Abort  [r] Retry now' + ('  [t] Take over' if allow_takeover else '')
-    print(f'{reason} {menu}. No input: retry in {RETRY_SECONDS}s.', flush=True)
-    deadline = time.monotonic() + RETRY_SECONDS
+    options = [('t', 'Take Over')] if allow_takeover else []
+    if allow_render:
+        options.append(('b', 'Background Render'))
+    options.append(('a', 'Abort'))
+    choices = {key for key, _ in options}
+    menu = '  '.join(f'[{key}] {label}' for key, label in options)
+    print(f'{reason} {menu}. Waiting for your choice.', flush=True)
     if os.name == 'nt':
         import msvcrt
-        while (remaining := deadline - time.monotonic()) > 0:
-            if msvcrt.kbhit():
-                key = msvcrt.getwch().lower()
-                if key in ('\x00', '\xe0'):
-                    msvcrt.getwch()  # Discard the Windows extended-key scan code.
-                elif key in choices:
-                    return key
-            else:
-                time.sleep(min(0.05, remaining))
+        while True:
+            key = msvcrt.getwch().lower()
+            if key in ('\x00', '\xe0'):
+                msvcrt.getwch()  # Discard the Windows extended-key scan code.
+            elif key in choices:
+                return key
     else:
-        from select import select
         print('Press Enter after your choice.', flush=True)
-        while (remaining := deadline - time.monotonic()) > 0:
-            if not select([sys.stdin], [], [], remaining)[0]:
-                break
-            line = sys.stdin.readline()
-            if not line:
-                time.sleep(max(0, deadline - time.monotonic()))
-                break
+        for line in sys.stdin:
             if (key := line.strip().lower()) in choices:
                 return key
-    return 'r'
+        return 'a'  # The terminal closed without a choice.
 
 
-def wait_for_chat(listener, token, reason, allow_takeover):
+def wait_for_chat(listener, token, reason, allow_takeover, allow_render=True):
     handle = f'{listener.getsockname()[1]}:{token}'
-    actions = {b'a', b'r', b't'} if allow_takeover else {b'a', b'r'}
-    print(f'Studio review waiting: {reason} Reply handle: {handle}. '
-          f'Retrying in {RETRY_SECONDS}s.', flush=True)
-    deadline = time.monotonic() + RETRY_SECONDS
-    while (remaining := deadline - time.monotonic()) > 0:
-        listener.settimeout(remaining)
-        try:
-            conn, _ = listener.accept()
-        except TimeoutError:
-            break
+    actions = {b'a'}
+    if allow_takeover:
+        actions.add(b't')
+    if allow_render:
+        actions.add(b'b')
+    print(f'Studio review waiting: {reason} Reply handle: {handle}. Waiting for your choice.', flush=True)
+    while True:
+        conn, _ = listener.accept()
         with conn:
-            conn.settimeout(min(remaining, 0.5))
+            conn.settimeout(0.5)
             try:
                 action, reply = control_request(conn, token)
                 if action in actions:
@@ -208,7 +199,6 @@ def wait_for_chat(listener, token, reason, allow_takeover):
                     return action.decode('ascii')
             except OSError:
                 continue
-    return 'r'
 
 
 def reply_to_chat(handle, action):
@@ -218,6 +208,110 @@ def reply_to_chat(handle, action):
     if not controller({'port': int(match[1]), 'token': match[2]}, action):
         raise ValueError('Waiting review did not accept the reply; check its current output')
     print('Studio review reply accepted.', flush=True)
+
+
+def serve_video(video):
+    route = '/' + quote(video.name)
+    size = video.stat().st_size
+    stage.require(size > 0, 'Cannot serve an empty video')
+
+    class VideoHandler(BaseHTTPRequestHandler):
+        def do_HEAD(self):
+            self.send_video(body=False)
+
+        def do_GET(self):
+            self.send_video(body=True)
+
+        def send_video(self, *, body):
+            if self.path != route:
+                self.send_error(404)
+                return
+            try:
+                stream = video.open('rb')
+            except OSError:
+                self.send_error(404)
+                return
+            with stream:
+                start, end = 0, size - 1
+                byte_range = self.headers.get('Range') if body else None
+                if byte_range:
+                    match = re.fullmatch(r'bytes=([0-9]{0,20})-([0-9]{0,20})', byte_range)
+                    if match and match[1]:
+                        start = int(match[1])
+                        end = min(end, int(match[2])) if match[2] else end
+                    elif match and match[2]:
+                        start = max(0, size - int(match[2]))
+                    if not match or not any(match.groups()) or start > end:
+                        self.send_response(416)
+                        self.send_header('Content-Range', f'bytes */{size}')
+                        self.end_headers()
+                        return
+                self.send_response(206 if byte_range else 200)
+                self.send_header('Content-Type', 'video/mp4')
+                self.send_header('Content-Length', str(end - start + 1))
+                self.send_header('Accept-Ranges', 'bytes')
+                if byte_range:
+                    self.send_header('Content-Range', f'bytes {start}-{end}/{size}')
+                self.end_headers()
+                if body:
+                    stream.seek(start)
+                    remaining = end - start + 1
+                    try:
+                        while remaining and (chunk := stream.read(min(remaining, 64 * 1024))):
+                            self.wfile.write(chunk)
+                            remaining -= len(chunk)
+                    except (BrokenPipeError, ConnectionResetError):
+                        pass  # Players disconnect when seeking.
+
+    with ThreadingHTTPServer((LOOPBACK, 0), VideoHandler) as server:
+        port = server.server_port
+        # The listener is already bound; handle the verification request on this server.
+        verifier = Thread(target=server.handle_request)
+        server.timeout = 3
+        verifier.start()
+        connection = HTTPConnection(LOOPBACK, port, timeout=3)
+        try:
+            connection.request('HEAD', route)
+            response = connection.getresponse()
+            stage.require(response.status == 200 and response.getheader('Content-Type') == 'video/mp4'
+                          and response.getheader('Content-Length') == str(size),
+                          'Could not verify MP4 playback')
+        finally:
+            connection.close()
+            verifier.join()
+        print(f'Studio playback ready: http://{LOOPBACK}:{port}{route}', flush=True)
+        server.serve_forever()
+
+
+def background_render(project, directory, asset):
+    print(f'Studio background rendering: {directory}', flush=True)
+    with TemporaryDirectory(prefix='studio-background-') as temp:
+        snapshot = Path(temp)
+        if directory == asset:
+            result = stage.render(project, asset.name)
+            source = stage.confined(project, result['candidate'])
+            video = snapshot / source.name
+            shutil.copyfile(source, video)
+            stage.require(stage.sha(video) == result['sha256'], 'The rendered MP4 changed before playback')
+            serve_video(video)
+            return
+
+        # Candidate previews are inspection-only; never replace their existing preview or settings.
+        for name in ('src', 'references'):
+            (snapshot / name).mkdir()
+            for source in stage.files(directory, name):
+                destination = snapshot / source.relative_to(directory)
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(source, destination)
+        settings_file = stage.confined(directory, 'settings.json')
+        settings = stage.settings(stage.read_json(settings_file))
+        stage.atomic_json(snapshot / 'settings.json', settings)
+        settings.update(stage.inspect_settings(snapshot))
+        stage.atomic_json(snapshot / 'settings.json', settings)
+        video = snapshot / 'preview.mp4'
+        stage.run_renderer(snapshot, video)
+        stage.valid_video(video, settings)
+        serve_video(video)
 
 
 def start_review(control, state_file, directory, asset, node):
@@ -256,7 +350,7 @@ def review(cache, directory=None, asset=None, *, chat=False):
         try:
             while True:
                 try:
-                    with stage.completion.mutation_guard(cache, blocking=False):
+                    with stage.completion.mutation_guard(cache, blocking=takeover or directory is None):
                         try:
                             state = json.loads(state_file.read_text(encoding='utf-8'))
                         except (FileNotFoundError, ValueError):
@@ -286,20 +380,22 @@ def review(cache, directory=None, asset=None, *, chat=False):
                             child, token = start_review(control, state_file, directory, asset, node)
                             break
                 except stage.completion.MutationBusyError:
-                    reason = ('Takeover queued; waiting for the current Remotion Studio operation to finish.'
-                              if takeover else 'Another Remotion Studio operation is in progress.')
+                    reason = 'Another Remotion Studio operation is in progress.'
 
                 allow_takeover = directory is not None and not takeover
                 if pending is not None:
-                    choice = wait_for_chat(pending, reply_token, reason, allow_takeover=allow_takeover)
+                    choice = wait_for_chat(pending, reply_token, reason, allow_takeover=allow_takeover,
+                                           allow_render=directory is not None)
                 else:
-                    choice = wait_for_choice(reason, allow_takeover=allow_takeover)
-                if choice == 'a':
+                    choice = wait_for_choice(reason, allow_takeover=allow_takeover,
+                                             allow_render=directory is not None)
+                if choice in ('a', 'b'):
                     if pending is not None:
                         pending.close()
-                    print('Studio review request aborted.', flush=True)
-                    return
-                takeover |= choice == 't'
+                    print(BACKGROUND_SELECTED if choice == 'b' else 'Studio review request aborted.', flush=True)
+                    return choice
+                takeover = True
+                print('Takeover queued; waiting for the current Remotion Studio operation to finish.', flush=True)
             print(f'Studio review ready: {URL} ({directory})', flush=True)
             while child.poll() is None:
                 try:
@@ -334,6 +430,7 @@ def main():
     mode.add_argument('--chat', action='store_true', help='Receive waiting choices from chat (default)')
     mode.add_argument('--terminal', action='store_true', help='Read waiting choices from a foreground terminal')
     mode.add_argument('--reply', nargs=2, metavar=('HANDLE', 'CHOICE'), help='Reply to a waiting chat review')
+    mode.add_argument('--background-render', action='store_true', help='Render and serve an MP4 without opening Studio')
     args = parser.parse_args()
     cache = Path.home() / '.cache' / 'studio-remotion' / 'review'
     if args.stop or args.reply:
@@ -341,16 +438,23 @@ def main():
             parser.error('--stop and --reply do not take a target')
         if args.reply:
             handle, action = args.reply
-            if action not in ('a', 'r', 't'):
-                parser.error('--reply choice must be a, r or t')
+            if action not in ('t', 'b', 'a'):
+                parser.error('--reply choice must be t, b or a')
             reply_to_chat(handle, action)
         else:
             review(cache)
     else:
         if not args.project_root or not args.asset_id:
             parser.error('--project-root and --asset-id are required')
-        # Tracked background processes can report a TTY even though chat cannot send stdin.
-        review(cache, *target(args.project_root, args.asset_id, args.candidate), chat=not args.terminal)
+        project = args.project_root.resolve(strict=True)
+        directory, asset = target(project, args.asset_id, args.candidate)
+        if args.background_render:
+            background_render(project, directory, asset)
+        else:
+            # Chat hands playback off to a separate, session-scoped process.
+            choice = review(cache, directory, asset, chat=not args.terminal)
+            if args.terminal and choice == 'b':
+                background_render(project, directory, asset)
 
 
 if __name__ == '__main__':
