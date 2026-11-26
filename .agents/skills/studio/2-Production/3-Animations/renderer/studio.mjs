@@ -52,22 +52,41 @@ if (!browserExecutable) {
 const cache = path.join(modules, '.cache');
 const cacheKey = createHash('sha256').update(JSON.stringify([entry, references])).digest('hex');
 const webpackCache = path.join(cache, 'studio-animations-webpack', cacheKey);
+const cli = path.join(modules, '@remotion/cli/remotion-cli.js');
+const studioServer = createRequire(cli).resolve('@remotion/studio-server');
+const historyModule = path.join(path.dirname(studioServer), 'helpers/recently-used-apps.js');
+const historyRoot = path.join(cache, 'studio-animations-history', cacheKey);
 await mkdir(cache, {recursive: true});
 const temporary = await mkdtemp(path.join(cache, 'studio-animations-studio-'));
 const config = path.join(temporary, 'remotion.config.ts');
+const preload = path.join(temporary, 'shared-history.cjs');
+// Remotion has no history path override. Redirect only that helper, not the editing root.
+await writeFile(preload, [
+  `const history = require(${JSON.stringify(historyModule)});`,
+  `const root = ${JSON.stringify(historyRoot)};`,
+  'for (const name of ["getRecentlyUsedApps", "subscribeToRecentlyUsedApps"]) {',
+  '  const original = history[name];',
+  '  if (typeof original !== "function") throw new Error(`Unsupported Remotion app history: ${name}`);',
+  '  history[name] = options => original({...options, remotionRoot: root});',
+  '}',
+].join('\n'));
 await writeFile(config, [
   // Keep this import external to config bundling so it shares the CLI's state.
   'import {Config} from "@remotion/cli/config";',
+  'import {join} from "node:path";',
   // Disable the CLI production cache; the live Studio compiler handles its own cache below.
   'Config.setCachingEnabled(false);',
   `Config.setBrowserExecutable(${JSON.stringify(browserExecutable)});`,
   ...(isFullAnimation ? [`Config.setOutputLocation(${JSON.stringify(`out/${assetId}.mp4`)});`] : []),
   'Config.overrideWebpackConfig((config) => ({',
   '  ...config,',
-  // Remotion sets its cache after this override, so redirect it during compiler setup.
+  // Remotion overrides cache config. Set the final pack path after Webpack's defaults,
+  // but before it creates the filesystem cache backend.
   '  plugins: [...(config.plugins ?? []), {apply(compiler) {',
-  '    const cache = compiler.options.cache;',
-  `    if (cache && cache.type === 'filesystem') cache.cacheDirectory = ${JSON.stringify(webpackCache)};`,
+  '    compiler.hooks.afterEnvironment.tap("StudioSharedWebpackCache", () => {',
+  '      const cache = compiler.options.cache;',
+  `      if (cache && cache.type === 'filesystem') cache.cacheLocation = join(${JSON.stringify(webpackCache)}, cache.name);`,
+  '    });',
   '  }}],',
   '  resolve: {...config.resolve,',
   `    modules: [${JSON.stringify(modules)}, ...(config.resolve?.modules ?? ['node_modules'])],`,
@@ -82,7 +101,7 @@ console.log(`Opening source-backed Studio for ${source}`);
 const args = ['studio', entry, '--config', config, '--public-dir', references, '--ipv4'];
 if (values.port !== undefined) args.push('--port', values.port);
 if (values['no-open']) args.push('--no-open');
-const child = spawn(process.execPath, [path.join(renderer, 'node_modules/@remotion/cli/remotion-cli.js'),
+const child = spawn(process.execPath, ['--require', preload, cli,
   ...args],
   {cwd: directory, env: {...process.env, NODE_PATH: modules}, stdio: 'inherit'});
 for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => child.kill(signal));

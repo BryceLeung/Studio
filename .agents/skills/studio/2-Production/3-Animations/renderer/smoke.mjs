@@ -1,9 +1,13 @@
 import assert from 'node:assert/strict';
-import {copyFile, mkdir, mkdtemp, readFile, rm, writeFile} from 'node:fs/promises';
-import {spawnSync} from 'node:child_process';
+import {createHash} from 'node:crypto';
+import {copyFile, lstat, mkdir, mkdtemp, readFile, realpath, rm, writeFile} from 'node:fs/promises';
+import {spawn, spawnSync} from 'node:child_process';
+import {once} from 'node:events';
 import os from 'node:os';
 import path from 'node:path';
+import {setTimeout as delay} from 'node:timers/promises';
 import {fileURLToPath} from 'node:url';
+import {findRenderPort} from './ports.mjs';
 
 const renderer = path.dirname(fileURLToPath(import.meta.url));
 const temporary = await mkdtemp(path.join(os.tmpdir(), 'studio-animation-smoke-'));
@@ -11,6 +15,52 @@ const run = (script, args) => {
   const result = spawnSync(process.execPath, [path.join(renderer, script), ...args], {cwd: renderer, encoding: 'utf8', timeout: 120000});
   assert.equal(result.status, 0, result.stderr || result.error?.message || result.stdout);
   return JSON.parse(result.stdout.trim());
+};
+
+const checkStudio = async () => {
+  const port = await findRenderPort(3101, 3200);
+  const entry = await realpath(path.join(temporary, 'src/Studio.tsx'));
+  const references = await realpath(path.join(temporary, 'references'));
+  const key = createHash('sha256').update(JSON.stringify([entry, references])).digest('hex');
+  const cache = path.join(renderer, 'node_modules/.cache');
+  const historyRoot = path.join(cache, 'studio-animations-history', key);
+  const studio = spawn(process.execPath, [path.join(renderer, 'studio.mjs'),
+    '--source-dir', path.join(temporary, 'src'), '--public-dir', path.join(temporary, 'references'),
+    '--port', String(port), '--no-open'], {cwd: renderer, stdio: ['ignore', 'pipe', 'pipe']});
+  let output = '';
+  for (const stream of [studio.stdout, studio.stderr]) stream.on('data', data => {output += data;});
+  const closed = once(studio, 'close');
+  try {
+    const deadline = Date.now() + 60000;
+    while (!/Built in \d/i.test(output) && studio.exitCode === null && Date.now() < deadline) {
+      await delay(100);
+    }
+    assert.match(output, /Built in \d/i, output);
+    const origin = `http://127.0.0.1:${port}`;
+    const response = await fetch(origin, {signal: AbortSignal.timeout(10000)});
+    assert.ok(response.ok, `Studio returned HTTP ${response.status}`);
+    await response.text();
+    const apps = await fetch(`${origin}/api/app-info`, {
+      method: 'POST', headers: {'Content-Type': 'application/json', Origin: origin},
+      body: JSON.stringify({editor: {recentlyUsedIds: ['custom']}, codingAgent: {recentlyUsedIds: []}}),
+      signal: AbortSignal.timeout(10000),
+    });
+    assert.ok(apps.ok, `App history request returned HTTP ${apps.status}: ${await apps.text()}`);
+    assert.deepEqual(JSON.parse(await readFile(path.join(historyRoot,
+      'node_modules/.cache/remotion/recently-used-editors.json'), 'utf8')), ['custom']);
+    // Webpack persists its first cache asynchronously, after compilation goes idle.
+    await delay(8000);
+    await assert.rejects(lstat(path.join(temporary, 'node_modules')), {code: 'ENOENT'},
+      'Live Studio must not create asset-local dependencies or caches.');
+  } finally {
+    if (studio.exitCode === null) {
+      if (process.platform === 'win32') spawnSync('taskkill.exe', ['/pid', String(studio.pid), '/t', '/f']);
+      else studio.kill('SIGTERM');
+    }
+    await closed;
+    await rm(historyRoot, {recursive: true, force: true});
+    await rm(path.join(cache, 'studio-animations-webpack', key), {recursive: true, force: true});
+  }
 };
 
 try {
@@ -21,6 +71,9 @@ try {
     .replace('width={1920}', 'width={320}').replace('height={1080}', 'height={180}')
     .replace('durationInFrames={150}', 'durationInFrames={15}');
   await writeFile(path.join(temporary, 'src/Studio.tsx'), entry);
+  await writeFile(path.join(temporary, 'package.json'), '{"name":"studio-smoke","private":true}');
+  await copyFile(path.join(renderer, 'template/tsconfig.json'), path.join(temporary, 'tsconfig.json'));
+  await checkStudio();
   const args = ['--source-dir', path.join(temporary, 'src'), '--public-dir', path.join(temporary, 'references'), '--settings', path.join(temporary, 'settings.json')];
   await writeFile(path.join(temporary, 'settings.json'), JSON.stringify({width: 320, height: 180, fps: 30, durationInFrames: 150}));
   const inspected = run('render.mjs', [...args, '--inspect']);
@@ -44,7 +97,8 @@ try {
   const escaped = spawnSync(process.execPath, [path.join(renderer, 'render.mjs'), '--source-dir', path.join(temporary, 'src'), '--public-dir', path.join(temporary, 'references'), '--settings', path.join(temporary, 'settings.json'), '--output', path.join(temporary, 'escaped.mp4')], {cwd: renderer, encoding: 'utf8', timeout: 120000});
   assert.notEqual(escaped.status, 0, 'Rendering must reject imports outside the recorded source.');
   assert.match(escaped.stderr, /outside the recorded source/);
-  console.log('Studio metadata, mismatch rejection, render and probe passed; existing output was preserved and untracked imports rejected.');
+  await assert.rejects(lstat(path.join(temporary, 'node_modules')), {code: 'ENOENT'});
+  console.log('Live Studio, shared history, render and probe passed without asset-local node_modules.');
 } finally {
   await rm(temporary, {recursive: true, force: true});
 }
