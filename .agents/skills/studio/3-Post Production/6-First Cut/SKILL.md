@@ -27,24 +27,32 @@ an available FFprobe executable:
 python "<workflow-root>/.agents/skills/studio/3-Post Production/6-First Cut/scripts/first_cut.py" --project-root "<real-project-root>" --scores "3-Post Production/4-Take Selection/<Script>__Scores.v<N>.json" [...other scripts' latest score files...] --padding-ms 50
 ```
 
+On an extract-only rerun, skip the full-script command when the required full-script drafts already exist. Leave those drafts and `REVIEW.json` in place. If preflight finds no generation work and only human review or completion remains, do not invalidate merely to rerun a generator.
+
 Approved extract projects:
 
 ```text
 python "<workflow-root>/.agents/skills/studio/3-Post Production/6-First Cut/scripts/extracts.py" --project-root "<real-project-root>" --shortlist "1-Pre Production/3-Extracts/APPROVED/Short-Form Excerpt Shortlist.md" --scores "3-Post Production/4-Take Selection/<Script>__Scores.v<N>.json" [...other scripts' latest score files...] --generate --padding-ms 50
 ```
 
-Omit `--generate` for read-only sentence/take matching. Add `--omit-discarded`
+Omit `--generate` for read-only format and sentence/take matching. Add `--omit-discarded`
 only with explicit authorization to omit included script-side discards; report
 unresolved matches instead of guessing. The user authorized omitting sentence
 109 from extract 6 in project `01-Love Compounds Too` on 2026-10-13.
 
-For portrait extract projects, add `--portrait` to the extract generation
-command. This consumes the fingerprinted stage 3.5 index and camera paths and
-writes separate 1080x1920 projects plus `Extract Mappings.json` under
-`3-Post Production/6-First Cut/Extracts/Portrait/`. Landscape outputs remain
-untouched. Both camera angles are reframed inside the multicam, preserving all
-take auditions and camera switching. Original asset dimensions, media, audio,
-and synchronization remain unchanged.
+Each approved extract declares `- **Formats:** Portrait`, `Landscape`, or
+`Portrait and Landscape` (also `Both`). The reader accepts equivalent ratios
+and existing `Versions` fields, plus explicit numbered ranges such as
+“Extracts 1–4 retain their vertical presentation.” Missing or conflicting
+requirements stop generation rather than defaulting to a format. Do not use a
+batch-wide format flag. Generation writes only the missing required variants,
+preserves existing drafts and approvals, and extends each affected format's
+`Extract Mappings.json` without replacing its existing per-cut entries.
+
+Portrait generation uses the fingerprinted stage 3.5 index and camera paths
+and writes 1080x1920 projects under `3-Post Production/6-First Cut/Extracts/Portrait/`.
+Both camera angles are reframed inside the multicam, preserving take auditions,
+camera switching, and the original source dimensions, media, audio and sync.
 
 Portrait framing fills the canvas with the full camera height using explicit
 Fit plus a relative transform enlargement (316.0493827% for 16:9 to 9:16).
@@ -129,12 +137,14 @@ input to 3.7.
 Record current input fingerprints (including the generated project inventories)
 and the complete edited-export inventory in `DONE`. Source media, sync checks,
 and previews use the shared seconds-based identity; saved legacy
-`mtime_ns` values remain readable after integer division by 1,000,000,000. `REVIEW.json` and
-`Extract Mappings.json` remain generation provenance, not required approval
-outputs. The generators still do not write `DONE` themselves. Validation is
+`mtime_ns` values remain readable after integer division by 1,000,000,000.
+`REVIEW.json` and `Extract Mappings.json` are generation provenance, not approval
+outputs. Studio fingerprints existing extract mapping reports as completion inputs.
+The generators still do not write `DONE` themselves. Validation is
 read-only and never moves movies or XML files on the user's behalf.
 
-Default reruns reuse identical generated files and refuse differing files.
+Default extract reruns preserve existing drafts and flag changed or unverified
+generation evidence for inspection. Full-script reruns refuse differing files.
 After a deliberate regeneration decision, add `--regenerate` to full-script or
 extract generation: it prepares replacement XML/reports first, archives only the
 selected old generated files into the pending `STALE/N/` slot, and publishes the
@@ -144,9 +154,14 @@ the common graph invalidator. Reusing identical XML/reports does not invalidate
 an otherwise current completion marker. Mapping-only and subtitle previews
 remain outside canonical invalidation.
 
-Preserved edited exports do not automatically renew approval when generation
-inputs change. Re-export the reviewed edit from the current inputs. Legacy
-approved movies are left in place but are not the 3.7 handoff.
+Stage 3.6 keeps one `DONE`. Completion checks all required variants against the
+approved shortlist, plus the full scripts. A required draft cannot be dropped
+by deleting it. A matching approved export can carry forward when its draft,
+applicable generation inputs, and extract selection are unchanged. New drafts
+need human-approved exports. A changed cut needs its own renewed review and
+export. If legacy evidence cannot establish an unchanged cut, report that cut
+specifically, without replacing it or treating the whole approval set as stale.
+Legacy approved movies are left in place but are not the 3.7 handoff.
 
 Tests:
 

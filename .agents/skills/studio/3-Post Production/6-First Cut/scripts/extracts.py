@@ -6,54 +6,11 @@ import argparse
 from copy import deepcopy
 import json
 from pathlib import Path
-import re
 
 import first_cut as cut
-
-
-def parse_shortlist(text):
-    extracts = []
-    for match in re.finditer(r"^## (\d+)\. ([^\n]+)\n(.*?)(?=^## |\Z)", text, re.M | re.S):
-        number, title, body = match.groups()
-        status = re.search(r"\*\*Review status:\*\* (.+)", body)
-        if not status or not re.match(r"Approved\b", status.group(1).strip()):
-            continue
-        source = re.search(r"\*\*Source(?:/version)?:\*\* (.+)", body)
-        if not source or "### Provisional spoken script" not in body:
-            raise ValueError(f"Extract {number} lacks source or spoken script.")
-        quoted = re.search(r"`([^`]+)`", source.group(1))
-        passages, jump = [], False
-        spoken = body.split("### Provisional spoken script", 1)[1]
-        for paragraph in re.split(r"\n\s*\n", spoken.strip()):
-            if re.fullmatch(r"\*\*\[.*\]\*\*", paragraph.strip()) or paragraph.strip() == "> [PROPOSED JUMP]":
-                jump = True
-                continue
-            current = []
-            def flush():
-                nonlocal jump
-                if current:
-                    passages.append({"text": " ".join(current), "jump_before": jump})
-                    current.clear()
-                    jump = False
-            for line in paragraph.splitlines():
-                line = line.strip()
-                if not line or line == ">":
-                    flush()
-                elif line.startswith(">"):
-                    current.append(line[1:].strip())
-                elif line.startswith(("- ", "* ")):
-                    flush()
-                else:
-                    current.append(line)
-            flush()
-        if not passages or jump:
-            raise ValueError(f"Empty extract or trailing jump: {number}")
-        extracts.append({"number": int(number), "title": title.strip(),
-                         "source": Path((quoted.group(1) if quoted else source.group(1)).strip()).name,
-                         "passages": passages})
-    if not extracts:
-        raise ValueError("No approved extracts found.")
-    return extracts
+from scripts.validation import StageValidation
+from scripts.stage_completion import fingerprint, matches_entry
+from studio.first_cut_plan import parse_shortlist, selection, variants
 
 
 def match_passages(extract, script):
@@ -113,6 +70,7 @@ def map_extract(extract, document, scores):
     if sum(len(set(range(g["script"]["word_start"], g["script"]["word_end"] + 1)) & included) for g in groups) != len(included):
         raise ValueError("Incomplete extract-to-script range coverage.")
     return {"number": extract["number"], "title": extract["title"], "source": extract["source"],
+            "formats": extract.get("formats", []),
             "passages": [dict(passage, script={"word_start": start, "word_end": end})
                          for passage, (start, end) in zip(extract["passages"], spans)],
             "groups": groups, "issues": issues,
@@ -154,16 +112,14 @@ def map_all(project, shortlist, score_paths):
             "shortlist": cut.scoring.fingerprint(shortlist, project, "project"), "extracts": result}
 
 
-def generate(project, shortlist, score_paths, padding_ms, omit_discarded, regenerate=False, *, portrait=False):
+def generate(project, shortlist, score_paths, padding_ms, omit_discarded, regenerate=False):
     approved_shortlist = project / cut.EXTRACTS / "APPROVED" / "Short-Form Excerpt Shortlist.md"
     if shortlist.resolve() != approved_shortlist.resolve():
         raise ValueError(f"Extract generation requires the approved shortlist: {approved_shortlist}")
     cut.require_prerequisites(project, cut.ROOT, "3.6")
-    directory = project / cut.STAGE / "Extracts"
-    if portrait:
-        directory /= "Portrait"
+    guard = StageValidation(project, cut.ROOT, {})
     cut.find.append_log(project / cut.STAGE, "Extract projects started", [
-        f"Shortlist: {shortlist}; padding_ms={padding_ms}; omit_discarded={omit_discarded}; portrait={portrait}."])
+        f"Shortlist: {shortlist}; padding_ms={padding_ms}; omit_discarded={omit_discarded}."])
     try:
         supplied = score_paths_by_source(project, score_paths)
         latest = cut.scoring.score_versions.latest_scores(project / cut.scoring.STAGE)
@@ -171,12 +127,41 @@ def generate(project, shortlist, score_paths, padding_ms, omit_discarded, regene
             if latest.get(Path(source).stem, (None, None))[1] != path:
                 raise ValueError(f"Pass the latest stage 3.4 scores for {source}.")
         mappings = map_all(project, shortlist, score_paths)
-        planned, reports, inputs, contexts = [], [], [], {}
-        face_paths = None
-        if portrait:
-            face_paths, face_inputs = cut.portrait.load_paths(cut, project)
-            inputs.extend(face_inputs)
-        for mapped in mappings["extracts"]:
+        planned, reports, contexts, batches = [], [], {}, {}
+        face_paths, face_inputs = None, []
+        for relative, name, portrait, mapped in variants(mappings["extracts"]):
+            for candidate in (relative, relative.parent / "Extract Mappings.json"):
+                if any((project / part).is_symlink() for part in (candidate, *candidate.parents)):
+                    raise ValueError(f"Redirected extract artifact: {candidate}")
+            output = guard.confined(relative)
+            mapping_path = guard.confined(relative.parent / "Extract Mappings.json")
+            if mapping_path not in batches:
+                batch = cut.read_json(mapping_path) if mapping_path.exists() else {
+                    "schema": mappings["schema"], "schema_version": mappings["schema_version"],
+                    "shortlist": mappings["shortlist"], "projects": [], "extracts": []}
+                if (batch.get("schema") != "studio.extract-mappings" or batch.get("schema_version") != 1
+                        or not all(isinstance(batch.get(key), list) for key in ("projects", "extracts"))):
+                    raise ValueError(f"Invalid extract provenance: {mapping_path}")
+                batches[mapping_path] = (batch, [])
+            batch, updates = batches[mapping_path]
+            prior = [row for row in batch["projects"] if row["extract_number"] == mapped["number"]]
+            saved = [row for row in batch["extracts"] if row["number"] == mapped["number"]]
+            if output.exists() and not regenerate:
+                if (len(prior) != 1 or len(saved) != 1 or prior[0]["script"] != name
+                        or selection(saved[0]) != selection(mapped)):
+                    raise ValueError(f"Existing extract needs provenance review: {output}")
+                if "draft" in prior[0] and (prior[0]["draft"]["path"] != relative.as_posix()
+                                            or not matches_entry(prior[0]["draft"], project, cut.ROOT)):
+                    raise ValueError(f"Existing extract draft changed: {output}")
+                if "draft" in prior[0]:
+                    inputs = prior[0].get("generation_inputs", [])
+                    score = supplied[mapped["source"].casefold()].relative_to(project).as_posix()
+                    if (score not in {item["path"] for item in inputs}
+                            or not all(matches_entry(item, project, cut.ROOT) for item in inputs)):
+                        raise ValueError(f"Existing extract uses changed generation inputs: {output}")
+                continue
+            if portrait and face_paths is None:
+                face_paths, face_inputs = cut.portrait.load_paths(cut, project)
             discarded_sentences = {g["sentence"] for g in mapped["groups"] if g["discarded"]}
             unresolved = [issue for issue in mapped["issues"]
                           if not (omit_discarded and issue["sentence"] in discarded_sentences
@@ -198,7 +183,7 @@ def generate(project, shortlist, score_paths, padding_ms, omit_discarded, regene
                                               [cut.find.sources.load_transcript(project, p) for p in transcripts])
                 if not check["coverage"]["complete"]:
                     raise ValueError(f"Incomplete source mapping: {source_path}")
-                inputs.extend(cut.scoring.fingerprint(p, project, "project") for p in (score_path, source_path, script, *transcripts))
+                inputs = [fingerprint(p, project, "project") for p in (score_path, source_path, script, *transcripts)]
                 syncs, probes = {}, {}
                 for number in sorted({t["recording_number"] for t in scores["takes"]}):
                     sync_path = project / cut.SYNC / f"{script.stem}__C{number:02d}.json"
@@ -208,7 +193,7 @@ def generate(project, shortlist, score_paths, padding_ms, omit_discarded, regene
                             set(sync["clips"]) != set(cut.ROLES) or sync["clips"]["camA"]["offset_ms"] != 0):
                         raise ValueError("Unsupported sync convention.")
                     syncs[number], probes[number] = sync, {}
-                    inputs.append(cut.scoring.fingerprint(sync_path, project, "project"))
+                    inputs.append(fingerprint(sync_path, project, "project"))
                     for role, clip in sync["clips"].items():
                         path = (project / clip["path"]).resolve(strict=True)
                         actual = cut.media_fingerprint(path, project)
@@ -217,49 +202,52 @@ def generate(project, shortlist, score_paths, padding_ms, omit_discarded, regene
                             raise ValueError(f"Changed/invalid sync source: {path}")
                         probes[number][role] = cut.probe(path)
                         inputs.append(actual)
-                contexts[mapped["source"]] = document, scores, syncs, probes
+                contexts[mapped["source"]] = (document, scores, syncs, probes), inputs
             included = {cut.find.mapping.range_key(g["script"]) for g in mapped["groups"] if not g["discarded"]}
-            name = f"{mapped['number']:02d}-{mapped['title']}"
-            if portrait:
-                name += " Portrait"
-            safe_name = re.sub(r'[<>:"/\\|?*]', "-", name)
-            output = directory / f"{safe_name}.FCPXML"
-            xml, report = cut.build_xml(project, output, name, *contexts[mapped["source"]], padding_ms, included,
-                                        face_paths=face_paths)
+            context, inputs = contexts[mapped["source"]]
+            xml, report = cut.build_xml(project, output, name, *context, padding_ms, included,
+                                         face_paths=face_paths if portrait else None)
             report["extract_number"] = mapped["number"]
             report["source_script"] = mapped["source"]
             report["omitted_discarded_sentences"] = mapped["omitted_discarded_sentences"]
+            report["draft"] = {"scope": "project", "path": relative.as_posix(), "method": "sha256",
+                               "sha256": cut.find.fingerprints.digest_bytes(xml, text=True)}
+            source_prefix = Path(mapped["source"]).stem.casefold() + "__"
+            report["generation_inputs"] = inputs + ([item for item in face_inputs
+                                                     if Path(item["path"]).name.casefold().startswith(source_prefix)]
+                                                    if portrait else [])
             reports.append(report)
             planned.append((output, xml))
-        mappings["projects"] = reports
-        mappings["inputs"] = inputs
-        mappings["dependencies"] = [cut.scoring.fingerprint(p, cut.ROOT, "workflow") for p in
-                                    (Path(__file__), Path(cut.__file__), Path(cut.subtitles.__file__),
-                                     Path(cut.portrait.__file__), Path(__file__).parents[1] / "SKILL.md",
-                                     cut.ROOT / "studio/fingerprints.py", cut.ROOT / "studio/script_docx.py")]
-        mappings["review_required"] = ("Import and review every extract project in Final Cut, including framing and subtitles; "
-                                       "export same-stem edited FCPXML to 3-Post Production/6-First Cut/APPROVED/.")
-        mapping_path = directory / "Extract Mappings.json"
-        mapping_bytes = (json.dumps(mappings, ensure_ascii=False, indent=2, allow_nan=False) + "\n").encode("utf-8")
-        planned.append((mapping_path, mapping_bytes))
-        for path, content in planned:
-            if not regenerate and path.exists() and path.read_bytes() != content:
-                raise ValueError(f"Existing extract output differs; inspect before replacing: {path}")
-        changed = any(not path.exists() or path.read_bytes() != content for path, content in planned)
-        if regenerate and changed:
+            updates.append((mapped, report))
+        for batch, updates in batches.values():
+            numbers = {mapped["number"] for mapped, _ in updates}
+            batch["projects"] = [row for row in batch["projects"] if row["extract_number"] not in numbers]
+            batch["extracts"] = [row for row in batch["extracts"] if row["number"] not in numbers]
+            for mapped, report in updates:
+                batch["projects"].append(report)
+                batch["extracts"].append(mapped)
+        if not planned:
+            return []
+        if regenerate:
             from scripts.stage_invalidation import prepare_regeneration
-            prepare_regeneration(project, cut.ROOT, "3.6", [p for p, _ in planned if p.exists()],
-                                 "Explicit extract project regeneration.", append_log=cut.find.append_log)
-        directory.mkdir(parents=True, exist_ok=True)
+            replacing = [p for p, _ in planned if p.exists()]
+            replacing += [p for p, (_, updates) in batches.items() if updates and p.exists()]
+            if replacing:
+                prepare_regeneration(project, cut.ROOT, "3.6", replacing,
+                                     "Explicit extract project regeneration.", append_log=cut.find.append_log)
+        cut.find.invalidate(project, (3, 6), "Extract projects changed. Edited FCPXML in APPROVED required.")
+        # Publish provenance first. If an XML write is interrupted, a retry can
+        # fill the missing draft without confusing it with a legacy draft.
+        for path, (batch, updates) in batches.items():
+            if updates:
+                cut.find.write_json(path, batch, overwrite=path.exists())
         for path, content in planned:
-            if not path.exists():
-                with path.open("xb") as stream:
-                    stream.write(content)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with path.open("xb") as stream:
+                stream.write(content)
             if path.read_bytes() != content:
                 raise ValueError(f"Persisted output mismatch: {path}")
         (project / cut.STAGE / "APPROVED").mkdir(exist_ok=True)
-        if changed:
-            cut.find.invalidate(project, (3, 6), "Extract projects changed; edited FCPXML in APPROVED required.")
         cut.find.append_log(project / cut.STAGE, "Extract projects ready for review", [
             "Outputs: " + json.dumps([cut.scoring.fingerprint(p, project, "project") for p, _ in planned]),
             "Omitted discarded sentences: " + json.dumps({p["extract_number"]: p["omitted_discarded_sentences"] for p in reports}),
@@ -281,7 +269,6 @@ def main():
     parser.add_argument("--generate", action="store_true", help="Write separate FCPXML projects and exact sentence/take mapping JSON")
     parser.add_argument("--regenerate", action="store_true", help="Archive selected generated extract outputs before replacing")
     parser.add_argument("--padding-ms", type=int, default=50)
-    parser.add_argument("--portrait", action="store_true", help="Use stage 3.5 face paths for separate 1080x1920 portrait projects")
     parser.add_argument("--omit-discarded", action="store_true", help="Explicitly authorize omission of already discarded script groups")
     args = parser.parse_args()
     project = args.project_root.resolve(strict=True)
@@ -289,13 +276,13 @@ def main():
         if args.padding_ms < 0:
             parser.error("Padding must be nonnegative.")
         generated = generate(project, (project / args.shortlist).resolve(strict=True), args.scores,
-                             args.padding_ms, args.omit_discarded, regenerate=args.regenerate, portrait=args.portrait)
+                             args.padding_ms, args.omit_discarded, regenerate=args.regenerate)
         print(json.dumps([{k: v for k, v in p.items() if k != "selected"} for p in generated], indent=2))
     else:
         report = map_all(project, (project / args.shortlist).resolve(strict=True), args.scores)
         for extract in report["extracts"]:
             print(json.dumps({"number": extract["number"], "title": extract["title"],
-                              "sentences": len(extract["groups"]), "take_alternatives": sum(len(g["takes"]) for g in extract["groups"]),
+                               "formats": extract["formats"], "sentences": len(extract["groups"]), "take_alternatives": sum(len(g["takes"]) for g in extract["groups"]),
                               "issues": extract["issues"]}, ensure_ascii=False))
 
 

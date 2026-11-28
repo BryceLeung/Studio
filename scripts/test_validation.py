@@ -48,7 +48,7 @@ class CommonValidationTests(unittest.TestCase):
             ):
                 dependency = project / relative
                 dependency.parent.mkdir(parents=True, exist_ok=True)
-                dependency.write_bytes(b"generation source")
+                dependency.write_bytes(b"# Approved shortlist\n" if dependency.suffix == ".md" else b"generation source")
         name = {"1.2": "A.pptx", "1.3": "Short-Form Excerpt Shortlist.md", "3.6": "A.FCPXML", "3.7": "A.mov"}[step]
         output = project / definition["outputs"][-1]["folder"] / name
         output.parent.mkdir(parents=True)
@@ -56,7 +56,7 @@ class CommonValidationTests(unittest.TestCase):
         marker = project / definition["folder"] / "DONE"
         if step == "3.7":
             (marker.parent / "A.FCPXML").write_bytes(FCPXML)
-            scores = project / definition["inputs"][-1]["folder"] / "A__Scores.v1.json"
+            scores = project / "3-Post Production/4-Take Selection/A__Scores.v1.json"
             scores.parent.mkdir(parents=True)
             scores.write_text("{}")
             animation_done = project / "2-Production/3-Animations/DONE"
@@ -186,6 +186,10 @@ class CommonValidationTests(unittest.TestCase):
                 xml = marker.parent / relative
                 xml.parent.mkdir(parents=True)
                 xml.write_text("<fcpxml />")
+                shortlist = project / "1-Pre Production/3-Extracts/APPROVED/Short-Form Excerpt Shortlist.md"
+                format_name = "Portrait" if "Portrait" in relative else "Landscape"
+                shortlist.write_text(f"## 1. Example\n- **Review status:** Approved\n- **Source:** A.docx\n"
+                                     f"- **Formats:** {format_name}\n\n### Provisional spoken script\n\n> First.\n")
                 self.record_gate(project, definition, [source, xml], [output])
                 status, reason = validation.check_marker(project, validation.ROOT, definition)
                 self.assertEqual(status, "stale")
@@ -196,6 +200,56 @@ class CommonValidationTests(unittest.TestCase):
                 self.assertEqual(validation.check_marker(project, validation.ROOT, definition)[0], "current")
                 xml.write_text("<fcpxml version='changed' />")
                 self.assertEqual(validation.check_marker(project, validation.ROOT, definition)[0], "stale")
+
+    def test_first_cut_keeps_unchanged_approvals_and_requires_both_new_formats(self):
+        from studio.first_cut_exports import build_manifest
+        from studio.first_cut_plan import SHORTLIST
+
+        with TemporaryDirectory() as directory:
+            project = Path(directory).resolve()
+            definition, score, full_edit, marker = self.gate_fixture(project, "3.6")
+            base = "## 1. Earlier\n- **Review status:** Approved\n- **Source:** A.docx\n- **Formats:** Portrait\n\n"
+            base += "### Provisional spoken script\n\n> Earlier.\n\n"
+            shortlist = project / SHORTLIST
+            shortlist.write_text(base)
+            portrait_dir = marker.parent / "Extracts/Portrait"
+            portrait_dir.mkdir(parents=True)
+            old_draft = portrait_dir / "01-Earlier Portrait.FCPXML"
+            old_draft.write_bytes(FCPXML)
+            old_edit = full_edit.with_name(old_draft.name)
+            old_edit.write_bytes(FCPXML)
+            self.record_gate(project, definition, [score], [full_edit, old_edit])
+            stage_completion.archive_done(marker.parent)
+            old_selection = {"number": 1, "title": "Earlier", "source": "A.docx",
+                             "passages": [{"text": "Earlier.", "jump_before": False}]}
+            legacy = {"shortlist": {"sha256": sha256(shortlist)}, "extracts": [old_selection],
+                      "projects": [{"script": old_draft.stem, "extract_number": 1, "source_script": "A.docx"}]}
+            new = "## 5. New\n- **Review status:** Approved\n- **Source:** A.docx\n- **Formats:** Portrait and Landscape\n\n"
+            shortlist.write_text(base + new + "### Provisional spoken script\n\n> New.\n")
+            new_selection = dict(old_selection, number=5, title="New", passages=[{"text": "New.", "jump_before": False}])
+
+            def audit():
+                manifest = build_manifest(project, validation.ROOT, "3.6")
+                return validation.validate_evidence(project, validation.ROOT, definition, manifest)
+
+            self.assertIn("Missing generated First Cut project", audit()[1])
+            for folder, stem in ((portrait_dir, "05-New Portrait"), (portrait_dir.parent, "05-New")):
+                draft = folder / f"{stem}.FCPXML"
+                draft.write_bytes(FCPXML)
+                batch = legacy if folder == portrait_dir else {"extracts": [], "projects": []}
+                row = {"script": stem, "extract_number": 5, "source_script": "A.docx",
+                       "draft": stage_completion.fingerprint(draft, project, "project"),
+                       "generation_inputs": [stage_completion.fingerprint(score, project, "project")]}
+                (folder / "Extract Mappings.json").write_text(json.dumps(dict(
+                    batch, extracts=batch["extracts"] + [new_selection], projects=batch["projects"] + [row])))
+            self.assertIn("Missing approved First Cut", audit()[1])
+            for name in ("05-New Portrait.FCPXML", "05-New.FCPXML"):
+                full_edit.with_name(name).write_bytes(FCPXML)
+            self.assertEqual(audit()[0], "current", audit()[1])
+            old_draft.write_bytes(b"changed draft")
+            status, reason = audit()
+            self.assertEqual(status, "stale")
+            self.assertIn("01-Earlier Portrait", reason)
 
     def test_new_portrait_project_invalidates_complete_input_inventory(self):
         with TemporaryDirectory() as directory:

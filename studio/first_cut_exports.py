@@ -57,6 +57,13 @@ def build_manifest(project, workflow, step):
         entry = completion.fingerprint(xml, project, "project")
         saved[entry["path"]] = entry
     manifest[section] = [saved[path] for path in sorted(saved)]
+    if step == "3.6":
+        from studio.first_cut_plan import SHORTLIST, parse_shortlist, selection, variants
+
+        manifest["extract_selections"] = {
+            path.as_posix(): selection(extract) for path, _, _, extract in variants(
+                parse_shortlist((project / SHORTLIST).read_text(encoding="utf-8-sig")))
+        }
     return manifest
 
 
